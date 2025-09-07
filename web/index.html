@@ -55,6 +55,27 @@
 
   <script type="module">
     // load and process the default wordlist
+    import init, { parse_wordlist } from './pkg/umiaq.js';
+
+    async function getLocalWordList() {
+      const url = './data/spreadthewordlist.dict';
+      const minScore = 50;
+      await init(); // ensure WASM is loaded
+      window.parse_wordlist = parse_wordlist; // make it available to classic scripts
+
+      try {
+        const resp = await fetch(url, { cache: 'no-cache' });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const text = await resp.text();
+
+        // Call into Rust instead of JS parsing:
+        window.wordlist = parse_wordlist(text, minScore); // returns a JS Array<string>
+      } catch (err) {
+        console.error(err);
+        alert(`Could not load "${url}". Check the path and CORS/MIME type.`);
+      }
+    }
+
     await getLocalWordList();
 
     // Set up the web worker

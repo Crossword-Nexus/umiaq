@@ -62,11 +62,9 @@ impl WordList {
     /// 5. Converts `word` to lowercase.
     /// 6. Deduplicates the list (case-insensitive because we lowercase early).
     /// 7. Sorts by length, then alphabetically.
-    #[cfg(not(target_arch = "wasm32"))]
-    fn parse_from_str(
+    pub fn parse_from_str(
         contents: &str,
         min_score: i32,
-        max_len: usize,
     ) -> WordList {
         // Step 1: Collect valid words into a Vec<String>.
         //
@@ -112,11 +110,6 @@ impl WordList {
                 // Convert the word to lowercase.
                 let word = word_raw.to_lowercase();
 
-                // Skip words longer than `max_len`.
-                if word.len() > max_len {
-                    return None;
-                }
-
                 // At this point, we have a valid, normalized word — include it.
                 Some(word)
             })
@@ -161,13 +154,12 @@ impl WordList {
     pub fn load_from_path<P: AsRef<std::path::Path>>(
         path: P,
         min_score: i32,
-        max_len: usize,
     ) -> std::io::Result<WordList> {
         // Read the entire file into a single string.
         // Using `read_to_string` ensures UTF-8 decoding.
         let data = std::fs::read_to_string(path)?;
 
         // Pass the file contents to the WASM-safe parsing method.
-        Ok(Self::parse_from_str(&data, min_score, max_len))
+        Ok(Self::parse_from_str(&data, min_score))
     }
 }

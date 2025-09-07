@@ -37,7 +37,7 @@ fn main() -> std::io::Result<()> {
     let cli = Cli::parse();
 
     let t_load = Instant::now();
-    let wl = wordlist::WordList::load_from_path(&cli.wordlist, cli.min_score, cli.max_len)?;
+    let wl = wordlist::WordList::load_from_path(&cli.wordlist, cli.min_score)?;
     let load_secs = t_load.elapsed().as_secs_f64();
 
     let words_ref: Vec<&str> = wl.entries.iter().map(String::as_str).collect();
