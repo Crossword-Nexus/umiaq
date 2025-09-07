@@ -1,4 +1,4 @@
-//! wordlist.rs — Module to load and preprocess the crossword word list for Umiaq
+//! `word_list` — Module to load and preprocess the crossword word list for Umiaq
 //!
 //! This module is responsible for reading a word list (either from a file, or from an in-memory
 //! string — the latter is important for WebAssembly/browser builds, since direct file I/O

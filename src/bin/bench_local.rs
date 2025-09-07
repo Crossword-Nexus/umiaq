@@ -29,7 +29,7 @@ use std::time::Instant;
 
 use umiaq::bindings::Bindings;
 use umiaq::solver;
-use umiaq::wordlist;
+use umiaq::word_list;
 
 /// Simple local benchmark runner: load word list once, time several patterns.
 /// Each case is a pattern + optional Qat time; name = pattern; always requests 100 results.
@@ -42,7 +42,7 @@ struct Cli {
         long,
         default_value = concat!(env!("CARGO_MANIFEST_DIR"), "/data/spreadthewordlist.dict")
     )]
-    wordlist: String,
+    word_list: String,
 
     /// Minimum score filter
     #[arg(short = 'm', long, default_value_t = 50)]
@@ -116,9 +116,9 @@ fn main() -> std::io::Result<()> {
     let cli = Cli::parse();
 
     // Load the word list once. This I/O is *not* included in per-pattern timing.
-    eprintln!("Loading word list from: {}", cli.wordlist);
+    eprintln!("Loading word list from: {}", cli.word_list);
     let t_load = Instant::now();
-    let wl = wordlist::WordList::load_from_path(&cli.wordlist, cli.min_score)?;
+    let wl = word_list::WordList::load_from_path(&cli.word_list, cli.min_score)?;
     let load_secs = t_load.elapsed().as_secs_f64();
     eprintln!("Loaded {} words in {:.3}s", wl.entries.len(), load_secs);
 

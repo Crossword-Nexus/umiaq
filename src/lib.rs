@@ -1,5 +1,5 @@
 // Reusable library API — visible to both CLI and WASM builds
-pub mod wordlist;
+pub mod word_list;
 pub mod solver;
 pub mod bindings;
 pub mod parser;
