@@ -324,5 +324,4 @@ mod tests {
         assert!(matches!(*err, ParseError::DanglingCharsetDash));
     }
      */
-
 }

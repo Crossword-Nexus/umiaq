@@ -25,7 +25,7 @@ pub enum ParseError {
     #[error("Dangling '-' at end of charset")]
     DanglingCharsetDash,
 
-    // ... existing variants, e.g. from variables, constraints, etc. ...
+    // ... existing variants, e.g., from variables, constraints, etc. ...
     #[error("nom parser error: {0:?}")]
     NomError(ErrorKind),
 }
