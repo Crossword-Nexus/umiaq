@@ -162,9 +162,17 @@ impl FromStr for ParsedForm {
                     parts.push(part);
                     rest = next;
                 }
-                Err(_) => return Err(Box::new(ParseFailure { s: rest.to_string() })),
+                Err(nom::Err::Failure(e)) => {
+                    // bubble up the specific ParseError
+                    return Err(Box::new(e));
+                }
+                Err(_) => {
+                    // fall back to generic ParseFailure for other cases
+                    return Err(Box::new(ParseFailure { s: rest.to_string() }));
+                }
             }
         }
+
 
         if parts.is_empty() {
             return Err(Box::new(ParseError::EmptyForm));
