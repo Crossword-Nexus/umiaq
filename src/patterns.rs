@@ -371,9 +371,7 @@ impl FromStr for Patterns {
 // e.g., A=(3-:x*)
 fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint), Box<ParseError>> {
     if let Some((var_str, constraint_str)) = form.split_once('=') {
-        if var_str.len() != 1 {
-            Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("expected 1 character (as the variable) to the left of \"=\" (not {})", var_str.len()) }))
-        } else {
+        if var_str.len() == 1 {
             if constraint_str.contains('=') {
                 return Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("expected 1 equals sign (not {})", form.chars().filter(|c| *c == '=').count()) }));
             }
@@ -393,10 +391,9 @@ fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint), Box<Parse
             let (len_range, literal_constraint_str) = if let Some((len_range_raw, literal_constraint_str)) = inner_constraint_str.split_once(':') {
                 if literal_constraint_str.contains(':') { // too many colons
                     return Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("too many colons--0 or 1 expected (not {})", inner_constraint_str.chars().filter(|c| *c == ':').count()) }));
-                } else {
-                    let len_range = parse_length_range(len_range_raw)?;
-                    (Some(len_range), Some(literal_constraint_str))
                 }
+                let len_range = parse_length_range(len_range_raw)?;
+                (Some(len_range), Some(literal_constraint_str))
             } else {
                 match parse_length_range(inner_constraint_str) {
                     Ok(len_range) => (Some(len_range), None),
@@ -417,6 +414,8 @@ fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint), Box<Parse
             };
 
             Ok((var, vc))
+        } else {
+            Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("expected 1 character (as the variable) to the left of \"=\" (not {})", var_str.len()) }))
         }
     } else {
         Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("expected 1 equals sign (not {})", form.chars().filter(|c| *c == '=').count()) }))
