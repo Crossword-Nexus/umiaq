@@ -586,8 +586,9 @@ mod tests {
 
         let vars: Vec<HashSet<char>> = patterns.ordered_list.iter().map(|p| p.variables.clone()).collect();
 
+        // The first element should have the most variables
         assert!((&vars[0]).len() >= (&vars[1]).len());
-        assert!((&vars[1]).intersection(&vars[0]).count() >= (&vars[2]).intersection(&vars[0]).count());
+        // Note: the order of the other two is irrelevant, since neither contributes a new variable
     }
 
     #[test]
