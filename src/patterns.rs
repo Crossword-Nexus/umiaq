@@ -641,4 +641,115 @@ mod tests {
 
         assert_eq!(expected, a);
     }
+
+    #[test]
+    /// Verify constraint_score calculation and all_vars_in_lookup_keys logic.
+    fn test_constraint_score_and_all_vars_in_lookup_keys() {
+        let p1 = Pattern::create("abc", 0); // all literals
+        assert_eq!(p1.constraint_score(), 9);
+
+        let p2 = Pattern::create("A@", 1); // var + class
+        assert_eq!(p2.constraint_score(), 1);
+
+        let p3 = Pattern::create("#B", 2); // class + var
+        assert_eq!(p3.constraint_score(), 1);
+
+        let mut p4 = Pattern::create("AB", 3);
+        assert!(!p4.all_vars_in_lookup_keys());
+        p4.lookup_keys = HashSet::from_iter(['A', 'B']);
+        assert!(p4.all_vars_in_lookup_keys());
+    }
+
+    #[test]
+    /// Ensure parse_length_range rejects malformed or nonsensical inputs.
+    fn test_parse_length_range_invalid_cases() {
+        assert!(matches!(
+            *parse_length_range("--").unwrap_err(),
+            ParseError::InvalidLengthRange { .. }
+        ));
+        assert!(matches!(
+            *parse_length_range("abc").unwrap_err(),
+            ParseError::InvalidLengthRange { .. }
+        ));
+        assert!(matches!(
+            *parse_length_range("1-2-3").unwrap_err(),
+            ParseError::InvalidLengthRange { .. }
+        ));
+    }
+
+    #[test]
+    /// Ensure get_complex_constraint returns errors for malformed inputs.
+    fn test_get_complex_constraint_invalid_cases() {
+        // no '='
+        assert!(matches!(
+            *get_complex_constraint("A").unwrap_err(),
+            ParseError::InvalidComplexConstraint { .. }
+        ));
+        // too many '='
+        assert!(matches!(
+            *get_complex_constraint("A=B=C").unwrap_err(),
+            ParseError::InvalidComplexConstraint { .. }
+        ));
+        // lhs not length 1
+        assert!(matches!(
+            *get_complex_constraint("AB=3").unwrap_err(),
+            ParseError::InvalidComplexConstraint { .. }
+        ));
+    }
+
+    #[test]
+    /// Verify merging of min/max constraints with a literal form.
+    fn test_merge_constraints_len_and_form() {
+        // |A|>=5 and A=(3-7:abc) -> min should be 5, max should be 7, form = abc
+        let patterns = "A;|A|>=5;A=(3-7:abc)".parse::<Patterns>().unwrap();
+        let a = patterns.var_constraints.get('A').unwrap();
+        assert_eq!(a.min_length, 5);
+        assert_eq!(a.max_length, Some(7));
+        assert_eq!(a.form.as_deref(), Some("abc"));
+    }
+
+    #[test]
+    /// Check that !=ABC constraint gives correct not_equal sets for each variable.
+    fn test_not_equal_constraint_three_vars() {
+        let patterns = "ABC;!=ABC".parse::<Patterns>().unwrap();
+        let a = patterns.var_constraints.get('A').unwrap();
+        let b = patterns.var_constraints.get('B').unwrap();
+        let c = patterns.var_constraints.get('C').unwrap();
+
+        assert_eq!(a.not_equal, HashSet::from_iter(['B','C']));
+        assert_eq!(b.not_equal, HashSet::from_iter(['A','C']));
+        assert_eq!(c.not_equal, HashSet::from_iter(['A','B']));
+    }
+
+    #[test]
+    /// Test ordering tie-breakers: constraint_score and deterministic flag.
+    fn test_ordered_patterns_tiebreak_constraint_score_and_deterministic() {
+        // Xz has var + literal (score 3), X just var
+        let input = "Xz;X".parse::<Patterns>().unwrap();
+        assert_eq!(input.ordered_list[0].raw_string, "Xz");
+
+        // Deterministic vs non-deterministic: "AB" (det) vs "A.B" (non-det)
+        let input2 = "A.B;AB".parse::<Patterns>().unwrap();
+        assert_eq!(input2.ordered_list[0].raw_string, "A.B");
+    }
+
+    #[test]
+    /// Confirm that IntoIterator yields ordered_list without consuming Patterns.
+    fn test_into_iterator_yields_ordered_list() {
+        let patterns = "AB;BC".parse::<Patterns>().unwrap();
+        let from_iter: Vec<String> = (&patterns).into_iter().map(|p| p.raw_string.clone()).collect();
+        let ordered: Vec<String> = patterns.ordered_list.iter().map(|p| p.raw_string.clone()).collect();
+        assert_eq!(from_iter, ordered);
+    }
+
+    #[test]
+    /// Verify that build_order_maps produces true inverses.
+    fn test_build_order_maps_inverse() {
+        let patterns = "AB;BC;C".parse::<Patterns>().unwrap();
+        for (ordered_ix, &orig_ix) in patterns.ordered_to_original.iter().enumerate() {
+            let roundtrip = patterns.original_to_ordered[orig_ix];
+            assert_eq!(ordered_ix, roundtrip);
+        }
+    }
+
 }
