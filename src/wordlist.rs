@@ -78,40 +78,30 @@ impl WordList {
 
                 // Skip empty lines early — no work needed.
                 if line.is_empty() {
-                    return None;
-                }
-
-                // Skip lines without a semicolon.
-                // These are invalid because our format is `word;score`.
-                if !line.contains(';') {
-                    return None;
-                }
-
+                    None
                 // Split into two parts: `word` and `score`.
-                // `splitn(2, ';')` ensures we only split on the first semicolon,
-                // so words containing semicolons later (unlikely, but robust) won't break parsing.
-                let mut parts = line.splitn(2, ';');
+                // Note that splitting ont he first occurrence of ';' means that words containing
+                // semicolons later (unlikely, but robust) won't break parsing.
+                } else if let Some((word_raw, score_raw)) = line.split_once(';') {
+                    // Try to parse the score as an integer.
+                    // If parsing fails (e.g., "abc" instead of a number), skip the line.
+                    let score: i32 = score_raw.trim().parse().ok()?;
 
-                // Extract the word and trim extra spaces.
-                let word_raw = parts.next().unwrap().trim();
+                    // Skip words with scores below `min_score`.
+                    if score < min_score {
+                        None
+                    } else {
+                        // Convert the word to lowercase.
+                        let word = word_raw.trim().to_lowercase();
 
-                // Extract the score and trim extra spaces.
-                let score_raw = parts.next().unwrap().trim();
-
-                // Try to parse the score as an integer.
-                // If parsing fails (e.g., "abc" instead of a number), skip the line.
-                let score: i32 = score_raw.parse().ok()?;
-
-                // Skip words with scores below `min_score`.
-                if score < min_score {
-                    return None;
+                        // At this point, we have a valid, normalized word—include it.
+                        Some(word)
+                    }
+                } else {
+                    // Skip lines without a semicolon.
+                    // These are invalid because our format is `word;score`.
+                    None
                 }
-
-                // Convert the word to lowercase.
-                let word = word_raw.to_lowercase();
-
-                // At this point, we have a valid, normalized word — include it.
-                Some(word)
             })
             .collect();
 
