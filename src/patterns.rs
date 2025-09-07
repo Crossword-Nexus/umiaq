@@ -273,54 +273,48 @@ impl Patterns {
     // TODO is this the right way to order things?
     /// Reorders the list of patterns to improve solving efficiency.
     /// First selects the pattern with the most variables,
-    /// then repeatedly selects the next pattern with the most overlap with those already chosen.
+    /// then repeatedly selects the next pattern with the fewest "new" variables.
     /// This helps early patterns prune the solution space.
     fn ordered_patterns(&self) -> Vec<Pattern> {
         let mut p_list = self.p_list.clone();
         let mut ordered = Vec::with_capacity(p_list.len());
 
-        // Reusable tiebreak tail: (constraint_score desc, deterministic asc, original_index asc)
-        // Note: Reverse(bool) makes false > true under max_by_key, i.e., ascending by bool.
+        // Tie-break tail: (constraint_score desc, deterministic asc, original_index asc)
         let tie_tail = |p: &Pattern| (p.constraint_score(), Reverse(p.is_deterministic), p.original_index);
 
-        // First pick: most variables; tiebreak by tail.
-        let first_ix = p_list
-            .iter()
-            .enumerate()
-            .max_by_key(|(_, p)| (p.variables.len(), tie_tail(p)))
-            .map(|(i, _)| i)
-            .unwrap();
-
-        let first = p_list.remove(first_ix);
-        ordered.push(first);
-
         while !p_list.is_empty() {
-            // Vars already "seen"
+            // Vars already "seen" in previously chosen patterns
             let found_vars: HashSet<char> = ordered
                 .iter()
-                .flat_map(|p| p.variables.iter().copied())
+                .flat_map(|p: &Pattern| p.variables.iter().copied())
                 .collect();
 
-            // Next pick: minimize difference; tiebreak by tail.
-            let (ix, mut next_p) = p_list
+            // Unified scoring function
+            let score = |p: &Pattern| {
+                if ordered.is_empty() {
+                    // First pick: negate var count so “more vars” ranks smaller
+                    (usize::MAX - p.variables.len(), tie_tail(p))
+                } else {
+                    // Later picks: fewer new vars ranks smaller
+                    (p.variables.difference(&found_vars).count(), tie_tail(p))
+                }
+            };
+
+            // Select the best candidate
+            let (ix, _) = p_list
                 .iter()
                 .enumerate()
-                .min_by_key(|(_, p)| {
-                    let var_diff = p.variables.difference(&found_vars).count();
-                    (var_diff, tie_tail(p))
-                })
-                .map(|(i, p)| (i, p.clone()))
+                .min_by_key(|(_, p)| score(p))
                 .unwrap();
 
-            // Assign join keys for the chosen pattern
-            let lookup_keys: HashSet<char> = next_p.variables
-                .intersection(&found_vars)
-                .copied()
-                .collect();
-            next_p.lookup_keys = lookup_keys;
+            let mut chosen = p_list.remove(ix);
 
-            p_list.remove(ix);
-            ordered.push(next_p);
+            if !ordered.is_empty() {
+                // Assign join keys only after the first pick
+                chosen.lookup_keys = chosen.variables.intersection(&found_vars).copied().collect();
+            }
+
+            ordered.push(chosen);
         }
 
         ordered
