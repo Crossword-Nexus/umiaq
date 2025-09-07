@@ -297,7 +297,7 @@ impl Patterns {
                 if ordered.is_empty() {
                     // First pick: more vars is better
                     (
-                        p.variables.len() as isize,
+                        p.variables.len(),
                         p.constraint_score(),
                         Reverse(p.is_deterministic),
                         p.original_index,
@@ -306,7 +306,7 @@ impl Patterns {
                     // Subsequent picks: fewer new vars is better,
                     // so we negate the count (to maximize a "negative number").
                     (
-                        -(p.variables.difference(&found_vars).count() as isize),
+                        usize::MAX - p.variables.difference(&found_vars).count(), // TODO? avoid MAX
                         p.constraint_score(),
                         Reverse(p.is_deterministic),
                         p.original_index,
