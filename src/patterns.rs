@@ -272,15 +272,18 @@ impl Patterns {
 
     // TODO is this the right way to order things?
     /// Reorders the list of patterns to improve solving efficiency.
-    /// First selects the pattern with the most variables,
-    /// then repeatedly selects the next pattern with the fewest "new" variables.
-    /// This helps early patterns prune the solution space.
+    ///
+    /// Strategy:
+    /// - First pick: choose the pattern with the most variables (desc).
+    /// - Subsequent picks: choose the pattern with the fewest *new* variables (asc).
+    ///
+    /// Tie-breakers (applied in order):
+    /// 1. Higher `constraint_score` first
+    /// 2. Non-deterministic before deterministic
+    /// 3. Lower original index first
     fn ordered_patterns(&self) -> Vec<Pattern> {
         let mut p_list = self.p_list.clone();
         let mut ordered = Vec::with_capacity(p_list.len());
-
-        // Tie-break tail: (constraint_score desc, deterministic asc, original_index asc)
-        let tie_tail = |p: &Pattern| (p.constraint_score(), Reverse(p.is_deterministic), p.original_index);
 
         while !p_list.is_empty() {
             // Vars already "seen" in previously chosen patterns
@@ -292,11 +295,22 @@ impl Patterns {
             // Unified scoring function
             let get_score = |p: &Pattern| {
                 if ordered.is_empty() {
-                    // First pick: negate var count so “more vars” ranks smaller
-                    (usize::MAX - p.variables.len(), tie_tail(p)) // TODO? avoid MAX
+                    // First pick: more vars is better
+                    (
+                        p.variables.len() as isize,
+                        p.constraint_score(),
+                        Reverse(p.is_deterministic),
+                        Reverse(p.original_index),
+                    )
                 } else {
-                    // Later picks: fewer new vars ranks smaller
-                    (p.variables.difference(&found_vars).count(), tie_tail(p))
+                    // Subsequent picks: fewer new vars is better,
+                    // so we negate the count (to maximize a "negative number").
+                    (
+                        -(p.variables.difference(&found_vars).count() as isize),
+                        p.constraint_score(),
+                        Reverse(p.is_deterministic),
+                        Reverse(p.original_index),
+                    )
                 }
             };
 
@@ -304,7 +318,7 @@ impl Patterns {
             let (ix, _) = p_list
                 .iter()
                 .enumerate()
-                .min_by_key(|(_, p)| get_score(p))
+                .max_by_key(|(_, p)| get_score(p))
                 .unwrap();
 
             let mut chosen = p_list.remove(ix);
@@ -319,6 +333,7 @@ impl Patterns {
 
         ordered
     }
+
 
     /// Number of forms (from `ordered_list`)
     pub(crate) fn len(&self) -> usize {
@@ -742,16 +757,16 @@ mod tests {
     }
 
     #[test]
-    /// Test ordering tiebreakers: `constraint_score` and deterministic flag.
-    fn test_ordered_patterns_tiebreak_constraint_score_and_deterministic_with_lit_vs_without() {
+    /// Test ordering tiebreakers: `constraint_score`.
+    fn test_ordered_patterns_tiebreak_constraint_score() {
         // "Xz" has var + literal (score 3), "X" just var
         let patterns = "Xz;X".parse::<Patterns>().unwrap();
         assert_eq!(patterns.ordered_list.iter().map(|p| p.raw_string.clone()).collect::<Vec<_>>(), vec!["Xz", "X"]);
     }
 
     #[test]
-    /// Test ordering tiebreakers: `constraint_score` and deterministic flag.
-    fn test_ordered_patterns_tiebreak_constraint_score_and_deterministic() {
+    /// Test ordering tiebreakers: deterministic flag.
+    fn test_ordered_patterns_tiebreak_deterministic() {
         // deterministic vs non-deterministic: "AB" (det) vs "A.B" (non-det)
         let patterns = "A.B;AB".parse::<Patterns>().unwrap();
         assert_eq!(patterns.ordered_list.iter().map(|p| p.raw_string.clone()).collect::<Vec<_>>(), vec!["A.B", "AB"]);
