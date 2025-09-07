@@ -60,7 +60,7 @@ static NEQ_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^!=([A-Z]+)$").un
 /// Use `parse_equation(&pattern.raw_string)` to get `Vec<FormPart>`.
 ///
 /// ## Solver metadata (what it is and why it exists)
-/// - `lookup_keys`: `Option<HashSet<char>>`
+/// - `lookup_keys`: `HashSet<char>`
 ///   - **What:** The subset of this form's variables that also appear in forms
 ///     that have already been placed earlier in `Patterns::ordered_list`.
 ///   - **When it's set:** Assigned by `Patterns::ordered_patterns()` *after* the
@@ -89,7 +89,7 @@ pub struct Pattern {
     pub raw_string: String,
     /// Set of variable names that this pattern shares with previously processed ones,
     /// used for optimizing lookups in recursive solving
-    pub lookup_keys: Option<HashSet<char>>,
+    pub lookup_keys: HashSet<char>,
     /// Position of this form among *forms only* in the original (display) order.
     /// This is stable and survives reordering/cloning.
     pub original_index: usize,
@@ -120,7 +120,7 @@ impl Pattern {
 
         Self {
             raw_string,
-            lookup_keys: None,
+            lookup_keys: HashSet::default(),
             original_index,
             is_deterministic: *deterministic,
             variables: vars,
@@ -128,12 +128,8 @@ impl Pattern {
     }
 
     /// True iff every variable this pattern uses is included in its `lookup_keys`.
-    /// (If `lookup_keys` is `None`, only patterns with zero variables return true.)
     pub(crate) fn all_vars_in_lookup_keys(&self) -> bool {
-        match &self.lookup_keys {
-            Some(keys) => self.variables.is_subset(keys),
-            None => self.variables.is_empty(),
-        }
+        self.variables.is_subset(&self.lookup_keys)
     }
 
     /// Weights for different pattern parts when computing constraint score.
@@ -156,11 +152,6 @@ impl Pattern {
                 }
             })
             .sum()
-    }
-
-    /// Set the lookup keys
-    pub(crate) fn set_lookup_keys(&mut self, keys: HashSet<char>) {
-        self.lookup_keys = Some(keys);
     }
 }
 
@@ -232,9 +223,9 @@ impl Patterns {
                     ComparisonOperator::EQ => vc.set_exact_len(n),
                     ComparisonOperator::NE => {}
                     ComparisonOperator::LE => vc.max_length = Some(n),
-                    ComparisonOperator::GE => vc.min_length = Some(n),
+                    ComparisonOperator::GE => vc.min_length = n,
                     ComparisonOperator::LT => vc.max_length = n.checked_sub(1),   // n-1 (None if n==0)
-                    ComparisonOperator::GT => vc.min_length = n.checked_add(1),   // n+1
+                    ComparisonOperator::GT => vc.min_length = n + 1, // TODO? check for overflow
                 }
             } else if let Some(cap) = NEQ_RE.captures(form).unwrap() {
                 // Extract all variables from inequality constraint
@@ -282,54 +273,48 @@ impl Patterns {
     // TODO is this the right way to order things?
     /// Reorders the list of patterns to improve solving efficiency.
     /// First selects the pattern with the most variables,
-    /// then repeatedly selects the next pattern with the most overlap with those already chosen.
+    /// then repeatedly selects the next pattern with the fewest "new" variables.
     /// This helps early patterns prune the solution space.
     fn ordered_patterns(&self) -> Vec<Pattern> {
         let mut p_list = self.p_list.clone();
         let mut ordered = Vec::with_capacity(p_list.len());
 
-        // Reusable tiebreak tail: (constraint_score desc, deterministic asc, original_index asc)
-        // Note: Reverse(bool) makes false > true under max_by_key, i.e., ascending by bool.
+        // Tie-break tail: (constraint_score desc, deterministic asc, original_index asc)
         let tie_tail = |p: &Pattern| (p.constraint_score(), Reverse(p.is_deterministic), p.original_index);
 
-        // First pick: most variables; tiebreak by tail.
-        let first_ix = p_list
-            .iter()
-            .enumerate()
-            .max_by_key(|(_, p)| (p.variables.len(), tie_tail(p)))
-            .map(|(i, _)| i)
-            .unwrap();
-
-        let first = p_list.remove(first_ix);
-        ordered.push(first);
-
         while !p_list.is_empty() {
-            // Vars already "seen"
+            // Vars already "seen" in previously chosen patterns
             let found_vars: HashSet<char> = ordered
                 .iter()
-                .flat_map(|p| p.variables.iter().copied())
+                .flat_map(|p: &Pattern| p.variables.iter().copied())
                 .collect();
 
-            // Next pick: minimize difference; tiebreak by tail.
-            let (ix, mut next_p) = p_list
+            // Unified scoring function
+            let score = |p: &Pattern| {
+                if ordered.is_empty() {
+                    // First pick: negate var count so “more vars” ranks smaller
+                    (usize::MAX - p.variables.len(), tie_tail(p))
+                } else {
+                    // Later picks: fewer new vars ranks smaller
+                    (p.variables.difference(&found_vars).count(), tie_tail(p))
+                }
+            };
+
+            // Select the best candidate
+            let (ix, _) = p_list
                 .iter()
                 .enumerate()
-                .min_by_key(|(_, p)| {
-                    let var_diff = p.variables.difference(&found_vars).count();
-                    (var_diff, tie_tail(p))
-                })
-                .map(|(i, p)| (i, p.clone()))
+                .min_by_key(|(_, p)| score(p))
                 .unwrap();
 
-            // Assign join keys for the chosen pattern
-            let lookup_keys: HashSet<char> = next_p.variables
-                .intersection(&found_vars)
-                .copied()
-                .collect();
-            next_p.set_lookup_keys(lookup_keys);
+            let mut chosen = p_list.remove(ix);
 
-            p_list.remove(ix);
-            ordered.push(next_p);
+            if !ordered.is_empty() {
+                // Assign join keys only after the first pick
+                chosen.lookup_keys = chosen.variables.intersection(&found_vars).copied().collect();
+            }
+
+            ordered.push(chosen);
         }
 
         ordered
@@ -345,28 +330,28 @@ impl Patterns {
         self.ordered_list.iter()
     }
 
-    /* -- Several unused functions but maybe some day?
-    /// Convenience (often handy with `len`)
-    fn is_empty(&self) -> bool {
-        self.ordered_list.is_empty()
-    }
-
-    /// Iterate in original (display) order
-    pub(crate) fn iter_original(&self) -> std::slice::Iter<'_, Pattern> {
-        self.list.iter()
-    }
-
-    /// Map a solver index to the original index
-    pub(crate) fn original_ix(&self, ordered_ix: usize) -> usize {
-        self.ordered_to_original[ordered_ix]
-    }
-
-    /// Map an original index to the solver index (if it was placed)
-    pub(crate) fn ordered_ix(&self, original_ix: usize) -> Option<usize> {
-        let ix = self.original_to_ordered.get(original_ix).copied()?;
-        (ix != usize::MAX).then_some(ix)
-    }
-    */
+    /* -- Several unused functions but maybe someday?
+     *    /// Convenience (often handy with `len`)
+     *    fn is_empty(&self) -> bool {
+     *        self.ordered_list.is_empty()
+     *    }
+     *
+     *    /// Iterate in original (display) order
+     *    pub(crate) fn iter_original(&self) -> std::slice::Iter<'_, Pattern> {
+     *        self.list.iter()
+     *    }
+     *
+     *    /// Map a solver index to the original index
+     *    pub(crate) fn original_ix(&self, ordered_ix: usize) -> usize {
+     *        self.ordered_to_original[ordered_ix]
+     *    }
+     *
+     *    /// Map an original index to the solver index (if it was placed)
+     *    pub(crate) fn ordered_ix(&self, original_ix: usize) -> Option<usize> {
+     *        let ix = self.original_to_ordered.get(original_ix).copied()?;
+     *        (ix != usize::MAX).then_some(ix)
+     *    }
+     */
 }
 
 impl FromStr for Patterns {
@@ -425,8 +410,12 @@ fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint), Box<Parse
     };
 
     let vc = VarConstraint {
-        min_length: len_range.and_then(|lr| lr.0),
-        max_length: len_range.and_then(|lr| lr.1),
+        // TODO!!!? instead of `len_range` as `Option<(usize, Option<usize>)`, maybe create a richer
+        // type--say `LenRange`--instead of `(usize, Option<usize>)` whose default is (equiv. to)
+        // `(VarConstraint::DEFAULT_MIN, None)`... and then we'd avoid the outer `Option`, using
+        // `LenRange`'s default instead of `None`
+        min_length: len_range.map_or(VarConstraint::DEFAULT_MIN, |(lrl, _)| lrl),
+        max_length: len_range.and_then(|(_, lru)| lru),
         form: literal_constraint_str.map(ToString::to_string),
         not_equal: HashSet::default(),
         ..Default::default()
@@ -453,13 +442,14 @@ impl<'a> IntoIterator for &'a Patterns {
 }
 
 /// Parses a string like "3-5", "-5", "3-", or "3" into min and max length values.
-/// Returns `((min, max))` where each is an `Option<usize>`.
-fn parse_length_range(input: &str) -> Result<(Option<usize>, Option<usize>), Box<ParseError>> {
+/// Returns `((min, max_opt))`.
+fn parse_length_range(input: &str) -> Result<(usize, Option<usize>), Box<ParseError>> {
     let parts: Vec<_> = input.split('-').map(|part| part.parse::<usize>().ok()).collect();
-    if (parts.len() == 1 && parts[0].is_none()) || parts.len() > 2 {
+    if parts.is_empty() || (parts.len() == 1 && parts[0].is_none()) || parts.len() > 2 {
         return Err(Box::new(ParseError::InvalidLengthRange { input: input.to_string() }))
     }
-    let min = *parts.first().unwrap();
+    // TODO!!! is there a better way to do this?
+    let min = parts.first().unwrap().unwrap_or(VarConstraint::DEFAULT_MIN);
     let max = *parts.last().unwrap();
     Ok((min, max))
 }
@@ -480,7 +470,7 @@ mod tests {
         let a = patterns.var_constraints.get('A').unwrap();
 
         let expected_a = VarConstraint {
-            min_length: Some(3),
+            min_length: 3,
             max_length: Some(3),
             form: None,
             not_equal: HashSet::from_iter(['B']),
@@ -490,7 +480,7 @@ mod tests {
 
         let b = patterns.var_constraints.get('B').unwrap();
         let expected_b = VarConstraint {
-            min_length: Some(2),
+            min_length: 2,
             max_length: Some(2),
             form: Some("b*".to_string()),
             not_equal: HashSet::from_iter(['A']),
@@ -504,7 +494,7 @@ mod tests {
         let patterns = "A;A=(6)".parse::<Patterns>().unwrap();
 
         let expected = VarConstraint {
-            min_length: Some(6),
+            min_length: 6,
             max_length: Some(6),
             form: None,
             ..Default::default()
@@ -517,7 +507,7 @@ mod tests {
         let patterns = "A;A=(g*)".parse::<Patterns>().unwrap();
 
         let expected = VarConstraint {
-            min_length: None,
+            min_length: VarConstraint::DEFAULT_MIN,
             max_length: None,
             form: Some("g*".to_string()),
             ..Default::default()
@@ -529,7 +519,7 @@ mod tests {
         let patterns = "A;A=(3-4:x*)".parse::<Patterns>().unwrap();
 
         let expected = VarConstraint {
-            min_length: Some(3),
+            min_length: 3,
             max_length: Some(4),
             form: Some("x*".to_string()),
             ..Default::default()
@@ -542,7 +532,7 @@ mod tests {
         let patterns = "A;A=(3-:x*)".parse::<Patterns>().unwrap();
 
         let expected = VarConstraint {
-            min_length: Some(3),
+            min_length: 3,
             max_length: None,
             form: Some("x*".to_string()),
             ..Default::default()
@@ -555,7 +545,7 @@ mod tests {
         let patterns = "A;A=(-4:x*)".parse::<Patterns>().unwrap();
 
         let expected = VarConstraint {
-            min_length: None,
+            min_length: VarConstraint::DEFAULT_MIN,
             max_length: Some(4),
             form: Some("x*".to_string()),
             ..Default::default()
@@ -568,7 +558,7 @@ mod tests {
         let patterns = "A;A=(6:x*)".parse::<Patterns>().unwrap();
 
         let expected = VarConstraint {
-            min_length: Some(6),
+            min_length: 6,
             max_length: Some(6),
             form: Some("x*".to_string()),
             ..Default::default()
@@ -589,10 +579,10 @@ mod tests {
 
     #[test]
     fn test_parse_length_range() {
-        assert_eq!((Some(2), Some(3)), parse_length_range("2-3").unwrap());
-        assert_eq!((None, Some(3)), parse_length_range("-3").unwrap());
-        assert_eq!((Some(1), None), parse_length_range("1-").unwrap());
-        assert_eq!((Some(7), Some(7)), parse_length_range("7").unwrap());
+        assert_eq!((2, Some(3)), parse_length_range("2-3").unwrap());
+        assert_eq!((VarConstraint::DEFAULT_MIN, Some(3)), parse_length_range("-3").unwrap());
+        assert_eq!((1, None), parse_length_range("1-").unwrap());
+        assert_eq!((7, Some(7)), parse_length_range("7").unwrap());
         assert!(matches!(*parse_length_range("").unwrap_err(), ParseError::InvalidLengthRange { input } if input == "" ));
         assert!(matches!(*parse_length_range("1-2-3").unwrap_err(), ParseError::InvalidLengthRange { input } if input == "1-2-3" ));
     }
@@ -601,7 +591,7 @@ mod tests {
     fn test_len_gt() {
         let patterns = "|A|>4;A".parse::<Patterns>().unwrap();
         let a = patterns.var_constraints.get('A').unwrap();
-        assert_eq!(a.min_length, Some(5));
+        assert_eq!(a.min_length, 5);
         assert_eq!(a.max_length, None);
     }
 
@@ -609,7 +599,7 @@ mod tests {
     fn test_len_ge() {
         let patterns = "|A|>=4;A".parse::<Patterns>().unwrap();
         let a = patterns.var_constraints.get('A').unwrap();
-        assert_eq!(a.min_length, Some(4));
+        assert_eq!(a.min_length, 4);
         assert_eq!(a.max_length, None);
     }
 
@@ -618,7 +608,7 @@ mod tests {
         let patterns = "|A|<4;A".parse::<Patterns>().unwrap();
         let a = patterns.var_constraints.get('A').unwrap();
         // For <4, max becomes 3; <1 would become None via checked_sub
-        assert_eq!(a.min_length, None);
+        assert_eq!(a.min_length, VarConstraint::DEFAULT_MIN);
         assert_eq!(a.max_length, Some(3));
     }
 
@@ -626,7 +616,7 @@ mod tests {
     fn test_len_le() {
         let patterns = "|A|<=4;A".parse::<Patterns>().unwrap();
         let a = patterns.var_constraints.get('A').unwrap();
-        assert_eq!(a.min_length, None);
+        assert_eq!(a.min_length, VarConstraint::DEFAULT_MIN);
         assert_eq!(a.max_length, Some(4));
     }
 
@@ -637,7 +627,7 @@ mod tests {
         let a = patterns.var_constraints.get('A').unwrap().clone();
 
         let expected = VarConstraint {
-            min_length: Some(7),
+            min_length: 7,
             max_length: Some(7),
             form: Some("x*a".to_string()),
             ..Default::default()
@@ -645,4 +635,115 @@ mod tests {
 
         assert_eq!(expected, a);
     }
+
+    #[test]
+    /// Verify constraint_score calculation and all_vars_in_lookup_keys logic.
+    fn test_constraint_score_and_all_vars_in_lookup_keys() {
+        let p1 = Pattern::create("abc", 0); // all literals
+        assert_eq!(p1.constraint_score(), 9);
+
+        let p2 = Pattern::create("A@", 1); // var + class
+        assert_eq!(p2.constraint_score(), 1);
+
+        let p3 = Pattern::create("#B", 2); // class + var
+        assert_eq!(p3.constraint_score(), 1);
+
+        let mut p4 = Pattern::create("AB", 3);
+        assert!(!p4.all_vars_in_lookup_keys());
+        p4.lookup_keys = HashSet::from_iter(['A', 'B']);
+        assert!(p4.all_vars_in_lookup_keys());
+    }
+
+    #[test]
+    /// Ensure parse_length_range rejects malformed or nonsensical inputs.
+    fn test_parse_length_range_invalid_cases() {
+        assert!(matches!(
+            *parse_length_range("--").unwrap_err(),
+            ParseError::InvalidLengthRange { .. }
+        ));
+        assert!(matches!(
+            *parse_length_range("abc").unwrap_err(),
+            ParseError::InvalidLengthRange { .. }
+        ));
+        assert!(matches!(
+            *parse_length_range("1-2-3").unwrap_err(),
+            ParseError::InvalidLengthRange { .. }
+        ));
+    }
+
+    #[test]
+    /// Ensure get_complex_constraint returns errors for malformed inputs.
+    fn test_get_complex_constraint_invalid_cases() {
+        // no '='
+        assert!(matches!(
+            *get_complex_constraint("A").unwrap_err(),
+            ParseError::InvalidComplexConstraint { .. }
+        ));
+        // too many '='
+        assert!(matches!(
+            *get_complex_constraint("A=B=C").unwrap_err(),
+            ParseError::InvalidComplexConstraint { .. }
+        ));
+        // lhs not length 1
+        assert!(matches!(
+            *get_complex_constraint("AB=3").unwrap_err(),
+            ParseError::InvalidComplexConstraint { .. }
+        ));
+    }
+
+    #[test]
+    /// Verify merging of min/max constraints with a literal form.
+    fn test_merge_constraints_len_and_form() {
+        // |A|>=5 and A=(3-7:abc) -> min should be 5, max should be 7, form = abc
+        let patterns = "A;|A|>=5;A=(3-7:abc)".parse::<Patterns>().unwrap();
+        let a = patterns.var_constraints.get('A').unwrap();
+        assert_eq!(a.min_length, 5);
+        assert_eq!(a.max_length, Some(7));
+        assert_eq!(a.form.as_deref(), Some("abc"));
+    }
+
+    #[test]
+    /// Check that !=ABC constraint gives correct not_equal sets for each variable.
+    fn test_not_equal_constraint_three_vars() {
+        let patterns = "ABC;!=ABC".parse::<Patterns>().unwrap();
+        let a = patterns.var_constraints.get('A').unwrap();
+        let b = patterns.var_constraints.get('B').unwrap();
+        let c = patterns.var_constraints.get('C').unwrap();
+
+        assert_eq!(a.not_equal, HashSet::from_iter(['B','C']));
+        assert_eq!(b.not_equal, HashSet::from_iter(['A','C']));
+        assert_eq!(c.not_equal, HashSet::from_iter(['A','B']));
+    }
+
+    #[test]
+    /// Test ordering tie-breakers: constraint_score and deterministic flag.
+    fn test_ordered_patterns_tiebreak_constraint_score_and_deterministic() {
+        // Xz has var + literal (score 3), X just var
+        let input = "Xz;X".parse::<Patterns>().unwrap();
+        assert_eq!(input.ordered_list[0].raw_string, "Xz");
+
+        // Deterministic vs non-deterministic: "AB" (det) vs "A.B" (non-det)
+        let input2 = "A.B;AB".parse::<Patterns>().unwrap();
+        assert_eq!(input2.ordered_list[0].raw_string, "A.B");
+    }
+
+    #[test]
+    /// Confirm that IntoIterator yields ordered_list without consuming Patterns.
+    fn test_into_iterator_yields_ordered_list() {
+        let patterns = "AB;BC".parse::<Patterns>().unwrap();
+        let from_iter: Vec<String> = (&patterns).into_iter().map(|p| p.raw_string.clone()).collect();
+        let ordered: Vec<String> = patterns.ordered_list.iter().map(|p| p.raw_string.clone()).collect();
+        assert_eq!(from_iter, ordered);
+    }
+
+    #[test]
+    /// Verify that build_order_maps produces true inverses.
+    fn test_build_order_maps_inverse() {
+        let patterns = "AB;BC;C".parse::<Patterns>().unwrap();
+        for (ordered_ix, &orig_ix) in patterns.ordered_to_original.iter().enumerate() {
+            let roundtrip = patterns.original_to_ordered[orig_ix];
+            assert_eq!(ordered_ix, roundtrip);
+        }
+    }
+
 }

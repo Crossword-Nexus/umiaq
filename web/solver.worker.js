@@ -1,4 +1,4 @@
-import init, { solve_equation_wasm } from './pkg/umiaq_rust.js';
+import init, { solve_equation_wasm } from './pkg/umiaq.js';
 
 let ready = (async () => { await init(); })();
 

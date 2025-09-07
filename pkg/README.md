@@ -3,7 +3,7 @@
 **Umiaq** is an open-source solver and word-pattern matching tool.
 Umiaq is designed for crossword constructors, wordplay enthusiasts, and puzzle makers who want to search large word lists using expressive patterns, variables, and constraints.
 
-👉 [Try the web interface](https://crossword-nexus.github.io/umiaq-rust/)
+👉 [Try the web interface](https://crossword-nexus.github.io/umiaq/)
 
 ---
 

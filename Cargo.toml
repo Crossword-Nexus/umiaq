@@ -1,5 +1,5 @@
 [package]
-name = "umiaq-rust"
+name = "umiaq"
 version = "0.1.0"
 edition = "2024"
 description = "A Qat-like equation solver"

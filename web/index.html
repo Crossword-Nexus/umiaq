@@ -35,6 +35,16 @@
         <span class="label-text">Pattern:</span>
         <input class="input" id="input" type="text" />
       </label>
+
+      <label for="numResults">Number of results</label>
+      <select id="numResults">
+        <option value="100">100</option>
+        <option value="500">500</option>
+        <option value="1000">1000</option>
+      </select>
+      
+      <br />
+
       <button class="button-primary" type="submit">Search</button>
     </form>
 
@@ -55,6 +65,27 @@
 
   <script type="module">
     // load and process the default wordlist
+    import init, { parse_wordlist } from './pkg/umiaq.js';
+
+    async function getLocalWordList() {
+      const url = './data/spreadthewordlist.dict';
+      const minScore = 50;
+      await init(); // ensure WASM is loaded
+      window.parse_wordlist = parse_wordlist; // make it available to classic scripts
+
+      try {
+        const resp = await fetch(url, { cache: 'no-cache' });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const text = await resp.text();
+
+        // Call into Rust instead of JS parsing:
+        window.wordlist = parse_wordlist(text, minScore); // returns a JS Array<string>
+      } catch (err) {
+        console.error(err);
+        alert(`Could not load "${url}". Check the path and CORS/MIME type.`);
+      }
+    }
+
     await getLocalWordList();
 
     // Set up the web worker
@@ -93,12 +124,14 @@
       e.preventDefault();
       resultsEl.textContent = 'Loading …';
       document.getElementById("results-meta").textContent = '';
+      // the "numResults" element
+      const numResultsEl = document.getElementById('numResults');
       searchStart = performance.now();   // mark start time
       worker.postMessage({
         type: 'solve',
         input: inputEl.value.trim(),
         wordlist: window.wordlist,
-        numResults: 100,
+        numResults: parseInt(numResultsEl.value),
       });
     }
 

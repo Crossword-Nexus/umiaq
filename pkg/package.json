@@ -1,5 +1,5 @@
 {
-  "name": "umiaq-rust",
+  "name": "umiaq",
   "type": "module",
   "description": "A Qat-like equation solver",
   "version": "0.1.0",
@@ -9,12 +9,12 @@
     "url": "https://github.com/Crossword-Nexus/umiaq"
   },
   "files": [
-    "umiaq_rust_bg.wasm",
-    "umiaq_rust.js",
-    "umiaq_rust.d.ts"
+    "umiaq_bg.wasm",
+    "umiaq.js",
+    "umiaq.d.ts"
   ],
-  "main": "umiaq_rust.js",
-  "types": "umiaq_rust.d.ts",
+  "main": "umiaq.js",
+  "types": "umiaq.d.ts",
   "sideEffects": [
     "./snippets/*"
   ]

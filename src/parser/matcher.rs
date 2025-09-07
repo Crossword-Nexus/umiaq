@@ -13,19 +13,15 @@ use super::form::{FormPart, ParsedForm};
 /// 3. The value must not equal any variable listed in `not_equal` that is already bound.
 fn is_valid_binding(val: &str, constraints: &VarConstraint, bindings: &Bindings) -> bool {
     // 1. Length checks (if configured)
-    if constraints
-        .min_length
-        .is_some_and(|min_len| val.len() < min_len)
-        || constraints
-            .max_length
-            .is_some_and(|max_len| val.len() > max_len)
+    if val.len() < constraints.min_length
+        || constraints.max_length.is_some_and(|max_len| val.len() > max_len)
     {
         return false;
     }
 
     // 2. Apply nested-form constraint if present (use cached parse)
     if let Some(parsed) = constraints.get_parsed_form()
-        && !match_equation_exists(val, parsed, None, JointConstraints::default())
+        && !match_equation_exists(val, parsed, &VarConstraints::default(), JointConstraints::default())
     {
         return false;
     }
@@ -45,7 +41,7 @@ fn is_valid_binding(val: &str, constraints: &VarConstraint, bindings: &Bindings)
 pub fn match_equation_exists(
     word: &str,
     parts: &ParsedForm,
-    constraints: Option<&VarConstraints>,
+    constraints: &VarConstraints,
     joint_constraints: JointConstraints,
 ) -> bool {
     let mut results: Vec<Bindings> = Vec::new();
@@ -58,7 +54,7 @@ pub fn match_equation_exists(
 pub fn match_equation_all(
     word: &str,
     parts: &ParsedForm,
-    constraints: Option<&VarConstraints>,
+    constraints: &VarConstraints,
     joint_constraints: JointConstraints,
 ) -> Vec<Bindings> {
     let mut results: Vec<Bindings> = Vec::new();
@@ -76,7 +72,7 @@ fn match_equation_internal(
     parsed_form: &ParsedForm,
     all_matches: bool,
     results: &mut Vec<Bindings>,
-    constraints: Option<&VarConstraints>,
+    constraints: &VarConstraints,
     joint_constraints: JointConstraints,
 ) {
     /// Helper to reverse a bound value if the part is `RevVar`.
@@ -155,13 +151,12 @@ fn match_equation_internal(
                     // To prune the search space, apply length constraints up front
                     let min_len = hp
                         .constraints
-                        .and_then(|c| c.get(*var_name).map(|vc| vc.min_length))
-                        .flatten()
-                        .unwrap_or(1usize);
+                        .get(*var_name)
+                        .map_or(VarConstraint::DEFAULT_MIN, |vc| vc.min_length);
                     let max_len_cfg = hp
                         .constraints
-                        .and_then(|c| c.get(*var_name).map(|vc| vc.max_length))
-                        .flatten()
+                        .get(*var_name)
+                        .and_then(|vc| vc.max_length)
                         .unwrap_or(chars.len());
 
                     let avail = chars.len();
@@ -185,10 +180,8 @@ fn match_equation_internal(
                             // Apply variable-specific constraints
                             let valid = hp
                                 .constraints
-                                .is_none_or(|all_c| {
-                                    all_c.get(*var_name).is_none_or(|c| {
-                                        is_valid_binding(&bound_val, c, hp.bindings)
-                                    })
+                                .get(*var_name).is_none_or(|c| {
+                                    is_valid_binding(&bound_val, c, hp.bindings)
                                 });
 
                             if valid {
@@ -254,7 +247,7 @@ struct HelperParams<'a> {
     results: &'a mut Vec<Bindings>,
     all_matches: bool,
     word: &'a str,
-    constraints: Option<&'a VarConstraints>,
+    constraints: &'a VarConstraints,
     joint_constraints: JointConstraints,
 }
 
@@ -265,23 +258,23 @@ mod tests {
     #[test]
     fn test_palindrome_matching() {
         let pf = "A~A".parse::<ParsedForm>().unwrap();
-        assert!(match_equation_exists("noon", &pf, None, JointConstraints::default()));
-        assert!(!match_equation_exists("radar", &pf, None, JointConstraints::default()));
-        assert!(!match_equation_exists("test", &pf, None, JointConstraints::default()));
+        assert!(match_equation_exists("noon", &pf, &VarConstraints::default(), JointConstraints::default()));
+        assert!(!match_equation_exists("radar", &pf, &VarConstraints::default(), JointConstraints::default()));
+        assert!(!match_equation_exists("test", &pf, &VarConstraints::default(), JointConstraints::default()));
     }
 
     #[test]
     fn test_match_equation_exists() {
         let pf = "A~A[rstlne]/jon@#.*".parse::<ParsedForm>().unwrap();
-        assert!(match_equation_exists("aaronjudge", &pf, None, JointConstraints::default()));
-        assert!(!match_equation_exists("noon", &pf, None, JointConstraints::default()));
-        assert!(!match_equation_exists("toon", &pf, None, JointConstraints::default()));
+        assert!(match_equation_exists("aaronjudge", &pf, &VarConstraints::default(), JointConstraints::default()));
+        assert!(!match_equation_exists("noon", &pf, &VarConstraints::default(), JointConstraints::default()));
+        assert!(!match_equation_exists("toon", &pf, &VarConstraints::default(), JointConstraints::default()));
     }
 
     #[test]
     fn test_literal_matching() {
         let pf = "abc".parse::<ParsedForm>().unwrap();
-        assert!(match_equation_exists("abc", &pf, None, JointConstraints::default()));
-        assert!(!match_equation_exists("xyz", &pf, None, JointConstraints::default()));
+        assert!(match_equation_exists("abc", &pf, &VarConstraints::default(), JointConstraints::default()));
+        assert!(!match_equation_exists("xyz", &pf, &VarConstraints::default(), JointConstraints::default()));
     }
 }

@@ -1,45 +1,4 @@
 /**
-* Process a word list
-**/
-
-function processWordList(fileContents, minScore) {
-  let lines = fileContents.toLowerCase().trim().replace(/\r/g, "").split("\n");
-
-  // Only keep lines with a semicolon and a score >= minScore
-  lines = lines.filter(line => {
-    const parts = line.split(";");
-    return parts.length === 2 && parseFloat(parts[1]) >= minScore;
-  });
-
-  // sort by length and then alphabetically
-  lines.sort((wordA, wordB) => {
-    return wordA.length - wordB.length || wordA.localeCompare(wordB);
-  });
-
-  // remove semicolon and score
-  lines = lines.map(x => x.split(';')[0]);
-
-  // add to window
-  window.wordlist = lines;
-}
-
-async function getLocalWordList() {
-  const url = './data/spreadthewordlist.dict';
-  let minScore = 50;
-
-  try {
-    const resp = await fetch(url, { cache: 'no-cache' });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const text = await resp.text();
-    processWordList(text, minScore);
-  } catch (err) {
-    console.error(err);
-    alert(`Could not load "${url}". Check the path and CORS/MIME type.`);
-  }
-}
-
-
-/**
 * Modal boxes (currently only for wordlists)
 **/
 
@@ -113,7 +72,8 @@ function handleWordlistClick() {
           r.onload = (function () {
               return function (e) {
                   let contents = e.target.result;
-                  processWordList(contents, minScore);
+                  // parse the wordlist using the Rust function
+                  window.wordlist = window.parse_wordlist(contents, minScore);
                   closeModalBox();
               };
           })(f);

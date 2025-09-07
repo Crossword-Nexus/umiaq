@@ -27,9 +27,9 @@ use clap::Parser;
 use std::hint::black_box;
 use std::time::Instant;
 
-use umiaq_rust::bindings::Bindings;
-use umiaq_rust::solver;
-use umiaq_rust::wordlist;
+use umiaq::bindings::Bindings;
+use umiaq::solver;
+use umiaq::wordlist;
 
 /// Simple local benchmark runner: load word list once, time several patterns.
 /// Each case is a pattern + optional Qat time; name = pattern; always requests 100 results.
@@ -118,7 +118,7 @@ fn main() -> std::io::Result<()> {
     // Load the word list once. This I/O is *not* included in per-pattern timing.
     eprintln!("Loading word list from: {}", cli.wordlist);
     let t_load = Instant::now();
-    let wl = wordlist::WordList::load_from_path(&cli.wordlist, cli.min_score, cli.max_len)?;
+    let wl = wordlist::WordList::load_from_path(&cli.wordlist, cli.min_score)?;
     let load_secs = t_load.elapsed().as_secs_f64();
     eprintln!("Loaded {} words in {:.3}s", wl.entries.len(), load_secs);
 

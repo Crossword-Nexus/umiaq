@@ -2,6 +2,9 @@ use wasm_bindgen::prelude::*;
 use crate::bindings::Bindings;
 use crate::errors::ParseError;
 use crate::solver::solve_equation;
+use crate::wordlist::WordList;
+
+use serde_wasm_bindgen::to_value;
 
 use serde::Serialize;
 use web_sys::console;
@@ -62,4 +65,11 @@ pub fn solve_equation_wasm(
     console::log_1(&JsValue::from_str("solve_equation_wasm: serializing to JsValue"));
     serde_wasm_bindgen::to_value(&out)
         .map_err(|e| JsValue::from_str(&format!("serialization failed: {e}")))
+}
+
+#[wasm_bindgen]
+pub fn parse_wordlist(text: &str, min_score: i32) -> JsValue {
+    let wl = WordList::parse_from_str(text, min_score);
+    // Convert Vec<String> to a real JS array
+    to_value(&wl.entries).expect("serde_wasm_bindgen conversion failed")
 }

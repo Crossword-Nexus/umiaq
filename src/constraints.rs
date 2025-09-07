@@ -30,10 +30,8 @@ impl VarConstraints {
         self.inner.entry(var).or_default()
     }
 
-    /// Get normalized bounds for variable `v`. If missing, use `VarConstraint` defaults.
-    pub fn bounds(&self, v: char) -> (usize, usize) {
-        self.get(v)
-            .map_or(VarConstraint::DEFAULT_BOUNDS, VarConstraint::bounds)
+    pub(crate) fn bounds(&self, v: char) -> (usize, Option<usize>) {
+        self.get(v).map_or((VarConstraint::DEFAULT_MIN, None), |vc| (vc.min_length, vc.max_length))
     }
 
     /// Ensure an entry exists and return it mutably.
@@ -81,38 +79,38 @@ impl fmt::Display for VarConstraints {
 /// - `form` is an optional sub-pattern the variable's match must satisfy
 ///   (e.g., `"a*"` means "must start with `a`"; `"*z*"` means "must contain `z`").
 /// - `not_equal` lists variables whose matches must *not* be identical to this one.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct VarConstraint {
-    pub min_length: Option<usize>,
+    pub min_length: usize,
     pub max_length: Option<usize>,
     pub form: Option<String>,
     pub not_equal: HashSet<char>,
-    pub parsed_form: OnceCell<ParsedForm>, // Default::default() → OnceCell::new()
+    pub parsed_form: OnceCell<ParsedForm>,
+}
+
+impl Default for VarConstraint {
+    fn default() -> Self {
+        VarConstraint {
+            min_length: VarConstraint::DEFAULT_MIN,
+            max_length: Option::default(),
+            form: Option::default(),
+            not_equal: HashSet::default(),
+            parsed_form: OnceCell::default(), // OnceCell::new()
+        }
+    }
 }
 
 impl VarConstraint {
-    /// Single source of truth for default bounds.
-    pub const DEFAULT_MIN: usize = 1;
-    pub const DEFAULT_MAX: usize = usize::MAX;
-    pub const DEFAULT_BOUNDS: (usize, usize) = (VarConstraint::DEFAULT_MIN, VarConstraint::DEFAULT_MAX);
+    pub(crate) const DEFAULT_MIN: usize = 1; // TODO!!!
 
     /// Set both min and max to the same exact length.
     pub(crate) fn set_exact_len(&mut self, len: usize) {
-        self.min_length = Some(len);
+        self.min_length = len;
         self.max_length = Some(len);
     }
     /// Get the parsed form
     pub(crate) fn get_parsed_form(&self) -> Option<&ParsedForm> {
         self.form.as_deref().map(|f| self.parsed_form.get_or_init(|| f.parse::<ParsedForm>().unwrap()))
-    }
-
-    /// Normalize this constraint into concrete bounds.
-    /// Unset min → `DEFAULT_MIN`; unset max → `DEFAULT_MAX` (∞).
-    pub fn bounds(&self) -> (usize, usize) {
-        (
-            self.min_length.unwrap_or(Self::DEFAULT_MIN),
-            self.max_length.unwrap_or(Self::DEFAULT_MAX),
-        )
     }
 }
 
@@ -133,19 +131,16 @@ impl Eq for VarConstraint {}
 ///
 /// This is intended for debugging / logs, not for round-tripping.
 /// It summarizes:
-/// - the allowed length range (e.g., `[3–5]`, `[≥3]`, `[≤5]`, `[*]`)
+/// - the allowed length range (e.g., `[3,5]`, `[3,∞)`)
 /// - the optional form string (or `*` if absent)
 /// - the set of variables it must not equal, in sorted order
 impl fmt::Display for VarConstraint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Format the length range nicely.
-        // Handle each case: both bounds, only min, only max, or none.
-        let len_str = match (self.min_length, self.max_length) {
-            (Some(min), Some(max)) => format!("[{min}-{max}]"),
-            (Some(min), None)      => format!("[≥{min}]"),
-            (None, Some(max))      => format!("[≤{max}]"),
-            (None, None)           => "[*]".to_string(), // unconstrained
-        };
+        // Handle both cases: both bounds or only max.
+        let len_str = self.max_length
+            .map(|max_len| { format!("[{},{max_len}]", self.min_length) })
+            .unwrap_or(format!("[{},∞)", self.min_length));
 
         // Show the "form" string if present, otherwise `-`
         let form_str = self.form.as_deref().unwrap_or("*");
@@ -176,9 +171,9 @@ mod tests {
         {
             let a = vcs.ensure('A');
             // default created; tweak it
-            a.min_length = Some(3);
+            a.min_length = 3;
         }
-        assert_eq!(Some(3), vcs.get('A').unwrap().min_length);
+        assert_eq!(3, vcs.get('A').unwrap().min_length);
         assert_eq!(1, vcs.len());
     }
 
@@ -195,7 +190,7 @@ mod tests {
     #[test]
     fn display_var_constraint_is_stable() {
         let mut vc = VarConstraint {
-            min_length: Some(2),
+            min_length: 2,
             max_length: Some(4),
             form: Some("a*".into()),
             ..Default::default()
@@ -203,14 +198,14 @@ mod tests {
         vc.not_equal.extend(['C', 'B']); // out of order on purpose
         let shown = vc.to_string();
         // not_equal should be sorted -> {BC}
-        assert_eq!("len=[2-4]; form=a*; not_equal=BC", shown);
+        assert_eq!("len=[2,4]; form=a*; not_equal=BC", shown);
     }
 
     #[test]
     fn display_var_constraints_multiline_sorted() {
         let mut vcs = VarConstraints::default();
         let mut a = VarConstraint::default();
-        a.min_length = Some(1);
+        a.min_length = 1;
         let mut c = VarConstraint::default();
         c.max_length = Some(2);
         let mut b = VarConstraint::default();
@@ -224,9 +219,9 @@ mod tests {
         let lines: Vec<&str> = s.lines().collect();
 
         let expected = vec![
-            "A: len=[≥1]; form=*; not_equal=∅",
-            "B: len=[*]; form=*x*; not_equal=∅",
-            "C: len=[≤2]; form=*; not_equal=∅"
+            "A: len=[1,∞); form=*; not_equal=∅",
+            "B: len=[1,∞); form=*x*; not_equal=∅", // TODO!!! are we OK not distinguishing between "*" and "≥1"?
+            "C: len=[1,2]; form=*; not_equal=∅" // TODO!!! are we OK not distinguishing between "≤2" and "1-2"?
         ];
 
         assert_eq!(expected, lines);
