@@ -62,7 +62,7 @@ impl WordList {
     /// 5. Converts `word` to lowercase.
     /// 6. Deduplicates the list (case-insensitive because we lowercase early).
     /// 7. Sorts by length, then alphabetically.
-    pub fn parse_from_str(
+    pub(crate) fn parse_from_str(
         contents: &str,
         min_score: i32,
     ) -> WordList {
