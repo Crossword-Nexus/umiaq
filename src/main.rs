@@ -2,7 +2,7 @@ use clap::Parser;
 use std::time::Instant;
 
 use umiaq::bindings::Bindings;
-use umiaq::wordlist;
+use umiaq::word_list;
 use umiaq::solver;
 
 /// Umiaq pattern solver
@@ -18,7 +18,7 @@ struct Cli {
         long,
         default_value = concat!(env!("CARGO_MANIFEST_DIR"), "/data/spreadthewordlist.dict")
     )]
-    wordlist: String,
+    word_list: String,
 
     /// Minimum score filter
     #[arg(short = 'm', long, default_value_t = 50)]
@@ -37,7 +37,7 @@ fn main() -> std::io::Result<()> {
     let cli = Cli::parse();
 
     let t_load = Instant::now();
-    let wl = wordlist::WordList::load_from_path(&cli.wordlist, cli.min_score)?;
+    let wl = word_list::WordList::load_from_path(&cli.word_list, cli.min_score)?;
     let load_secs = t_load.elapsed().as_secs_f64();
 
     let words_ref: Vec<&str> = wl.entries.iter().map(String::as_str).collect();

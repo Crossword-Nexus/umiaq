@@ -1,5 +1,5 @@
 /**
-* Modal boxes (currently only for wordlists)
+* Modal boxes (currently only for word lists)
 **/
 
 // Close the modal box
@@ -58,8 +58,8 @@ function createModalBox(title, content, button_text = 'Close') {
 }
 
 /** Assign a click action to the word list button **/
-function handleWordlistClick() {
-  let files = document.getElementById('wordlist-file').files; // FileList object
+function handleWordListClick() {
+  let files = document.getElementById('word-list-file').files; // FileList object
   let minScore = document.getElementById('min-score').value;
   minScore = parseInt(minScore);
 
@@ -72,8 +72,8 @@ function handleWordlistClick() {
           r.onload = (function () {
               return function (e) {
                   let contents = e.target.result;
-                  // parse the wordlist using the Rust function
-                  window.wordlist = window.parse_wordlist(contents, minScore);
+                  // parse the word list using the Rust function
+                  window.word_list = window.parse_word_list(contents, minScore);
                   closeModalBox();
               };
           })(f);
@@ -84,18 +84,18 @@ function handleWordlistClick() {
   }
 }
 
-function createWordlistModal() {
+function createWordListModal() {
   let title = 'Upload your own word list';
   let html = `
-  <input type="file" id="wordlist-file"  accept=".txt,.dict" />
+  <input type="file" id="word-list-file"  accept=".txt,.dict" />
   <label for="min-score">Min score:</label>
   <input type="number" id="min-score" name="min-score" value="50">
   <br /><br />
-  <button value="Submit" class="button-primary" id="submit-wordlist">Upload</button>
+  <button value="Submit" class="button-primary" id="submit-word-list">Upload</button>
   `;
   createModalBox(title, html);
 
   // add a listener to the submit button
-  document.getElementById('submit-wordlist').addEventListener('click', handleWordlistClick);
+  document.getElementById('submit-word-list').addEventListener('click', handleWordListClick);
 
 }
