@@ -162,9 +162,17 @@ impl FromStr for ParsedForm {
                     parts.push(part);
                     rest = next;
                 }
-                Err(_) => return Err(Box::new(ParseFailure { s: rest.to_string() })),
+                Err(nom::Err::Failure(e)) => {
+                    // bubble up the specific ParseError
+                    return Err(Box::new(e));
+                }
+                Err(_) => {
+                    // fall back to generic ParseFailure for other cases
+                    return Err(Box::new(ParseFailure { s: rest.to_string() }));
+                }
             }
         }
+
 
         if parts.is_empty() {
             return Err(Box::new(ParseError::EmptyForm));
@@ -176,22 +184,22 @@ impl FromStr for ParsedForm {
 
 // === Token parsers ===
 
-fn var_ref(input: &str) -> PResult<FormPart> {
+fn var_ref(input: &'_ str) -> PResult<'_, FormPart> {
     map(one_of(VARIABLE_CHARS), FormPart::Var).parse(input)
 }
-fn rev_ref(input: &str) -> PResult<FormPart> {
+fn rev_ref(input: &'_ str) -> PResult<'_, FormPart> {
     map(preceded(tag("~"), one_of(VARIABLE_CHARS)), FormPart::RevVar).parse(input)
 }
-fn literal(input: &str) -> PResult<FormPart> {
+fn literal(input: &'_ str) -> PResult<'_, FormPart> {
     map(many1(one_of(LITERAL_CHARS)), |chars| {
         FormPart::Lit(chars.into_iter().collect())
     })
     .parse(input)
 }
-fn dot(input: &str) -> PResult<FormPart> { parser_one_char_inner(input, &FormPart::Dot) }
-fn star(input: &str) -> PResult<FormPart> { parser_one_char_inner(input, &FormPart::Star) }
-fn vowel(input: &str) -> PResult<FormPart> { parser_one_char_inner(input, &FormPart::Vowel) }
-fn consonant(input: &str) -> PResult<FormPart> { parser_one_char_inner(input, &FormPart::Consonant) }
+fn dot(input: &'_ str) -> PResult<'_, FormPart> { parser_one_char_inner(input, &FormPart::Dot) }
+fn star(input: &'_ str) -> PResult<'_, FormPart> { parser_one_char_inner(input, &FormPart::Star) }
+fn vowel(input: &'_ str) -> PResult<'_, FormPart> { parser_one_char_inner(input, &FormPart::Vowel) }
+fn consonant(input: &'_ str) -> PResult<'_, FormPart> { parser_one_char_inner(input, &FormPart::Consonant) }
 
 // single-char tokens share the same shape
 fn parser_one_char_inner<'a>(
@@ -226,20 +234,20 @@ fn expand_charset(body: &str) -> Result<HashSet<char>, ParseError> {
     Ok(chars)
 }
 
-fn charset(input: &str) -> PResult<FormPart> {
+fn charset(input: &'_ str) -> PResult<'_, FormPart> {
     let (input, body) = delimited(tag("["), is_not("]"), tag("]")).parse(input)?;
     // Expand ranges
     let chars = expand_charset(body).map_err(nom::Err::Failure)?;
     Ok((input, FormPart::Charset(chars)))
 }
 
-fn anagram(input: &str) -> PResult<FormPart> {
+fn anagram(input: &'_ str) -> PResult<'_, FormPart> {
     let (input, _) = tag("/")(input)?;
     let (input, chars) = many1(one_of(LITERAL_CHARS)).parse(input)?;
     Ok((input, FormPart::anagram_of(&chars.into_iter().collect::<String>()).unwrap())) // TODO handle error (better than unwrap)
 }
 
-fn equation_part(input: &str) -> PResult<FormPart> {
+fn equation_part(input: &'_ str) -> PResult<'_, FormPart> {
     alt((rev_ref, var_ref, anagram, charset, literal, dot, star, vowel, consonant)).parse(input)
 }
 #[cfg(test)]
@@ -317,12 +325,8 @@ mod tests {
         assert!(matches!(err, ParseError::DanglingCharsetDash));
     }
 
-    /* I'm not able to get this test to pass
     #[test]
-    fn test_parsedform_dangling_dash() {
-        let err = "[a-]".parse::<ParsedForm>().unwrap_err();
-        assert!(matches!(*err, ParseError::DanglingCharsetDash));
+    fn test_parsed_form_dangling_dash() {
+        assert!(matches!(*"[a-]".parse::<ParsedForm>().unwrap_err(), ParseError::DanglingCharsetDash));
     }
-     */
-
 }

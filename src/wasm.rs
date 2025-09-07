@@ -2,7 +2,7 @@ use wasm_bindgen::prelude::*;
 use crate::bindings::Bindings;
 use crate::errors::ParseError;
 use crate::solver::solve_equation;
-use crate::wordlist::WordList;
+use crate::word_list::WordList;
 
 use serde_wasm_bindgen::to_value;
 
@@ -48,7 +48,7 @@ pub fn solve_equation_wasm(
 }
 
 #[wasm_bindgen]
-pub fn parse_wordlist(text: &str, min_score: i32) -> JsValue {
+pub fn parse_word_list(text: &str, min_score: i32) -> JsValue {
     let wl = WordList::parse_from_str(text, min_score);
     // Convert Vec<String> to a real JS array
     to_value(&wl.entries).expect("serde_wasm_bindgen conversion failed")

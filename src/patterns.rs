@@ -272,15 +272,18 @@ impl Patterns {
 
     // TODO is this the right way to order things?
     /// Reorders the list of patterns to improve solving efficiency.
-    /// First selects the pattern with the most variables,
-    /// then repeatedly selects the next pattern with the fewest "new" variables.
-    /// This helps early patterns prune the solution space.
+    ///
+    /// Strategy:
+    /// - First pick: choose the pattern with the most variables (desc).
+    /// - Subsequent picks: choose the pattern with the fewest *new* variables (asc).
+    ///
+    /// Tie-breakers (applied in order):
+    /// 1. Higher `constraint_score` first
+    /// 2. Non-deterministic before deterministic
+    /// 3. Lower original index first
     fn ordered_patterns(&self) -> Vec<Pattern> {
         let mut p_list = self.p_list.clone();
         let mut ordered = Vec::with_capacity(p_list.len());
-
-        // Tie-break tail: (constraint_score desc, deterministic asc, original_index asc)
-        let tie_tail = |p: &Pattern| (p.constraint_score(), Reverse(p.is_deterministic), p.original_index);
 
         while !p_list.is_empty() {
             // Vars already "seen" in previously chosen patterns
@@ -290,13 +293,24 @@ impl Patterns {
                 .collect();
 
             // Unified scoring function
-            let score = |p: &Pattern| {
+            let get_score = |p: &Pattern| {
                 if ordered.is_empty() {
-                    // First pick: negate var count so “more vars” ranks smaller
-                    (usize::MAX - p.variables.len(), tie_tail(p))
+                    // First pick: more vars is better
+                    (
+                        p.variables.len() as isize,
+                        p.constraint_score(),
+                        Reverse(p.is_deterministic),
+                        p.original_index,
+                    )
                 } else {
-                    // Later picks: fewer new vars ranks smaller
-                    (p.variables.difference(&found_vars).count(), tie_tail(p))
+                    // Subsequent picks: fewer new vars is better,
+                    // so we negate the count (to maximize a "negative number").
+                    (
+                        -(p.variables.difference(&found_vars).count() as isize),
+                        p.constraint_score(),
+                        Reverse(p.is_deterministic),
+                        p.original_index,
+                    )
                 }
             };
 
@@ -304,7 +318,7 @@ impl Patterns {
             let (ix, _) = p_list
                 .iter()
                 .enumerate()
-                .min_by_key(|(_, p)| score(p))
+                .max_by_key(|(_, p)| get_score(p))
                 .unwrap();
 
             let mut chosen = p_list.remove(ix);
@@ -319,6 +333,7 @@ impl Patterns {
 
         ordered
     }
+
 
     /// Number of forms (from `ordered_list`)
     pub(crate) fn len(&self) -> usize {
@@ -370,58 +385,56 @@ impl FromStr for Patterns {
 // TODO? do this via regex?
 // e.g., A=(3-:x*)
 fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint), Box<ParseError>> {
-    let top_parts = form.split('=').collect::<Vec<_>>();
-    if top_parts.len() != 2 {
-        return Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("expected 1 equals sign (not {})", top_parts.len()) }));
-    }
-
-    let var_str = top_parts[0];
-    if var_str.len() != 1 {
-        return Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("expected 1 character (as the variable) to the left of \"=\" (not {})", var_str.len()) }));
-    }
-
-    let var = var_str.chars().next().unwrap();
-
-    let constraint_str = top_parts[1].to_string();
-
-    // remove outer parentheses if they are there
-    let inner_constraint_str = if constraint_str.starts_with('(') && constraint_str.ends_with(')') {
-        let mut chars = constraint_str.chars();
-        chars.next();
-        chars.next_back();
-        chars.as_str()
-    } else {
-        constraint_str.as_str()
-    };
-
-    let constraint_halves = inner_constraint_str.split(':').collect::<Vec<_>>();
-    let (len_range, literal_constraint_str) = match constraint_halves.len() {
-        2 => {
-            let len_range = parse_length_range(constraint_halves[0])?;
-            (Some(len_range), Some(constraint_halves[1]))
-        },
-        1 => {
-            match parse_length_range(constraint_halves[0]) {
-                Ok(len_range) => (Some(len_range), None),
-                Err(_) => (None, Some(constraint_halves[0]))
+    if let Some((var_str, constraint_str)) = form.split_once('=') {
+        if var_str.len() == 1 {
+            if constraint_str.contains('=') {
+                return Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("expected 1 equals sign (not {})", form.chars().filter(|c| *c == '=').count()) }));
             }
+
+            let var = var_str.chars().next().unwrap();
+
+            // remove outer parentheses if they are there
+            let inner_constraint_str = if constraint_str.starts_with('(') && constraint_str.ends_with(')') {
+                let mut chars = constraint_str.chars();
+                chars.next();
+                chars.next_back();
+                chars.as_str()
+            } else {
+                constraint_str
+            };
+
+            let (len_range, literal_constraint_str) = if let Some((len_range_raw, literal_constraint_str)) = inner_constraint_str.split_once(':') {
+                if literal_constraint_str.contains(':') { // too many colons
+                    return Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("too many colons--0 or 1 expected (not {})", inner_constraint_str.chars().filter(|c| *c == ':').count()) }));
+                }
+                let len_range = parse_length_range(len_range_raw)?;
+                (Some(len_range), Some(literal_constraint_str))
+            } else {
+                match parse_length_range(inner_constraint_str) {
+                    Ok(len_range) => (Some(len_range), None),
+                    Err(_) => (None, Some(inner_constraint_str))
+                }
+            };
+
+            let vc = VarConstraint {
+                // TODO!!!? instead of `len_range` as `Option<(usize, Option<usize>)`, maybe create a richer
+                // type--say `LenRange`--instead of `(usize, Option<usize>)` whose default is (equiv. to)
+                // `(VarConstraint::DEFAULT_MIN, None)`... and then we'd avoid the outer `Option`, using
+                // `LenRange`'s default instead of `None`
+                min_length: len_range.map_or(VarConstraint::DEFAULT_MIN, |(lrl, _)| lrl),
+                max_length: len_range.and_then(|(_, lru)| lru),
+                form: literal_constraint_str.map(ToString::to_string),
+                not_equal: HashSet::default(),
+                ..Default::default()
+            };
+
+            Ok((var, vc))
+        } else {
+            Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("expected 1 character (as the variable) to the left of \"=\" (not {})", var_str.len()) }))
         }
-        _ => return Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("too many colons--0 or 1 expected (not {})", constraint_halves.len() - 1) }))
-    };
-
-    let vc = VarConstraint {
-        // TODO!!!? instead of `len_range` as `Option<(usize, Option<usize>)`, maybe create a richer
-        // type--say `LenRange`--instead of `(usize, Option<usize>)` whose default is (equiv. to)
-        // `(VarConstraint::DEFAULT_MIN, None)`... and then we'd avoid the outer `Option`, using
-        // `LenRange`'s default instead of `None`
-        min_length: len_range.map_or(VarConstraint::DEFAULT_MIN, |(lrl, _)| lrl),
-        max_length: len_range.and_then(|(_, lru)| lru),
-        form: literal_constraint_str.map(ToString::to_string),
-        not_equal: HashSet::default(),
-        ..Default::default()
-    };
-
-    Ok((var, vc))
+    } else {
+        Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("expected 1 equals sign (not {})", form.chars().filter(|c| *c == '=').count()) }))
+    }
 }
 
 /// Enable `for p in &patterns { ... }`.
@@ -573,8 +586,9 @@ mod tests {
 
         let vars: Vec<HashSet<char>> = patterns.ordered_list.iter().map(|p| p.variables.clone()).collect();
 
+        // The first element should have the most variables
         assert!((&vars[0]).len() >= (&vars[1]).len());
-        assert!((&vars[1]).intersection(&vars[0]).count() >= (&vars[2]).intersection(&vars[0]).count());
+        // Note: the order of the other two is irrelevant, since neither contributes a new variable
     }
 
     #[test]
@@ -637,57 +651,85 @@ mod tests {
     }
 
     #[test]
-    /// Verify constraint_score calculation and all_vars_in_lookup_keys logic.
-    fn test_constraint_score_and_all_vars_in_lookup_keys() {
-        let p1 = Pattern::create("abc", 0); // all literals
-        assert_eq!(p1.constraint_score(), 9);
-
-        let p2 = Pattern::create("A@", 1); // var + class
-        assert_eq!(p2.constraint_score(), 1);
-
-        let p3 = Pattern::create("#B", 2); // class + var
-        assert_eq!(p3.constraint_score(), 1);
-
-        let mut p4 = Pattern::create("AB", 3);
-        assert!(!p4.all_vars_in_lookup_keys());
-        p4.lookup_keys = HashSet::from_iter(['A', 'B']);
-        assert!(p4.all_vars_in_lookup_keys());
+    /// Verify `constraint_score` calculation and `all_vars_in_lookup_keys` logic—all literals.
+    fn test_constraint_score_and_all_vars_in_lookup_keys_all_literals() {
+        assert_eq!(Pattern::create("abc", 0).constraint_score(), 9);
     }
 
     #[test]
-    /// Ensure parse_length_range rejects malformed or nonsensical inputs.
-    fn test_parse_length_range_invalid_cases() {
+    /// Verify `constraint_score` calculation and `all_vars_in_lookup`_keys logic—var + class.
+    fn test_constraint_score_and_all_vars_in_lookup_keys_var_class() {
+        assert_eq!(Pattern::create("A@", 1).constraint_score(), 1);
+    }
+
+    #[test]
+    /// Verify `constraint_score` calculation and `all_vars_in_lookup_keys` logic—class + var.
+    fn test_constraint_score_and_all_vars_in_lookup_keys_class_var() {
+        assert_eq!(Pattern::create("#B", 2).constraint_score(), 1);
+    }
+
+    #[test]
+    /// Verify `all_vars_in_lookup_keys` logic.
+    fn test_constraint_score_and_all_vars_in_lookup_keys() {
+        let mut p = Pattern::create("AB", 3);
+        assert!(!p.all_vars_in_lookup_keys());
+        p.lookup_keys = HashSet::from_iter(['B']);
+        assert!(!p.all_vars_in_lookup_keys());
+        p.lookup_keys = HashSet::from_iter(['A', 'B']);
+        assert!(p.all_vars_in_lookup_keys());
+    }
+
+    #[test]
+    /// Ensure parse_length_range rejects malformed or nonsensical inputs—dashes pair.
+    fn test_parse_length_range_invalid_cases_dashes_pair() {
         assert!(matches!(
             *parse_length_range("--").unwrap_err(),
-            ParseError::InvalidLengthRange { .. }
-        ));
-        assert!(matches!(
-            *parse_length_range("abc").unwrap_err(),
-            ParseError::InvalidLengthRange { .. }
-        ));
-        assert!(matches!(
-            *parse_length_range("1-2-3").unwrap_err(),
-            ParseError::InvalidLengthRange { .. }
+            ParseError::InvalidLengthRange{ input } if input == "--"
         ));
     }
 
     #[test]
-    /// Ensure get_complex_constraint returns errors for malformed inputs.
-    fn test_get_complex_constraint_invalid_cases() {
-        // no '='
+    /// Ensure parse_length_range rejects malformed or nonsensical inputs—just letters.
+    fn test_parse_length_range_invalid_cases_just_letters() {
+        assert!(matches!(
+            *parse_length_range("abc").unwrap_err(),
+            ParseError::InvalidLengthRange { input } if input == "abc"
+        ));
+    }
+
+    #[test]
+    /// Ensure parse_length_range rejects malformed or nonsensical inputs—1-2-3-.
+    fn test_parse_length_range_invalid_cases_1_2_3() {
+        assert!(matches!(
+            *parse_length_range("1-2-3").unwrap_err(),
+            ParseError::InvalidLengthRange { input } if input == "1-2-3"
+        ));
+    }
+
+    #[test]
+    /// Ensure get_complex_constraint returns errors for malformed inputs—no '='.
+    fn test_get_complex_constraint_invalid_cases_no_equals() {
         assert!(matches!(
             *get_complex_constraint("A").unwrap_err(),
-            ParseError::InvalidComplexConstraint { .. }
+            ParseError::InvalidComplexConstraint { str } if str == "expected 1 equals sign (not 0)"
         ));
-        // too many '='
+    }
+
+    #[test]
+    /// Ensure get_complex_constraint returns errors for malformed inputs—too many '='s
+    fn test_get_complex_constraint_invalid_cases_too_many_equals() {
         assert!(matches!(
             *get_complex_constraint("A=B=C").unwrap_err(),
-            ParseError::InvalidComplexConstraint { .. }
+            ParseError::InvalidComplexConstraint { str } if str == "expected 1 equals sign (not 2)"
         ));
-        // lhs not length 1
+    }
+
+    #[test]
+    /// Ensure get_complex_constraint returns errors for malformed inputs—lhs too long.
+    fn test_get_complex_constraint_invalid_cases_lhs_too_long() {
         assert!(matches!(
             *get_complex_constraint("AB=3").unwrap_err(),
-            ParseError::InvalidComplexConstraint { .. }
+            ParseError::InvalidComplexConstraint { str } if str == "expected 1 character (as the variable) to the left of \"=\" (not 2)"
         ));
     }
 
@@ -703,7 +745,7 @@ mod tests {
     }
 
     #[test]
-    /// Check that !=ABC constraint gives correct not_equal sets for each variable.
+    /// Check that !=ABC constraint gives correct `not_equal` sets for each variable.
     fn test_not_equal_constraint_three_vars() {
         let patterns = "ABC;!=ABC".parse::<Patterns>().unwrap();
         let a = patterns.var_constraints.get('A').unwrap();
@@ -716,19 +758,23 @@ mod tests {
     }
 
     #[test]
-    /// Test ordering tie-breakers: constraint_score and deterministic flag.
-    fn test_ordered_patterns_tiebreak_constraint_score_and_deterministic() {
-        // Xz has var + literal (score 3), X just var
-        let input = "Xz;X".parse::<Patterns>().unwrap();
-        assert_eq!(input.ordered_list[0].raw_string, "Xz");
-
-        // Deterministic vs non-deterministic: "AB" (det) vs "A.B" (non-det)
-        let input2 = "A.B;AB".parse::<Patterns>().unwrap();
-        assert_eq!(input2.ordered_list[0].raw_string, "A.B");
+    /// Test ordering tiebreakers: `constraint_score`.
+    fn test_ordered_patterns_tiebreak_constraint_score() {
+        // "Xz" has var + literal (score 3), "X" just var
+        let patterns = "Xz;X".parse::<Patterns>().unwrap();
+        assert_eq!(patterns.ordered_list.iter().map(|p| p.raw_string.clone()).collect::<Vec<_>>(), vec!["Xz", "X"]);
     }
 
     #[test]
-    /// Confirm that IntoIterator yields ordered_list without consuming Patterns.
+    /// Test ordering tiebreakers: deterministic flag.
+    fn test_ordered_patterns_tiebreak_deterministic() {
+        // deterministic vs non-deterministic: "AB" (det) vs "A.B" (non-det)
+        let patterns = "A.B;AB".parse::<Patterns>().unwrap();
+        assert_eq!(patterns.ordered_list.iter().map(|p| p.raw_string.clone()).collect::<Vec<_>>(), vec!["A.B", "AB"]);
+    }
+
+    #[test]
+    /// Confirm that `IntoIterator` yields `ordered_list` without consuming `Patterns`.
     fn test_into_iterator_yields_ordered_list() {
         let patterns = "AB;BC".parse::<Patterns>().unwrap();
         let from_iter: Vec<String> = (&patterns).into_iter().map(|p| p.raw_string.clone()).collect();
@@ -737,7 +783,7 @@ mod tests {
     }
 
     #[test]
-    /// Verify that build_order_maps produces true inverses.
+    /// Verify that `build_order_maps` produces true inverses.
     fn test_build_order_maps_inverse() {
         let patterns = "AB;BC;C".parse::<Patterns>().unwrap();
         for (ordered_ix, &orig_ix) in patterns.ordered_to_original.iter().enumerate() {
@@ -745,5 +791,4 @@ mod tests {
             assert_eq!(ordered_ix, roundtrip);
         }
     }
-
 }
