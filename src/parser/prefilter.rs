@@ -45,134 +45,28 @@ pub(crate) fn get_regex(pattern: &str) -> Result<Regex, Box<fancy_regex::Error>>
     Ok(compiled)
 }
 
-// TODO DRY w/form_to_regex_str_with_constraints
-/// Convert a parsed `FormPart` sequence into a regex string (no constraints).
+/// Convert a sequence of `FormPart`s into a regex string, with optional
+/// variable constraints applied.
 ///
-/// Used for the initial fast prefilter.
-pub(crate) fn form_to_regex_str(parts: &[FormPart]) -> Result<String, Box<ParseError>> {
-    let (var_counts, rev_var_counts) = get_var_and_rev_var_counts(parts)?;
-    let mut var_to_backreference_num = [0; NUM_POSSIBLE_VARIABLES];
-    let mut rev_var_to_backreference_num = [0; NUM_POSSIBLE_VARIABLES];
-    let mut backreference_index = 0;
-
-    let mut regex_str = String::new();
-    for part in parts {
-        match part {
-            FormPart::Var(c) => {
-                regex_str.push_str(&get_regex_str_segment(
-                    var_counts,
-                    &mut var_to_backreference_num,
-                    &mut backreference_index,
-                    *c,
-                )?);
-            }
-            FormPart::RevVar(c) => {
-                regex_str.push_str(&get_regex_str_segment(
-                    rev_var_counts,
-                    &mut rev_var_to_backreference_num,
-                    &mut backreference_index,
-                    *c,
-                )?);
-            }
-            FormPart::Lit(s) => regex_str.push_str(&fancy_regex::escape(s)),
-            FormPart::Dot => regex_str.push('.'),
-            FormPart::Star => regex_str.push_str(".*"),
-            FormPart::Vowel => {
-                use std::fmt::Write;
-                let _ = write!(regex_str, "[{VOWELS}]");
-            }
-            FormPart::Consonant => {
-                use std::fmt::Write;
-                let _ = write!(regex_str, "[{CONSONANTS}]");
-            }
-            FormPart::Charset(chars) => {
-                regex_str.push('[');
-                for c in chars {
-                    regex_str.push(*c);
-                }
-                regex_str.push(']');
-            }
-            FormPart::Anagram(ag) => {
-                use std::fmt::Write;
-                let len = ag.len;
-                let class = fancy_regex::escape(ag.as_string.as_str());
-                let _ = write!(regex_str, "[{class}]{{{len}}}");
-            }
-        }
-    }
-
-    Ok(regex_str)
-}
-
-fn get_regex_str_segment(
-    var_counts: [usize; NUM_POSSIBLE_VARIABLES],
-    var_to_backreference_num: &mut [usize; NUM_POSSIBLE_VARIABLES],
-    backreference_index: &mut usize,
-    c: char,
-) -> Result<String, Box<ParseError>> {
-    let char_as_num = uc_letter_to_num(c)?;
-    let pushed_str = if var_to_backreference_num[char_as_num] != 0 {
-        &format!("\\{}", var_to_backreference_num[char_as_num])
-    } else if var_counts[char_as_num] > 1 {
-        *backreference_index += 1;
-        var_to_backreference_num[char_as_num] = *backreference_index;
-        "(.+)"
-    } else {
-        ".+"
-    };
-
-    Ok(pushed_str.to_string())
-}
-
-// 'A' -> 0, 'B' -> 1, ..., 'Z' -> 25
-fn uc_letter_to_num(c: char) -> Result<usize, Box<ParseError>> { letter_to_num(c, 'A' as usize) }
-
-// Count occurrences of vars and revvars to decide capture/backref scheme.
-fn get_var_and_rev_var_counts(
+/// - If `constraints` is `None`, variables are rendered as plain `.+`,
+///   or as capture groups/backreferences when they repeat.
+/// - If `constraints` is `Some`, then for the **first occurrence** of a
+///   variable with an attached form constraint, we inject a lookahead
+///   such as `(?=x.*a).+` (or `(?=x.*a)(.+)` if it’s multi-use).
+/// - Reversed variables (`~A`) are always rendered as `.+`,
+///   since reversing constraint regexes is not practical.
+/// - Other `FormPart` variants (literals, wildcards, charsets, anagrams)
+///   are handled uniformly, regardless of constraints.
+fn render_parts_to_regex(
     parts: &[FormPart],
-) -> Result<([usize; NUM_POSSIBLE_VARIABLES], [usize; NUM_POSSIBLE_VARIABLES]), Box<ParseError>> {
-    let mut var_counts = [0; NUM_POSSIBLE_VARIABLES];
-    let mut rev_var_counts = [0; NUM_POSSIBLE_VARIABLES];
-    for part in parts {
-        match part {
-            FormPart::Var(c) => var_counts[uc_letter_to_num(*c)?] += 1,
-            FormPart::RevVar(c) => rev_var_counts[uc_letter_to_num(*c)?] += 1,
-            _ => (),
-        }
-    }
-    Ok((var_counts, rev_var_counts))
-}
-
-// TODO DRY w/form_to_regex_str
-/// Convert a parsed `FormPart` sequence into a regex string,
-/// taking variable constraints into account when possible.
-///
-/// Differences from `form_to_regex_str`:
-/// - For the **first occurrence** of a variable with an attached
-///   simple form constraint (e.g., `A=(x*a)`), we inject a
-///   lookahead `(?=x.*a)` so that the regex prefilter enforces it
-///   early. This prunes the candidate list before recursion.
-/// - For **multi-use variables**, we still capture the first
-///   occurrence (`(.+)`) and backreference later ones (`\1`, etc.).
-///   The lookahead becomes `(?=x.*a)(.+)` so numbering is preserved.
-/// - For single-use variables, we emit `(?=x.*a).+` instead of just `.+`.
-///
-/// Notes:
-/// - Constraint forms are assumed to contain only literals and
-///   wildcards, never other variables. That guarantee makes it safe
-///   to inline them into regex directly.
-/// - Reversed variables (`~A`) are left unchanged: enforcing a
-///   reversed constraint at regex level would require reversing
-///   arbitrary sub-regexes, which isn't practical here.
-/// - If no constraint exists for a variable, or no form is present,
-///   behavior falls back to the original `.++` / `(.+)` scheme.
-pub(crate) fn form_to_regex_str_with_constraints(
-    parts: &[FormPart],
-    constraints: &VarConstraints,
+    constraints: Option<&VarConstraints>,
 ) -> Result<String, Box<ParseError>> {
     use std::fmt::Write;
 
+    // Count how many times each variable / revvar occurs
     let (var_counts, rev_var_counts) = get_var_and_rev_var_counts(parts)?;
+
+    // Bookkeeping for assigning capture-group indices
     let mut var_to_backreference_num = [0; NUM_POSSIBLE_VARIABLES];
     let mut rev_var_to_backreference_num = [0; NUM_POSSIBLE_VARIABLES];
     let mut backreference_index = 0;
@@ -181,37 +75,44 @@ pub(crate) fn form_to_regex_str_with_constraints(
 
     for part in parts {
         match part {
+            // --- Variable handling (with optional constraints) ---
             FormPart::Var(c) => {
                 let idx = uc_letter_to_num(*c)?;
                 let occurs_many = var_counts[idx] > 1;
                 let already_has_group = var_to_backreference_num[idx] != 0;
 
-                // If A has a nested form, turn that into regex once
+                // Inline constraint form if present
                 let lookahead = constraints
-                    .get(*c)
+                    .and_then(|cs| cs.get(*c))
                     .and_then(|vc| vc.get_parsed_form())
-                    .map(|pf| form_to_regex_str(&pf.parts))
-                    .transpose()?; // constraint forms are var-free
+                    // Constraint forms are guaranteed to be var-free
+                    .map(|pf| render_parts_to_regex(&pf.parts, None))
+                    .transpose()?;
 
                 if already_has_group {
+                    // Subsequent occurrences → backreference
                     let _ = write!(regex_str, "\\{}", var_to_backreference_num[idx]);
                 } else if occurs_many {
+                    // First of multiple occurrences → capture group
                     backreference_index += 1;
                     var_to_backreference_num[idx] = backreference_index;
                     if let Some(nested) = lookahead {
+                        // Capture group with constraint
                         let _ = write!(regex_str, "(?={nested})(.+)");
                     } else {
                         regex_str.push_str("(.+)");
                     }
                 } else if let Some(nested) = lookahead {
+                    // Single-use variable with constraint
                     let _ = write!(regex_str, "(?={nested}).+");
                 } else {
+                    // Single-use variable, no constraint
                     regex_str.push_str(".+");
                 }
             }
 
+            // --- Reversed variable (no constraints supported) ---
             FormPart::RevVar(c) => {
-                // Keep existing behavior for ~A
                 let idx = uc_letter_to_num(*c)?;
                 let occurs_many = rev_var_counts[idx] > 1;
                 let already_has_group = rev_var_to_backreference_num[idx] != 0;
@@ -227,6 +128,7 @@ pub(crate) fn form_to_regex_str_with_constraints(
                 }
             }
 
+            // --- Other parts (shared behavior) ---
             FormPart::Lit(s) => regex_str.push_str(&fancy_regex::escape(s)),
             FormPart::Dot => regex_str.push('.'),
             FormPart::Star => regex_str.push_str(".*"),
@@ -246,6 +148,42 @@ pub(crate) fn form_to_regex_str_with_constraints(
     }
 
     Ok(regex_str)
+}
+
+/// Convert a parsed form into a regex string without constraints.
+///
+/// This is a thin wrapper over `render_parts_to_regex` with `constraints = None`.
+pub(crate) fn form_to_regex_str(parts: &[FormPart]) -> Result<String, Box<ParseError>> {
+    render_parts_to_regex(parts, None)
+}
+
+/// Convert a parsed form into a regex string, applying variable constraints.
+///
+/// This is a thin wrapper over `render_parts_to_regex` with `constraints = Some(vcs)`.
+pub(crate) fn form_to_regex_str_with_constraints(
+    parts: &[FormPart],
+    constraints: &VarConstraints,
+) -> Result<String, Box<ParseError>> {
+    render_parts_to_regex(parts, Some(constraints))
+}
+
+// 'A' -> 0, 'B' -> 1, ..., 'Z' -> 25
+fn uc_letter_to_num(c: char) -> Result<usize, Box<ParseError>> { letter_to_num(c, 'A' as usize) }
+
+// Count occurrences of vars and revvars to decide capture/backref scheme.
+fn get_var_and_rev_var_counts(
+    parts: &[FormPart],
+) -> Result<([usize; NUM_POSSIBLE_VARIABLES], [usize; NUM_POSSIBLE_VARIABLES]), Box<ParseError>> {
+    let mut var_counts = [0; NUM_POSSIBLE_VARIABLES];
+    let mut rev_var_counts = [0; NUM_POSSIBLE_VARIABLES];
+    for part in parts {
+        match part {
+            FormPart::Var(c) => var_counts[uc_letter_to_num(*c)?] += 1,
+            FormPart::RevVar(c) => rev_var_counts[uc_letter_to_num(*c)?] += 1,
+            _ => (),
+        }
+    }
+    Ok((var_counts, rev_var_counts))
 }
 
 /// True if any `Var` in `parts` has a `.form` constraint we can inline.
