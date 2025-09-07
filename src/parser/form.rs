@@ -317,11 +317,8 @@ mod tests {
         assert!(matches!(err, ParseError::DanglingCharsetDash));
     }
 
-    /* I'm not able to get this test to pass
     #[test]
-    fn test_parsedform_dangling_dash() {
-        let err = "[a-]".parse::<ParsedForm>().unwrap_err();
-        assert!(matches!(*err, ParseError::DanglingCharsetDash));
+    fn test_parsed_form_dangling_dash() {
+        assert!(matches!(*"[a-]".parse::<ParsedForm>().unwrap_err(), ParseError::DanglingCharsetDash));
     }
-     */
 }
