@@ -643,36 +643,55 @@ mod tests {
     }
 
     #[test]
-    /// Verify constraint_score calculation and all_vars_in_lookup_keys logic.
-    fn test_constraint_score_and_all_vars_in_lookup_keys() {
-        let p1 = Pattern::create("abc", 0); // all literals
-        assert_eq!(p1.constraint_score(), 9);
-
-        let p2 = Pattern::create("A@", 1); // var + class
-        assert_eq!(p2.constraint_score(), 1);
-
-        let p3 = Pattern::create("#B", 2); // class + var
-        assert_eq!(p3.constraint_score(), 1);
-
-        let mut p4 = Pattern::create("AB", 3);
-        assert!(!p4.all_vars_in_lookup_keys());
-        p4.lookup_keys = HashSet::from_iter(['B']);
-        assert!(!p4.all_vars_in_lookup_keys());
-        p4.lookup_keys = HashSet::from_iter(['A', 'B']);
-        assert!(p4.all_vars_in_lookup_keys());
+    /// Verify `constraint_score` calculation and `all_vars_in_lookup_keys` logic—all literals.
+    fn test_constraint_score_and_all_vars_in_lookup_keys_all_literals() {
+        assert_eq!(Pattern::create("abc", 0).constraint_score(), 9);
     }
 
     #[test]
-    /// Ensure parse_length_range rejects malformed or nonsensical inputs.
-    fn test_parse_length_range_invalid_cases() {
+    /// Verify `constraint_score` calculation and `all_vars_in_lookup`_keys logic—var + class.
+    fn test_constraint_score_and_all_vars_in_lookup_keys_var_class() {
+        assert_eq!(Pattern::create("A@", 1).constraint_score(), 1);
+    }
+
+    #[test]
+    /// Verify `constraint_score` calculation and `all_vars_in_lookup_keys` logic—class + var.
+    fn test_constraint_score_and_all_vars_in_lookup_keys_class_var() {
+        assert_eq!(Pattern::create("#B", 2).constraint_score(), 1);
+    }
+
+    #[test]
+    /// Verify `all_vars_in_lookup_keys` logic.
+    fn test_constraint_score_and_all_vars_in_lookup_keys() {
+        let mut p = Pattern::create("AB", 3);
+        assert!(!p.all_vars_in_lookup_keys());
+        p.lookup_keys = HashSet::from_iter(['B']);
+        assert!(!p.all_vars_in_lookup_keys());
+        p.lookup_keys = HashSet::from_iter(['A', 'B']);
+        assert!(p.all_vars_in_lookup_keys());
+    }
+
+    #[test]
+    /// Ensure parse_length_range rejects malformed or nonsensical inputs—dashes pair.
+    fn test_parse_length_range_invalid_cases_dashes_pair() {
         assert!(matches!(
             *parse_length_range("--").unwrap_err(),
             ParseError::InvalidLengthRange{ input } if input == "--"
         ));
+    }
+
+    #[test]
+    /// Ensure parse_length_range rejects malformed or nonsensical inputs—just letters.
+    fn test_parse_length_range_invalid_cases_just_letters() {
         assert!(matches!(
             *parse_length_range("abc").unwrap_err(),
             ParseError::InvalidLengthRange { input } if input == "abc"
         ));
+    }
+
+    #[test]
+    /// Ensure parse_length_range rejects malformed or nonsensical inputs—1-2-3-.
+    fn test_parse_length_range_invalid_cases_1_2_3() {
         assert!(matches!(
             *parse_length_range("1-2-3").unwrap_err(),
             ParseError::InvalidLengthRange { input } if input == "1-2-3"
@@ -680,19 +699,26 @@ mod tests {
     }
 
     #[test]
-    /// Ensure get_complex_constraint returns errors for malformed inputs.
-    fn test_get_complex_constraint_invalid_cases() {
-        // no '='
+    /// Ensure get_complex_constraint returns errors for malformed inputs—no '='.
+    fn test_get_complex_constraint_invalid_cases_no_equals() {
         assert!(matches!(
             *get_complex_constraint("A").unwrap_err(),
             ParseError::InvalidComplexConstraint { str } if str == "expected 1 equals sign (not 0)"
         ));
-        // too many '='
+    }
+
+    #[test]
+    /// Ensure get_complex_constraint returns errors for malformed inputs—too many '='s
+    fn test_get_complex_constraint_invalid_cases_too_many_equals() {
         assert!(matches!(
             *get_complex_constraint("A=B=C").unwrap_err(),
             ParseError::InvalidComplexConstraint { str } if str == "expected 1 equals sign (not 2)"
         ));
-        // lhs not length 1
+    }
+
+    #[test]
+    /// Ensure get_complex_constraint returns errors for malformed inputs—lhs too long.
+    fn test_get_complex_constraint_invalid_cases_lhs_too_long() {
         assert!(matches!(
             *get_complex_constraint("AB=3").unwrap_err(),
             ParseError::InvalidComplexConstraint { str } if str == "expected 1 character (as the variable) to the left of \"=\" (not 2)"
@@ -711,7 +737,7 @@ mod tests {
     }
 
     #[test]
-    /// Check that !=ABC constraint gives correct not_equal sets for each variable.
+    /// Check that !=ABC constraint gives correct `not_equal` sets for each variable.
     fn test_not_equal_constraint_three_vars() {
         let patterns = "ABC;!=ABC".parse::<Patterns>().unwrap();
         let a = patterns.var_constraints.get('A').unwrap();
@@ -724,19 +750,23 @@ mod tests {
     }
 
     #[test]
-    /// Test ordering tiebreakers: constraint_score and deterministic flag.
-    fn test_ordered_patterns_tiebreak_constraint_score_and_deterministic() {
-        // Xz has var + literal (score 3), X just var
-        let input = "Xz;X".parse::<Patterns>().unwrap();
-        assert_eq!(input.ordered_list.iter().map(|p| p.raw_string.clone()).collect::<Vec<_>>(), vec!["Xz", "X"]);
-
-        // Deterministic vs non-deterministic: "AB" (det) vs "A.B" (non-det)
-        let input2 = "A.B;AB".parse::<Patterns>().unwrap();
-        assert_eq!(input2.ordered_list.iter().map(|p| p.raw_string.clone()).collect::<Vec<_>>(), vec!["A.B", "AB"]);
+    /// Test ordering tiebreakers: `constraint_score` and deterministic flag.
+    fn test_ordered_patterns_tiebreak_constraint_score_and_deterministic_with_lit_vs_without() {
+        // "Xz" has var + literal (score 3), "X" just var
+        let patterns = "Xz;X".parse::<Patterns>().unwrap();
+        assert_eq!(patterns.ordered_list.iter().map(|p| p.raw_string.clone()).collect::<Vec<_>>(), vec!["Xz", "X"]);
     }
 
     #[test]
-    /// Confirm that `IntoIterator` yields ordered_list without consuming `Patterns`.
+    /// Test ordering tiebreakers: `constraint_score` and deterministic flag.
+    fn test_ordered_patterns_tiebreak_constraint_score_and_deterministic() {
+        // deterministic vs non-deterministic: "AB" (det) vs "A.B" (non-det)
+        let patterns = "A.B;AB".parse::<Patterns>().unwrap();
+        assert_eq!(patterns.ordered_list.iter().map(|p| p.raw_string.clone()).collect::<Vec<_>>(), vec!["A.B", "AB"]);
+    }
+
+    #[test]
+    /// Confirm that `IntoIterator` yields `ordered_list` without consuming `Patterns`.
     fn test_into_iterator_yields_ordered_list() {
         let patterns = "AB;BC".parse::<Patterns>().unwrap();
         let from_iter: Vec<String> = (&patterns).into_iter().map(|p| p.raw_string.clone()).collect();
