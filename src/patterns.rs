@@ -378,7 +378,7 @@ impl FromStr for Patterns {
 fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint), Box<ParseError>> {
     let top_parts = form.split('=').collect::<Vec<_>>();
     if top_parts.len() != 2 {
-        return Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("expected 1 equals sign (not {})", top_parts.len()) }));
+        return Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("expected 1 equals sign (not {})", top_parts.len() - 1) }));
     }
 
     let var_str = top_parts[0];
@@ -656,6 +656,8 @@ mod tests {
 
         let mut p4 = Pattern::create("AB", 3);
         assert!(!p4.all_vars_in_lookup_keys());
+        p4.lookup_keys = HashSet::from_iter(['B']);
+        assert!(!p4.all_vars_in_lookup_keys());
         p4.lookup_keys = HashSet::from_iter(['A', 'B']);
         assert!(p4.all_vars_in_lookup_keys());
     }
@@ -665,15 +667,15 @@ mod tests {
     fn test_parse_length_range_invalid_cases() {
         assert!(matches!(
             *parse_length_range("--").unwrap_err(),
-            ParseError::InvalidLengthRange { .. }
+            ParseError::InvalidLengthRange{ input } if input == "--"
         ));
         assert!(matches!(
             *parse_length_range("abc").unwrap_err(),
-            ParseError::InvalidLengthRange { .. }
+            ParseError::InvalidLengthRange { input } if input == "abc"
         ));
         assert!(matches!(
             *parse_length_range("1-2-3").unwrap_err(),
-            ParseError::InvalidLengthRange { .. }
+            ParseError::InvalidLengthRange { input } if input == "1-2-3"
         ));
     }
 
@@ -683,17 +685,17 @@ mod tests {
         // no '='
         assert!(matches!(
             *get_complex_constraint("A").unwrap_err(),
-            ParseError::InvalidComplexConstraint { .. }
+            ParseError::InvalidComplexConstraint { str } if str == "expected 1 equals sign (not 0)"
         ));
         // too many '='
         assert!(matches!(
             *get_complex_constraint("A=B=C").unwrap_err(),
-            ParseError::InvalidComplexConstraint { .. }
+            ParseError::InvalidComplexConstraint { str } if str == "expected 1 equals sign (not 2)"
         ));
         // lhs not length 1
         assert!(matches!(
             *get_complex_constraint("AB=3").unwrap_err(),
-            ParseError::InvalidComplexConstraint { .. }
+            ParseError::InvalidComplexConstraint { str } if str == "expected 1 character (as the variable) to the left of \"=\" (not 2)"
         ));
     }
 
@@ -722,19 +724,19 @@ mod tests {
     }
 
     #[test]
-    /// Test ordering tie-breakers: constraint_score and deterministic flag.
+    /// Test ordering tiebreakers: constraint_score and deterministic flag.
     fn test_ordered_patterns_tiebreak_constraint_score_and_deterministic() {
         // Xz has var + literal (score 3), X just var
         let input = "Xz;X".parse::<Patterns>().unwrap();
-        assert_eq!(input.ordered_list[0].raw_string, "Xz");
+        assert_eq!(input.ordered_list.iter().map(|p| p.raw_string.clone()).collect::<Vec<_>>(), vec!["Xz", "X"]);
 
         // Deterministic vs non-deterministic: "AB" (det) vs "A.B" (non-det)
         let input2 = "A.B;AB".parse::<Patterns>().unwrap();
-        assert_eq!(input2.ordered_list[0].raw_string, "A.B");
+        assert_eq!(input2.ordered_list.iter().map(|p| p.raw_string.clone()).collect::<Vec<_>>(), vec!["A.B", "AB"]);
     }
 
     #[test]
-    /// Confirm that IntoIterator yields ordered_list without consuming Patterns.
+    /// Confirm that `IntoIterator` yields ordered_list without consuming `Patterns`.
     fn test_into_iterator_yields_ordered_list() {
         let patterns = "AB;BC".parse::<Patterns>().unwrap();
         let from_iter: Vec<String> = (&patterns).into_iter().map(|p| p.raw_string.clone()).collect();
@@ -743,7 +745,7 @@ mod tests {
     }
 
     #[test]
-    /// Verify that build_order_maps produces true inverses.
+    /// Verify that `build_order_maps` produces true inverses.
     fn test_build_order_maps_inverse() {
         let patterns = "AB;BC;C".parse::<Patterns>().unwrap();
         for (ordered_ix, &orig_ix) in patterns.ordered_to_original.iter().enumerate() {
@@ -751,5 +753,4 @@ mod tests {
             assert_eq!(ordered_ix, roundtrip);
         }
     }
-
 }
