@@ -290,10 +290,10 @@ impl Patterns {
                 .collect();
 
             // Unified scoring function
-            let score = |p: &Pattern| {
+            let get_score = |p: &Pattern| {
                 if ordered.is_empty() {
                     // First pick: negate var count so “more vars” ranks smaller
-                    (usize::MAX - p.variables.len(), tie_tail(p))
+                    (usize::MAX - p.variables.len(), tie_tail(p)) // TODO? avoid MAX
                 } else {
                     // Later picks: fewer new vars ranks smaller
                     (p.variables.difference(&found_vars).count(), tie_tail(p))
@@ -304,7 +304,7 @@ impl Patterns {
             let (ix, _) = p_list
                 .iter()
                 .enumerate()
-                .min_by_key(|(_, p)| score(p))
+                .min_by_key(|(_, p)| get_score(p))
                 .unwrap();
 
             let mut chosen = p_list.remove(ix);
@@ -370,58 +370,57 @@ impl FromStr for Patterns {
 // TODO? do this via regex?
 // e.g., A=(3-:x*)
 fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint), Box<ParseError>> {
-    let top_parts = form.split('=').collect::<Vec<_>>();
-    if top_parts.len() != 2 {
-        return Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("expected 1 equals sign (not {})", top_parts.len() - 1) }));
-    }
-
-    let var_str = top_parts[0];
-    if var_str.len() != 1 {
-        return Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("expected 1 character (as the variable) to the left of \"=\" (not {})", var_str.len()) }));
-    }
-
-    let var = var_str.chars().next().unwrap();
-
-    let constraint_str = top_parts[1].to_string();
-
-    // remove outer parentheses if they are there
-    let inner_constraint_str = if constraint_str.starts_with('(') && constraint_str.ends_with(')') {
-        let mut chars = constraint_str.chars();
-        chars.next();
-        chars.next_back();
-        chars.as_str()
-    } else {
-        constraint_str.as_str()
-    };
-
-    let constraint_halves = inner_constraint_str.split(':').collect::<Vec<_>>();
-    let (len_range, literal_constraint_str) = match constraint_halves.len() {
-        2 => {
-            let len_range = parse_length_range(constraint_halves[0])?;
-            (Some(len_range), Some(constraint_halves[1]))
-        },
-        1 => {
-            match parse_length_range(constraint_halves[0]) {
-                Ok(len_range) => (Some(len_range), None),
-                Err(_) => (None, Some(constraint_halves[0]))
+    if let Some((var_str, constraint_str)) = form.split_once('=') {
+        if var_str.len() != 1 {
+            Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("expected 1 character (as the variable) to the left of \"=\" (not {})", var_str.len()) }))
+        } else {
+            if constraint_str.contains('=') {
+                return Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("expected 1 equals sign (not {})", form.chars().filter(|c| *c == '=').count()) }));
             }
+
+            let var = var_str.chars().next().unwrap();
+
+            // remove outer parentheses if they are there
+            let inner_constraint_str = if constraint_str.starts_with('(') && constraint_str.ends_with(')') {
+                let mut chars = constraint_str.chars();
+                chars.next();
+                chars.next_back();
+                chars.as_str()
+            } else {
+                constraint_str
+            };
+
+            let (len_range, literal_constraint_str) = if let Some((len_range_raw, literal_constraint_str)) = inner_constraint_str.split_once(':') {
+                if literal_constraint_str.contains(':') { // too many colons
+                    return Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("too many colons--0 or 1 expected (not {})", inner_constraint_str.chars().filter(|c| *c == ':').count()) }));
+                } else {
+                    let len_range = parse_length_range(len_range_raw)?;
+                    (Some(len_range), Some(literal_constraint_str))
+                }
+            } else {
+                match parse_length_range(inner_constraint_str) {
+                    Ok(len_range) => (Some(len_range), None),
+                    Err(_) => (None, Some(inner_constraint_str))
+                }
+            };
+
+            let vc = VarConstraint {
+                // TODO!!!? instead of `len_range` as `Option<(usize, Option<usize>)`, maybe create a richer
+                // type--say `LenRange`--instead of `(usize, Option<usize>)` whose default is (equiv. to)
+                // `(VarConstraint::DEFAULT_MIN, None)`... and then we'd avoid the outer `Option`, using
+                // `LenRange`'s default instead of `None`
+                min_length: len_range.map_or(VarConstraint::DEFAULT_MIN, |(lrl, _)| lrl),
+                max_length: len_range.and_then(|(_, lru)| lru),
+                form: literal_constraint_str.map(ToString::to_string),
+                not_equal: HashSet::default(),
+                ..Default::default()
+            };
+
+            Ok((var, vc))
         }
-        _ => return Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("too many colons--0 or 1 expected (not {})", constraint_halves.len() - 1) }))
-    };
-
-    let vc = VarConstraint {
-        // TODO!!!? instead of `len_range` as `Option<(usize, Option<usize>)`, maybe create a richer
-        // type--say `LenRange`--instead of `(usize, Option<usize>)` whose default is (equiv. to)
-        // `(VarConstraint::DEFAULT_MIN, None)`... and then we'd avoid the outer `Option`, using
-        // `LenRange`'s default instead of `None`
-        min_length: len_range.map_or(VarConstraint::DEFAULT_MIN, |(lrl, _)| lrl),
-        max_length: len_range.and_then(|(_, lru)| lru),
-        form: literal_constraint_str.map(ToString::to_string),
-        not_equal: HashSet::default(),
-        ..Default::default()
-    };
-
-    Ok((var, vc))
+    } else {
+        Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("expected 1 equals sign (not {})", form.chars().filter(|c| *c == '=').count()) }))
+    }
 }
 
 /// Enable `for p in &patterns { ... }`.
