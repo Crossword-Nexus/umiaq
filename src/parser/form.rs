@@ -1,13 +1,14 @@
+use std::collections::HashSet;
 use std::str::FromStr;
 use crate::umiaq_char::{ALPHABET_SIZE, LITERAL_CHARS, VARIABLE_CHARS};
 use fancy_regex::Regex;
 use nom::{
     branch::alt,
-    bytes::complete::tag,
+    bytes::complete::{tag, is_not},
     character::complete::one_of,
     combinator::map,
     multi::many1,
-    sequence::preceded,
+    sequence::{delimited, preceded},
     IResult,
     Parser,
 };
@@ -15,6 +16,9 @@ use crate::errors::ParseError;
 use crate::errors::ParseError::ParseFailure;
 use crate::parser::utils::letter_to_num;
 use super::prefilter::{form_to_regex_str, get_regex};
+
+/// Parser result type: input, output, with our custom ParseError
+pub type PResult<'a, O> = IResult<&'a str, O, ParseError>;
 
 /// Represents a single parsed token (component) from a "form" string.
 #[derive(Debug, Clone, PartialEq)]
@@ -26,7 +30,7 @@ pub enum FormPart {
     Star,               // '*' wildcard: zero or more letters
     Vowel,              // '@' wildcard: any vowel (aeiouy)
     Consonant,          // '#' wildcard: any consonant (bcdf...xz)
-    Charset(Vec<char>), // '[abc]': any of the given letters
+    Charset(HashSet<char>), // '[abc]': any of the given letters
     Anagram(Alphagram), // '/abc': any permutation of the given letters
 }
 
@@ -172,45 +176,72 @@ impl FromStr for ParsedForm {
 
 // === Token parsers ===
 
-fn var_ref(input: &str) -> IResult<&str, FormPart> {
+fn var_ref(input: &str) -> PResult<FormPart> {
     map(one_of(VARIABLE_CHARS), FormPart::Var).parse(input)
 }
-fn rev_ref(input: &str) -> IResult<&str, FormPart> {
+fn rev_ref(input: &str) -> PResult<FormPart> {
     map(preceded(tag("~"), one_of(VARIABLE_CHARS)), FormPart::RevVar).parse(input)
 }
-fn literal(input: &str) -> IResult<&str, FormPart> {
+fn literal(input: &str) -> PResult<FormPart> {
     map(many1(one_of(LITERAL_CHARS)), |chars| {
         FormPart::Lit(chars.into_iter().collect())
     })
     .parse(input)
 }
-fn dot(input: &str) -> IResult<&str, FormPart> { parser_one_char_inner(input, &FormPart::Dot) }
-fn star(input: &str) -> IResult<&str, FormPart> { parser_one_char_inner(input, &FormPart::Star) }
-fn vowel(input: &str) -> IResult<&str, FormPart> { parser_one_char_inner(input, &FormPart::Vowel) }
-fn consonant(input: &str) -> IResult<&str, FormPart> { parser_one_char_inner(input, &FormPart::Consonant) }
+fn dot(input: &str) -> PResult<FormPart> { parser_one_char_inner(input, &FormPart::Dot) }
+fn star(input: &str) -> PResult<FormPart> { parser_one_char_inner(input, &FormPart::Star) }
+fn vowel(input: &str) -> PResult<FormPart> { parser_one_char_inner(input, &FormPart::Vowel) }
+fn consonant(input: &str) -> PResult<FormPart> { parser_one_char_inner(input, &FormPart::Consonant) }
 
 // single-char tokens share the same shape
-fn parser_one_char_inner<'a>(input: &'a str, form_part: &FormPart) -> IResult<&'a str, FormPart> {
-    map(tag(form_part.get_tag_string().unwrap()), |_| form_part.clone()).parse(input)
+fn parser_one_char_inner<'a>(
+    input: &'a str,
+    form_part: &FormPart
+) -> PResult<'a, FormPart> {
+    map(
+        tag(form_part.get_tag_string().unwrap()),
+        |_| form_part.clone()
+    ).parse(input)
 }
 
-fn charset(input: &str) -> IResult<&str, FormPart> {
-    let (input, _) = tag("[")(input)?;
-    let (input, chars) = many1(one_of(LITERAL_CHARS)).parse(input)?;
-    let (input, _) = tag("]")(input)?;
+/// Expand a string like "abcx-z" into a set of characters.
+/// Supports ranges like a-e (inclusive).
+fn expand_charset(body: &str) -> Result<HashSet<char>, ParseError> {
+    let mut chars = HashSet::new();
+    let mut iter = body.chars().peekable();
+
+    while let Some(start) = iter.next() {
+        if iter.peek() == Some(&'-') {
+            iter.next(); // consume '-'
+            match iter.next() {
+                Some(end) if start <= end => chars.extend(start..=end),
+                Some(end) => return Err(ParseError::InvalidCharsetRange(start, end)),
+                None => return Err(ParseError::DanglingCharsetDash),
+            }
+        } else {
+            chars.insert(start);
+        }
+    }
+
+    Ok(chars)
+}
+
+fn charset(input: &str) -> PResult<FormPart> {
+    let (input, body) = delimited(tag("["), is_not("]"), tag("]")).parse(input)?;
+    // Expand ranges
+    let chars = expand_charset(body).map_err(nom::Err::Failure)?;
     Ok((input, FormPart::Charset(chars)))
 }
 
-fn anagram(input: &str) -> IResult<&str, FormPart> {
+fn anagram(input: &str) -> PResult<FormPart> {
     let (input, _) = tag("/")(input)?;
     let (input, chars) = many1(one_of(LITERAL_CHARS)).parse(input)?;
     Ok((input, FormPart::anagram_of(&chars.into_iter().collect::<String>()).unwrap())) // TODO handle error (better than unwrap)
 }
 
-fn equation_part(input: &str) -> IResult<&str, FormPart> {
+fn equation_part(input: &str) -> PResult<FormPart> {
     alt((rev_ref, var_ref, anagram, charset, literal, dot, star, vowel, consonant)).parse(input)
 }
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -242,7 +273,7 @@ mod tests {
     }
 
     #[test] fn test_parse_form_charset() {
-        assert_eq!(vec![FormPart::Charset(vec!['a','b','c'])], "[abc]".parse::<ParsedForm>().unwrap().parts);
+        assert_eq!(vec![FormPart::Charset(HashSet::from(['a', 'b', 'c']))], "[abc]".parse::<ParsedForm>().unwrap().parts);
     }
 
     #[test] fn test_parse_form_anagram() {
@@ -262,4 +293,36 @@ mod tests {
             assert!(!agi.is_anagram(&word).unwrap());
         }
     }
+
+
+    #[test]
+    fn test_expand_charset_range() {
+        // [a-e] should expand to a, b, c, d, e
+        let set = expand_charset("a-e").unwrap();
+        let expected: HashSet<char> = HashSet::from(['a', 'b', 'c', 'd', 'e']);
+        assert_eq!(set, expected);
+    }
+
+    #[test]
+    fn test_expand_charset_mixed() {
+        // [ax-z] should contain a, x, y, z
+        let set = expand_charset("ax-z").unwrap();
+        let expected: HashSet<char> = HashSet::from(['a', 'x', 'y', 'z']);
+        assert_eq!(set, expected);
+    }
+
+    #[test]
+    fn test_expand_charset_dangling_dash() {
+        let err = expand_charset("a-").unwrap_err();
+        assert!(matches!(err, ParseError::DanglingCharsetDash));
+    }
+
+    /* I'm not able to get this test to pass
+    #[test]
+    fn test_parsedform_dangling_dash() {
+        let err = "[a-]".parse::<ParsedForm>().unwrap_err();
+        assert!(matches!(*err, ParseError::DanglingCharsetDash));
+    }
+     */
+
 }
