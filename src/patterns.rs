@@ -300,7 +300,7 @@ impl Patterns {
                         p.variables.len() as isize,
                         p.constraint_score(),
                         Reverse(p.is_deterministic),
-                        Reverse(p.original_index),
+                        p.original_index,
                     )
                 } else {
                     // Subsequent picks: fewer new vars is better,
@@ -309,7 +309,7 @@ impl Patterns {
                         -(p.variables.difference(&found_vars).count() as isize),
                         p.constraint_score(),
                         Reverse(p.is_deterministic),
-                        Reverse(p.original_index),
+                        p.original_index,
                     )
                 }
             };
