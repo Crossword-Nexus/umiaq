@@ -35,6 +35,16 @@
         <span class="label-text">Pattern:</span>
         <input class="input" id="input" type="text" />
       </label>
+
+      <label for="numResults">Number of results</label>
+      <select id="numResults">
+        <option value="100">100</option>
+        <option value="500">500</option>
+        <option value="1000">1000</option>
+      </select>
+      
+      <br />
+
       <button class="button-primary" type="submit">Search</button>
     </form>
 
@@ -93,12 +103,14 @@
       e.preventDefault();
       resultsEl.textContent = 'Loading …';
       document.getElementById("results-meta").textContent = '';
+      // the "numResults" element
+      const numResultsEl = document.getElementById('numResults');
       searchStart = performance.now();   // mark start time
       worker.postMessage({
         type: 'solve',
         input: inputEl.value.trim(),
         wordlist: window.wordlist,
-        numResults: 100,
+        numResults: parseInt(numResultsEl.value),
       });
     }
 
