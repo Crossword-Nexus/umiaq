@@ -90,10 +90,12 @@ fn solution_key(solution: &[Bindings]) -> u64 {
 /// Simple helper to enforce a wall-clock time limit.
 ///
 /// Usage:
+/// ```
 ///   let budget = TimeBudget::new(Duration::from_secs(30));
 ///   while !budget.expired() {
 ///       // do some work
 ///   }
+/// ```
 ///
 /// You can also query how much time is left (`remaining()`).
 /// TODO: consider using a countdown timer with one "time left" parameter
