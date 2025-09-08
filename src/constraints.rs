@@ -180,8 +180,11 @@ mod tests {
     #[test]
     fn insert_and_get_roundtrip() {
         let mut vcs = VarConstraints::default();
-        let mut vc = VarConstraint { form: Some("*z*".into()), ..Default::default() };
-        vc.not_equal.extend(['B', 'C']);
+        let vc = VarConstraint {
+            form: Some("*z*".into()),
+            not_equal: ['B', 'C'].into_iter().collect(),
+            ..Default::default()
+        };
         vcs.insert('A', vc.clone());
         assert_eq!(Some(&vc), vcs.get('A'));
     }
