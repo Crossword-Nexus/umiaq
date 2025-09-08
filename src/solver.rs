@@ -43,10 +43,14 @@ pub struct CandidateBuckets {
 }
 
 /// Put the results in uppercase and separated with a bullet
+///
+/// # Errors
+///
+/// Will return `Box<ParseError>` if the bound word cannot be found for one of the `Bindings`
+/// objects in `solution`.
 pub fn solution_to_string(solution: &[Bindings]) -> Result<String, Box<ParseError>> {
     let str = solution.iter()
-        // TODO!! update error message; test error path
-        .map(|b| b.get_word().ok_or_else(|| Box::new(ParseFailure { s : format!("cannot find solution in {b:?}") })).map(|c| c.to_ascii_uppercase()))
+        .map(|b| b.get_word().ok_or_else(|| Box::new(ParseFailure { s : format!("cannot find solution in bindings {b}") })).map(|c| c.to_ascii_uppercase()))
         .collect::<Result<Vec<_>, _>>()?
         .join(" • ");
 
@@ -599,5 +603,31 @@ mod tests {
         chess_bindings.set_word("chess".to_string().as_ref());
         let expected = vec![vec![inch_bindings, chess_bindings]];
         assert_eq!(expected, results);
+    }
+
+    #[test]
+    fn test_solution_to_string_good() {
+        let mut b1 = Bindings::default();
+        b1.set_word("AA");
+        let mut b2 = Bindings::default();
+        b2.set_word("AB");
+
+        let bindings_list = vec![b1, b2];
+        let actual = solution_to_string(&bindings_list);
+
+        assert_eq!("AA • AB", actual.unwrap());
+    }
+
+    #[test]
+    fn test_solution_to_string_bad() {
+        let mut b1 = Bindings::default();
+        b1.set_word("CC");
+        let mut b2 = Bindings::default();
+        b2.set('A', 'a'.to_string());
+
+        let bindings_list = vec![b1, b2];
+        let actual = solution_to_string(&bindings_list);
+
+        assert!(matches!(*actual.unwrap_err(), ParseFailure { s } if s == "cannot find solution in bindings [A→a]" ));
     }
 }

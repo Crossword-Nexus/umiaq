@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 
 pub(crate) const WORD_SENTINEL: char = '*';
 
@@ -7,6 +8,12 @@ pub(crate) const WORD_SENTINEL: char = '*';
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Bindings {
     map: HashMap<char, String>,
+}
+
+impl Display for Bindings {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}]", self.map.iter().map(|(k, v)| format!("{k}→{v}")).collect::<Vec<_>>().join(", "))
+    }
 }
 
 impl Bindings {
