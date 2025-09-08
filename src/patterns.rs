@@ -206,18 +206,18 @@ impl Patterns {
     /// - complex constraints (e.g., length + pattern) (e.g., `A=(3-5:a*)`)
     ///
     /// Non-constraint entries are added to `self.list` as actual patterns.
-    fn set_var_constraints(&mut self, input: &str) {
+    fn set_var_constraints(&mut self, input: &str) -> Result<(), Box<ParseError>> {
         let forms: Vec<&str> = input.split(FORM_SEPARATOR).collect();
         // Iterate through all parts of the input string, split by `;`
 
         let mut next_form_ix = 0; // counts only *forms* we accept
 
-        for form in &forms {
+        Ok(for form in &forms {
             if let Some(cap) = LEN_CMP_RE.captures(form).unwrap() {
                 let var = cap[1].chars().next().unwrap();
-                let op  = ComparisonOperator::from_str(&cap[2]).unwrap(); // TODO better error handling
-                let n   = cap[3].parse::<usize>().unwrap();
-                let vc  = self.var_constraints.ensure(var);
+                let op = ComparisonOperator::from_str(&cap[2])?; // TODO better error handling
+                let n = cap[3].parse::<usize>()?;
+                let vc = self.var_constraints.ensure(var);
 
                 match op {
                     ComparisonOperator::EQ => vc.set_exact_len(n),
@@ -245,11 +245,20 @@ impl Patterns {
                 // TODO! test instances where neither min_length is none and where neither max_length is none
                 // only set what the constraint explicitly provides
                 var_constraint.min_length = var_constraint.min_length.max(cc_vc.min_length);
-                var_constraint.max_length = var_constraint.max_length.min(cc_vc.max_length).or(var_constraint.max_length).or(cc_vc.max_length);
+                var_constraint.max_length = var_constraint
+                    .max_length
+                    .min(cc_vc.max_length)
+                    .or(var_constraint.max_length)
+                    .or(cc_vc.max_length);
+
                 if let Some(f) = cc_vc.form {
                     if let Some(old_form) = &var_constraint.form {
                         if *old_form != f {
-                            // TODO error? somehow combine forms?
+                            return Err(Box::new(ParseError::ConflictingConstraint {
+                                var,
+                                old: old_form.clone(),
+                                new: f,
+                            }));
                         }
                     } else {
                         var_constraint.form = Some(f);
@@ -267,7 +276,7 @@ impl Patterns {
                     // TODO throw exception
                 }
             }
-        }
+        })
     }
 
     // TODO is this the right way to order things?
@@ -370,13 +379,12 @@ impl Patterns {
 }
 
 impl FromStr for Patterns {
-    type Err = ParseError;
+    type Err = Box<ParseError>;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut patterns = Patterns::default();
-        patterns.set_var_constraints(s);
+        patterns.set_var_constraints(s)?;
         patterns.ordered_list = patterns.ordered_patterns();
-        // populate original_to_ordered and ordered_to_original
         patterns.build_order_maps();
         Ok(patterns)
     }
@@ -791,4 +799,22 @@ mod tests {
             assert_eq!(ordered_ix, roundtrip);
         }
     }
+
+    #[test]
+    /// Ensure conflicting complex constraints for the same variable produce an error.
+    fn test_conflicting_complex_constraints_error() {
+        let err = "A=(1-5:k*);A=(5-6:a*);A"
+            .parse::<Patterns>()
+            .unwrap_err();
+
+        match *err {
+            ParseError::ConflictingConstraint { var, ref old, ref new } => {
+                assert_eq!(var, 'A');
+                assert_eq!(old, "k*");
+                assert_eq!(new, "a*");
+            }
+            other => panic!("unexpected error: {:?}", other),
+        }
+    }
+
 }

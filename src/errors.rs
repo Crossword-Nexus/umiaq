@@ -25,6 +25,9 @@ pub enum ParseError {
     #[error("Dangling '-' at end of charset")]
     DanglingCharsetDash,
 
+    #[error("Conflicting constraints for {var} ({old} / {new})")]
+    ConflictingConstraint { var: char, old: String, new: String },
+
     // ... existing variants, e.g., from variables, constraints, etc. ...
     #[error("nom parser error: {0:?}")]
     NomError(ErrorKind),
