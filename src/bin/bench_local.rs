@@ -170,7 +170,7 @@ fn main() -> std::io::Result<()> {
         // Optionally print a few solutions from the *last* run (outside timing).
         if cli.print_limit > 0 && !last_solutions.is_empty() {
             for sol in last_solutions.iter().take(cli.print_limit) {
-                let display = solution_to_string(sol);
+                let display = solver::solution_to_string(sol);
                 println!("{display}");
             }
         }
@@ -233,15 +233,6 @@ fn main() -> std::io::Result<()> {
     }
 
     Ok(())
-}
-
-// TODO DRY w/main.rs solution_to_string
-// Put the results in uppercase and separated with a bullet
-fn solution_to_string(solution: &[Bindings]) -> String {
-    solution.iter()
-        .map(|b| b.get_word().unwrap().to_ascii_uppercase())
-        .collect::<Vec<_>>()
-        .join(" • ")
 }
 
 // TODO? put this elsewhere
