@@ -236,7 +236,6 @@ impl JointConstraints {
 ///
 /// This propagation is *sound* (never removes feasible solutions) and often
 /// eliminates huge amounts of search, especially for long chains of unconstrained vars.
-/// TODO: does this optimally account for, e.g., |AB|=3; |BC|=6?
 pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstraints) {
     for jc in jcs.clone() {
         if jc.rel != RelMask::EQ { continue; }
@@ -301,7 +300,7 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
 
                 // Tighten and store
                 let new_min = li.max(lower_from_joint);
-                let new_max = ui.map_or(upper_from_joint, |u| u.min(upper_from_joint)); // TODO is there a better way to write this (NB: min(None, x) is always None (I think...))
+                let new_max = ui.unwrap_or(upper_from_joint).min(upper_from_joint);
 
                 let e = vcs.ensure_entry_mut(v);
                 e.min_length = new_min;
@@ -520,4 +519,37 @@ mod tests {
         // (2+6) <= 6  is false  → overall false
         assert!(!jcs.all_satisfied_map(&map));
     }
+
+    #[test]
+    fn propagate_overlapping_equalities_ab_bc() {
+        // Constraints: |AB| = 3  and  |BC| = 6
+        let mut vcs = VarConstraints::default();
+
+        let jc1 = JointConstraint { vars: vec!['A','B'], target: 3, rel: RelMask::EQ };
+        let jc2 = JointConstraint { vars: vec!['B','C'], target: 6, rel: RelMask::EQ };
+        let jcs = JointConstraints::of(vec![jc1, jc2]);
+
+        // Create the variable constraints
+        propagate_joint_to_var_bounds(&mut vcs, &jcs);
+
+        // At this stage we expect consistent tightening.
+        let (a_min, a_max) = vcs.bounds('A');
+        let (b_min, b_max) = vcs.bounds('B');
+        let (c_min, c_max) = vcs.bounds('C');
+
+        // A cannot exceed 2, since then B would have to be 1 (from A+B=3)
+        assert_eq!(a_max.unwrap(), 2);
+        // A should be at least the default min
+        assert_eq!(a_min, VarConstraint::DEFAULT_MIN);
+
+        // B is between 1 and 2, since A+B=3 and both ≥1
+        assert_eq!(b_min, VarConstraint::DEFAULT_MIN);
+        assert_eq!(b_max.unwrap(), 2);
+
+        // C must be at least 4, since B≤2 and B+C=6
+        assert_eq!(c_min, 4);
+        // And at most 5, since B≥1
+        assert_eq!(c_max.unwrap(), 5);
+    }
+
 }
