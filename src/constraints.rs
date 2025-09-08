@@ -180,8 +180,7 @@ mod tests {
     #[test]
     fn insert_and_get_roundtrip() {
         let mut vcs = VarConstraints::default();
-        let mut vc = VarConstraint::default();
-        vc.form = Some("*z*".into());
+        let mut vc = VarConstraint { form: Some("*z*".into()), ..Default::default() };
         vc.not_equal.extend(['B', 'C']);
         vcs.insert('A', vc.clone());
         assert_eq!(Some(&vc), vcs.get('A'));
@@ -204,12 +203,9 @@ mod tests {
     #[test]
     fn display_var_constraints_multiline_sorted() {
         let mut vcs = VarConstraints::default();
-        let mut a = VarConstraint::default();
-        a.min_length = 1;
-        let mut c = VarConstraint::default();
-        c.max_length = Some(2);
-        let mut b = VarConstraint::default();
-        b.form = Some("*x*".into());
+        let a = VarConstraint { min_length: 1, ..Default::default() };
+        let b = VarConstraint { form: Some("*x*".into()), ..Default::default() };
+        let c = VarConstraint { max_length: Some(2), ..Default::default() };
         // Insert out of order to verify deterministic sort in Display
         vcs.insert('C', c);
         vcs.insert('A', a);
