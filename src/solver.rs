@@ -542,7 +542,7 @@ mod tests {
         let word_list: Vec<&str> = vec!["lax", "tax", "lox"];
         let input = "l.x".to_string();
         let results = solve_equation(&input, &word_list, 5).unwrap();
-        println!("{:?}", results);
+        println!("{results:?}");
         assert_eq!(2, results.len());
     }
 
@@ -560,7 +560,7 @@ mod tests {
         let word_list: Vec<&str> = vec!["inch", "chin", "dada", "test", "ab"];
         let input = "AB;BA;|A|=2;|B|=2;!=AB".to_string();
         let results = solve_equation(&input, &word_list, 5).unwrap();
-        println!("{:?}", results);
+        println!("{results:?}");
         assert_eq!(2, results.len());
     }
 
@@ -590,7 +590,7 @@ mod tests {
         let word_list = vec!["inch", "chin", "chess", "chortle"];
         let input = "ABC;CD;|ABCD|=7".to_string();
         let results = solve_equation(&input, &word_list, 5).unwrap();
-        println!("{:?}", results);
+        println!("{results:?}");
         let mut inch_bindings = Bindings::default();
         inch_bindings.set('A', "i".to_string());
         inch_bindings.set('B', "n".to_string());
