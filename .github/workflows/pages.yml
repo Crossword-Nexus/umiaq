@@ -51,6 +51,15 @@ jobs:
         run: |
           touch web/.nojekyll
 
+      # Build and stage Rust docs
+      - name: Build Rust docs
+        run: cargo doc --no-deps
+
+      - name: Copy docs into web/docs
+        run: |
+          mkdir -p web/docs
+          cp -r target/doc/* web/docs/
+
       - name: Upload site artifact
         # Package everything in web/ (index.html, pkg/, css, data, etc.)
         # as an artifact for the deploy job
