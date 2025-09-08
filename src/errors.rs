@@ -61,9 +61,9 @@ impl fmt::Display for MaterializationError {
     }
 }
 
-impl<'a> NomParseError<&'a str> for ParseError {
+impl<'a> NomParseError<&'a str> for Box<ParseError> {
     fn from_error_kind(_input: &'a str, kind: ErrorKind) -> Self {
-        ParseError::NomError(kind)
+        Box::new(ParseError::NomError(kind))
     }
 
     fn append(_input: &'a str, _kind: ErrorKind, other: Self) -> Self {

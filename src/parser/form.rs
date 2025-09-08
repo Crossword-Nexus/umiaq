@@ -18,7 +18,7 @@ use crate::parser::utils::letter_to_num;
 use super::prefilter::{form_to_regex_str, get_regex};
 
 /// Parser result type: input, output, with our custom `ParseError`
-pub type PResult<'a, O> = IResult<&'a str, O, ParseError>;
+pub type PResult<'a, O> = IResult<&'a str, O, Box<ParseError>>;
 
 /// Represents a single parsed token (component) from a "form" string.
 #[derive(Debug, Clone, PartialEq)]
@@ -164,7 +164,7 @@ impl FromStr for ParsedForm {
                 }
                 Err(nom::Err::Failure(e)) => {
                     // bubble up the specific ParseError
-                    return Err(Box::new(e));
+                    return Err(e);
                 }
                 Err(_) => {
                     // fall back to generic ParseFailure for other cases
@@ -214,7 +214,7 @@ fn parser_one_char_inner<'a>(
 
 /// Expand a string like "abcx-z" into a set of characters.
 /// Supports ranges like a-e (inclusive).
-fn expand_charset(body: &str) -> Result<HashSet<char>, ParseError> {
+fn expand_charset(body: &str) -> Result<HashSet<char>, Box<ParseError>> {
     let mut chars = HashSet::new();
     let mut iter = body.chars().peekable();
 
@@ -223,8 +223,8 @@ fn expand_charset(body: &str) -> Result<HashSet<char>, ParseError> {
             iter.next(); // consume '-'
             match iter.next() {
                 Some(end) if start <= end => chars.extend(start..=end),
-                Some(end) => return Err(ParseError::InvalidCharsetRange(start, end)),
-                None => return Err(ParseError::DanglingCharsetDash),
+                Some(end) => return Err(Box::new(ParseError::InvalidCharsetRange(start, end))),
+                None => return Err(Box::new(ParseError::DanglingCharsetDash)),
             }
         } else {
             chars.insert(start);
@@ -322,7 +322,7 @@ mod tests {
     #[test]
     fn test_expand_charset_dangling_dash() {
         let err = expand_charset("a-").unwrap_err();
-        assert!(matches!(err, ParseError::DanglingCharsetDash));
+        assert!(matches!(*err,ParseError::DanglingCharsetDash));
     }
 
     #[test]
