@@ -5,7 +5,7 @@
 //! - Fast, ad-hoc timing for a handful of patterns on *your* machine.
 //! - Loads the word list once, then runs each pattern several times and reports the median.
 //! - Always requests 100 results per pattern (by design, to keep comparisons simple).
-//! - Optionally shows a *static* time per pattern (from Qat), and the delta %.
+//! - Optionally shows a *static* time per pattern and the delta %.
 //!
 //! HOW TO RUN
 //! ----------
@@ -18,7 +18,7 @@
 //! -----
 //! - This is *not* Criterion. It's quick and convenient, not statistically rigorous.
 //! - Use the same machine and `--release` for more comparable numbers.
-//! - Patterns + optional Qat times live in `cases()` below.
+//! - Patterns + optional static times live in `cases()` below.
 //! - I/O (printing) is kept outside the timed section.
 //! - One warm-up run per pattern is done (not included in timing).
 //! - We report the *median* over repeats (more robust than mean for small _N_).
@@ -26,13 +26,12 @@
 use clap::Parser;
 use std::hint::black_box;
 use std::time::Instant;
-
 use umiaq::bindings::Bindings;
 use umiaq::solver;
 use umiaq::word_list;
 
 /// Simple local benchmark runner: load word list once, time several patterns.
-/// Each case is a pattern + optional Qat time; name = pattern; always requests 100 results.
+/// Each case is a pattern + optional static time; name = pattern; always requests 100 results.
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
@@ -65,30 +64,30 @@ struct Cli {
 /// Keeping this constant across cases makes local comparisons simpler.
 const NUM_RESULTS: usize = 100;
 
-/// A benchmark case: the Umiaq pattern and an optional Qat time (seconds).
-/// Set `qat_s` by running the query in Qat against the Broda list.
+/// A benchmark case: the Umiaq pattern and an optional static time (seconds).
+/// Set `static_s` by running the query in an alternate tool against the Broda list.
 #[derive(Clone)]
 struct Case {
     pattern: &'static str,
-    qat_s: Option<f64>,
+    static_s: Option<f64>,
 }
 
 /// Edit/add new patterns here. The summary will display the pattern text as the "name".
-/// The `qat_s` values below are results from Qat
+/// The `static_s` values below are results from an alternate tool
 fn get_cases() -> Vec<Case> {
     vec![
-        Case { pattern: "AB;BA;|A|=2;|B|=2;!=AB", qat_s: Some(0.260) },
+        Case { pattern: "AB;BA;|A|=2;|B|=2;!=AB", static_s: Some(0.260) },
         // Note: this one is slow (for now?)
-        Case { pattern: "Atime;Btime;Ctime;ABC", qat_s: Some(6.240) },
-        Case { pattern: "AB;CD;AC;BD", qat_s: Some(0.300) },
-        Case { pattern: "A*BCD;AC*BD;DCB*A", qat_s: Some(4.100) },
-        Case { pattern: "AkB;AlB", qat_s: Some(2.360) },
-        Case { pattern: "l*x", qat_s: Some(0.420) },
+        Case { pattern: "Atime;Btime;Ctime;ABC", static_s: Some(6.240) },
+        Case { pattern: "AB;CD;AC;BD", static_s: Some(0.300) },
+        Case { pattern: "A*BCD;AC*BD;DCB*A", static_s: Some(4.100) },
+        Case { pattern: "AkB;AlB", static_s: Some(2.360) },
+        Case { pattern: "l*x", static_s: Some(0.420) },
         Case {
             pattern: "ABCDEFGHIJKLMN;|ABCDEFGHIJKLMN|=14;!=ABCDEFGHIJKLMN",
-            qat_s: Some(0.340)
+            static_s: Some(0.340)
         },
-        Case { pattern: "A@B;A#B;!=AB;B=(g.*)", qat_s: Some(24.420) },
+        Case { pattern: "A@B;A#B;!=AB;B=(g.*)", static_s: Some(24.420) },
     ]
 }
 
@@ -126,7 +125,7 @@ fn main() -> std::io::Result<()> {
     let words_ref: Vec<&str> = wl.entries.iter().map(String::as_str).collect();
 
     let cases = get_cases();
-    // Store (pattern, median_seconds, solutions_last_run, qat_s, delta_pct_opt) for the summary.
+    // Store (pattern, median_seconds, solutions_last_run, static_s, delta_pct_opt) for the summary.
     let mut summary: Vec<SummaryRow> = Vec::with_capacity(cases.len());
 
     for (idx, case) in cases.iter().enumerate() {
@@ -170,13 +169,13 @@ fn main() -> std::io::Result<()> {
         // Optionally print a few solutions from the *last* run (outside timing).
         if cli.print_limit > 0 && !last_solutions.is_empty() {
             for sol in last_solutions.iter().take(cli.print_limit) {
-                let display = solver::solution_to_string(sol);
+                let display = solver::solution_to_string(sol).map_err(|pe| *pe)?;
                 println!("{display}");
             }
         }
 
-        // Compute delta % vs. Qat value, if provided.
-        let delta_pct = case.qat_s.and_then(|exp| {
+        // Compute delta % vs. static value, if provided.
+        let delta_pct = case.static_s.and_then(|exp| {
             if exp > 0.0 {
                 Some((med - exp) / exp * 100.0)
             } else {
@@ -190,8 +189,8 @@ fn main() -> std::io::Result<()> {
             cli.num_repeats,
             last_solutions.len(),
             pluralizer(last_solutions.len(), "solution".into(), None),
-            match (case.qat_s, delta_pct) {
-                (Some(exp), Some(dp)) => format!(" (Qat {exp:.3}s, Δ = {dp:+.1}%)"),
+            match (case.static_s, delta_pct) {
+                (Some(exp), Some(dp)) => format!(" (static {exp:.3}s, Δ = {dp:+.1}%)"),
                 _ => String::new(),
             }
         );
@@ -200,7 +199,7 @@ fn main() -> std::io::Result<()> {
             pattern.to_string(),
             med,
             last_solutions.len(),
-            case.qat_s,
+            case.static_s,
             delta_pct,
         ));
     }
@@ -209,13 +208,13 @@ fn main() -> std::io::Result<()> {
     eprintln!("\n==== Summary ====");
     eprintln!(
         "{:<MAX_PATTERN_LEN$} | {:>10} | {:>11} | {:>10} | {:>8}",
-        "pattern", "median (s)", "# solutions", "qat (s)", "Δ %"
+        "pattern", "median (s)", "# solutions", "static (s)", "Δ %"
     );
     eprintln!(
         "{:-<MAX_PATTERN_LEN$}-+-{:-<10}-+-{:-<11}-+-{:-<10}-+-{:-<8}",
         "", "", "", "", ""
     );
-    for (pat, med, num_solutions, qat, delta_pct) in &summary {
+    for (pat, med, num_solutions, static_t, delta_pct) in &summary {
         // Trim very long patterns for readability in the summary.
         let display = if pat.len() > MAX_PATTERN_LEN {
             // "- 1" for the "…"
@@ -223,12 +222,12 @@ fn main() -> std::io::Result<()> {
         } else {
             pat.clone()
         };
-        let qat_str = qat.map(|x| format!("{x:.1}")).unwrap_or_else(|| "—".into());
+        let static_str = static_t.map(|x| format!("{x:.1}")).unwrap_or_else(|| "—".into());
         let dp_str = delta_pct
             .map(|x| format!("{x:+.1}"))
             .unwrap_or_else(|| "—".into());
         eprintln!(
-            "{display:<MAX_PATTERN_LEN$} | {med:>10.3} | {num_solutions:>11} | {qat_str:>10} | {dp_str:>8}"
+            "{display:<MAX_PATTERN_LEN$} | {med:>10.3} | {num_solutions:>11} | {static_str:>10} | {dp_str:>8}"
         );
     }
 

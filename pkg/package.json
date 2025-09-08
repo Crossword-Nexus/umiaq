@@ -1,7 +1,7 @@
 {
   "name": "umiaq",
   "type": "module",
-  "description": "A Qat-like equation solver",
+  "description": "A word-equation solver",
   "version": "0.1.0",
   "license": "MIT",
   "repository": {

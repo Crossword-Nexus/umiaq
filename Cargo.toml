@@ -2,7 +2,7 @@
 name = "umiaq"
 version = "0.1.0"
 edition = "2024"
-description = "A Qat-like equation solver"
+description = "A word-equation solver"
 repository = "https://github.com/Crossword-Nexus/umiaq"
 license = "MIT"
 default-run = "umiaq_cli"

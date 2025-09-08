@@ -47,7 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let solve_secs = t_solve.elapsed().as_secs_f64();
 
     for solution in &solutions {
-        println!("{}", solver::solution_to_string(solution));
+        println!("{}", solver::solution_to_string(solution)?);
     }
 
     eprintln!(
