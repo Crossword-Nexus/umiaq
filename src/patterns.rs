@@ -82,7 +82,7 @@ static NEQ_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^!=([A-Z]+)$").un
 /// - Reordering picks `"ABC"` first, then `"BC"`, then `"C"`.
 /// - `lookup_keys`:
 ///     * for `"ABC"`: `None` (first form has nothing prior)
-///     * for `"BC"`: `Some({'B','C'})` (overlap with already-chosen variables)
+///     * for `"BC"`: `Some({'B','C'})` (default to original order)
 ///     * for `"C"`:  `Some({'C'})`
 pub struct Pattern {
     /// The raw string representation of the pattern, such as "AB" or "/triangle"
@@ -300,7 +300,7 @@ impl Patterns {
                         p.variables.len(),
                         p.constraint_score(),
                         Reverse(p.is_deterministic),
-                        p.original_index,
+                        Reverse(p.original_index),
                     )
                 } else {
                     // Subsequent picks: fewer new vars is better,
@@ -309,7 +309,7 @@ impl Patterns {
                         usize::MAX - p.variables.difference(&found_vars).count(), // TODO? avoid MAX
                         p.constraint_score(),
                         Reverse(p.is_deterministic),
-                        p.original_index,
+                        Reverse(p.original_index),
                     )
                 }
             };
@@ -580,16 +580,21 @@ mod tests {
     }
 
     #[test]
+    /// Test that ordering leaves the list unchanged when no reordering is needed.
     fn test_ordered_patterns() {
         let input = "ABC;BC;C";
         let patterns = input.parse::<Patterns>().unwrap();
 
-        let vars: Vec<HashSet<char>> = patterns.ordered_list.iter().map(|p| p.variables.clone()).collect();
+        let actual: Vec<String> = patterns
+            .ordered_list
+            .iter()
+            .map(|p| p.raw_string.clone())
+            .collect();
 
-        // The first element should have the most variables
-        assert!((&vars[0]).len() >= (&vars[1]).len());
-        // Note: the order of the other two is irrelevant, since neither contributes a new variable
+        let expected = vec!["ABC".to_string(), "BC".to_string(), "C".to_string()];
+        assert_eq!(actual, expected);
     }
+
 
     #[test]
     fn test_parse_length_range() {
