@@ -251,7 +251,7 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
             let (li, ui) = vcs.bounds(v);
             sum_min += li;
 
-            // Track finite sum of maxes; if any is ∞, the group max is unbounded.
+            // Track finite sum of maxes; if any is unbounded, the group max is unbounded.
             sum_max_opt = sum_max_opt.and_then(|a| ui.map(|u| a + u));
 
             mins.push((v, li));
@@ -282,7 +282,7 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
                     .map(|&w| vcs.bounds(w).0)
                     .sum();
 
-                // Σ other finite maxes (None if any is ∞)
+                // Σ other finite maxes (None if any is unbounded)
                 let mut sum_other_max_opt: Option<usize> = Some(0);
                 for &w in jc.vars.iter().filter(|&&w| w != v) {
                     let (_, w_ui) = vcs.bounds(w);

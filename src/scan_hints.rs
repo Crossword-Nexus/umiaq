@@ -5,7 +5,7 @@
 // This module computes (min_len, max_len?) for a single ParsedForm, taking into account:
 //   • fixed tokens in the form (i.e., literals, '.', '@', '#', [charset], /anagram)
 //   • frequencies of variables that appear in the form (Var, RevVar)
-//   • unary per-variable bounds from VarConstraints (normalized: min≥1, max=∞ if unset)
+//   • unary per-variable bounds from VarConstraints (normalized: min≥1, max is unbounded if unset)
 //   • joint group constraints from JointConstraints that refer ONLY to vars
 //     present in THIS form (e.g., "|AB|=6").
 //
@@ -48,6 +48,7 @@ pub struct PatternLenHints {
     pub max_len: Option<usize>,
 }
 
+// TODO? always use this for bounds pairs (i.e., instead of `(usize, Option<usize>)`)
 /// Simple lower/upper bound for a variable's length.
 ///
 /// - `li`: minimum length (always finite)
@@ -115,7 +116,7 @@ impl FormContext<'_> {
             return (weighted_min, weighted_max);
         }
 
-        // Build rows and Σ li / Σ ui (finite-only)
+        // Build rows, Σ li, and Σ ui (finite only)
         let mut rows: Vec<Row> = Vec::with_capacity(gvars.len());
         let mut sum_li: usize = 0;
         let mut sum_ui_opt: Option<usize> = Some(0);
@@ -141,7 +142,7 @@ impl FormContext<'_> {
         // ---- Account for group vars that are NOT in this form ------------------
         // They eat into the group's total before we allocate to in-form vars.
         // outside_form_min = Σ (min of vars outside the form)
-        // outside_form_max_opt = Σ (finite max of vars outside the form), None if any is ∞
+        // outside_form_max_opt = Σ (finite max of vars outside the form), None if any is unbounded
         let (outside_form_min, outside_form_max_opt) = g
             .vars
             .iter()
@@ -253,7 +254,7 @@ fn group_from_joint(jc: &JointConstraint) -> Option<GroupLenConstraint> {
 /// If `minimize` is true, distribute remaining length to cheaper weights first;
 /// otherwise to most expensive first.
 ///
-/// `sum_li` is Σ li; `sum_ui_opt` is Σ ui if all ui are finite, else None (∞).
+/// `sum_li` is Σ li; `sum_ui_opt` is Σ ui if all ui are finite, else None (unbounded).
 fn weighted_extreme_for_t(
     rows: &[Row],
     sum_li: usize,
@@ -631,7 +632,7 @@ mod tests {
 
         // With |AB|=6 and only A present in this form:
         // - outside_form_min = min(B)
-        // - outside_form_max may be ∞ (default), so tmin_eff becomes 0.
+        // - outside_form_max may be unbounded (default), so tmin_eff becomes 0.
         // Here the normalized defaults are A∈[1,∞), B∈[1,∞) → we get
         // min_len = 1 (from A's min), and an effective upper bound of 5 (6 - min(B)).
         let expected = PatternLenHints {
