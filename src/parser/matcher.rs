@@ -5,6 +5,26 @@ use crate::umiaq_char::UmiaqChar;
 
 use super::form::{FormPart, ParsedForm};
 
+/// Check if `prefix` matches the start of `chars`.
+///
+/// If `prefix` is indeed a prefix of `chars`, return a slice pointing to
+/// the remaining portion of `chars` (the part after the prefix).
+/// Otherwise, return `None`.
+fn is_prefix<'a>(prefix: &str, chars: &'a [char]) -> Option<&'a [char]> {
+    // Ensure we have enough characters left to match the prefix
+    if chars.len() >= prefix.len()
+        // Compare each char of `chars` with each char of `prefix`
+        && chars.iter().take(prefix.len()).copied().eq(prefix.chars())
+    {
+        // Success: return the suffix of `chars` that follows the prefix
+        Some(&chars[prefix.len()..])
+    } else {
+        // Failure: not a prefix
+        None
+    }
+}
+
+
 /// Validate whether a candidate binding value is allowed under a `VarConstraint`.
 ///
 /// Checks:
@@ -121,7 +141,7 @@ fn match_equation_internal(
         match first {
             FormPart::Lit(s) => {
                 // Literal match (case-insensitive, stored lowercase)
-                is_prefix(s, chars, rest, hp)
+                is_prefix(s, chars).map_or(false, |rest_chars| helper(rest_chars, rest, hp))
             }
             FormPart::Star => {
                 // Zero-or-more wildcard; try all possible splits
@@ -145,7 +165,8 @@ fn match_equation_internal(
             FormPart::Var(var_name) | FormPart::RevVar(var_name) => {
                 if let Some(bound_val) = hp.bindings.get(*var_name) {
                     // Already bound: must match exactly
-                    is_prefix(&get_reversed_or_not(first, bound_val), chars, rest, hp)
+                    is_prefix(&get_reversed_or_not(first, bound_val), chars)
+                        .map_or(false, |rest_chars| helper(rest_chars, rest, hp))
                 } else {
                     // Not bound yet: try binding to all possible lengths
                     // To prune the search space, apply length constraints up front
@@ -199,27 +220,6 @@ fn match_equation_internal(
                     }
                 }
             }
-        }
-    }
-
-    /// Returns true if `prefix` is a prefix of `chars`
-    fn is_prefix(
-        prefix: &str,
-        chars: &[char],
-        rest: &[FormPart],
-        helper_params: &mut HelperParams,
-    ) -> bool {
-        let prefix_len = prefix.len();
-        if chars.len() >= prefix_len
-            && chars[..prefix_len]
-                .iter()
-                .copied()
-                .zip(prefix.chars())
-                .all(|(a, b)| a == b)
-        {
-            helper(&chars[prefix_len..], rest, helper_params)
-        } else {
-            false
         }
     }
 
