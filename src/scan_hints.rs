@@ -30,6 +30,15 @@ use crate::constraints::{VarConstraint, VarConstraints};
 use crate::joint_constraints::{JointConstraint, JointConstraints, RelMask};
 use crate::parser::{FormPart, ParsedForm};
 
+/// A joint constraint over variables *restricted to this form* considered
+/// as a contiguous total length bound for their raw lengths (not weighted).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GroupLenConstraint {
+    pub vars: Vec<char>,          // e.g., ['A','B'] for |AB|
+    pub total_min: usize,         // inclusive
+    pub total_max: Option<usize>, // inclusive, None => unbounded
+}
+
 /// Resulting per-form hints.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PatternLenHints {
@@ -37,6 +46,169 @@ pub struct PatternLenHints {
     pub min_len: usize,
     /// Upper bound on the form's length. `None` = unbounded above.
     pub max_len: Option<usize>,
+}
+
+/// Simple lower/upper bound for a variable's length.
+///
+/// - `li`: minimum length (always finite)
+/// - `ui`: optional maximum length (`None` means unbounded)
+#[derive(Clone, Copy, Debug)]
+struct Bounds {
+    li: usize,
+    ui: Option<usize>
+}
+
+/// Weighted row used in group constraint calculations.
+///
+/// - `w`: weight = number of times this variable appears in the form
+/// - `b`: per-variable bounds (`Bounds`)
+#[derive(Clone, Copy)]
+struct Row {
+    w: usize,
+    b: Bounds,
+}
+
+/// Per-form environment shared when applying group constraints.
+///
+/// This bundles everything that would otherwise need to be passed as
+/// multiple arguments into `tighten_with_group`, keeping the API clean
+struct FormContext<'a> {
+    /// All variables present in this form (sorted, deduped).
+    vars: &'a [char],
+    /// Frequency of each variable in this form (number of times it appears).
+    var_frequency: &'a HashMap<char, usize>,
+    /// Map of per-variable unary bounds `(li, ui)` for vars in this form.
+    bounds_map: &'a HashMap<char, Bounds>,
+    /// Total contribution of all fixed (non-variable) tokens in this form.
+    fixed_base: usize,
+    /// Global `VarConstraints` for the entire equation.
+    vcs: &'a VarConstraints,
+    /// Whether this form contains a `*` token (implies unbounded upper length).
+    has_star: bool,
+}
+
+impl FormContext<'_> {
+    /// Tighten the current `(weighted_min, weighted_max)` bounds with
+    /// respect to a single `GroupConstraint`.
+    ///
+    /// Returns the updated `(min, max)` pair.
+    fn tighten_with_group(
+        &self,
+        g: &GroupLenConstraint,
+        weighted_min: usize,
+        weighted_max: Option<usize>,
+    ) -> (usize, Option<usize>) {
+        // Skip if group has no vars at all
+        if g.vars.is_empty() {
+            return (weighted_min, weighted_max);
+        }
+
+        // Intersect with the form's variables (only consider vars that appear in this form)
+        let mut gvars: Vec<char> = g
+            .vars
+            .iter()
+            .copied()
+            .filter(|v| self.var_frequency.contains_key(v))
+            .collect();
+        gvars.sort_unstable();
+        if gvars.is_empty() {
+            return (weighted_min, weighted_max);
+        }
+
+        // Build rows and Σ li / Σ ui (finite-only)
+        let mut rows: Vec<Row> = Vec::with_capacity(gvars.len());
+        let mut sum_li: usize = 0;
+        let mut sum_ui_opt: Option<usize> = Some(0);
+        for &v in &gvars {
+            let b = self.bounds_map[&v];
+            rows.push(Row {
+                w: *self.var_frequency.get(&v).unwrap_or(&0),
+                b,
+            });
+            sum_li += b.li;
+            sum_ui_opt = if b.ui.is_none() {
+                None
+            } else {
+                sum_ui_opt.and_then(|a| b.ui.map(|u| a + u))
+            };
+        }
+
+        let weighted_min_for_t =
+            |t: usize| weighted_extreme_for_t(&rows, sum_li, sum_ui_opt, t, Extreme::Min);
+        let weighted_max_for_t =
+            |t: usize| weighted_extreme_for_t(&rows, sum_li, sum_ui_opt, t, Extreme::Max);
+
+        // ---- Account for group vars that are NOT in this form ------------------
+        // They eat into the group's total before we allocate to in-form vars.
+        // outside_form_min = Σ (min of vars outside the form)
+        // outside_form_max_opt = Σ (finite max of vars outside the form), None if any is ∞
+        let (outside_form_min, outside_form_max_opt) = g
+            .vars
+            .iter()
+            .filter(|v| !self.var_frequency.contains_key(v))
+            .fold((0usize, Some(0usize)), |(min_acc, max_acc_opt), &v| {
+                let (li, ui) = self.vcs.bounds(v);
+                let min_acc = min_acc + li;
+                let max_acc_opt = ui.and_then(|u| max_acc_opt.map(|a| a + u));
+                (min_acc, max_acc_opt)
+            });
+
+        // Effective totals for the in-form part of this group:
+        // - For the LOWER bound, outside takes as much as possible (use outside_form_max if finite).
+        // - For the UPPER bound, outside takes as little as possible (use outside_form_min).
+        // re 0: if outside can be arbitrarily large, in-form lower could be 0
+        let tmin_eff =
+            outside_form_max_opt.map_or(0, |of_max| g.total_min.saturating_sub(of_max));
+        let tmax_eff_opt = g
+            .total_max
+            .map(|tmax| tmax.saturating_sub(outside_form_min));
+
+        // Evaluate endpoints of the adjusted interval for in-form vars.
+        let gmin_w = weighted_min_for_t(tmin_eff);
+        let gmax_w = tmax_eff_opt.and_then(weighted_max_for_t);
+
+        // Combine with outside-of-group contributions (vars in this form but not in this group)
+        let outside: Vec<char> = self
+            .vars
+            .iter()
+            .copied()
+            .filter(|v| !gvars.contains(v))
+            .collect();
+
+        let outside_min = outside
+            .iter()
+            .map(|&v| *self.var_frequency.get(&v).unwrap_or(&0) * self.bounds_map[&v].li)
+            .sum::<usize>();
+
+        let outside_max_opt = if self.has_star {
+            None
+        } else {
+            outside.iter().copied().try_fold(0usize, |acc, v| {
+                self.bounds_map[&v].ui.map(|u| {
+                    acc + *self.var_frequency.get(&v).unwrap_or(&0) * u
+                })
+            })
+        };
+
+        let mut new_min = weighted_min;
+        let mut new_max = weighted_max;
+
+        if let Some(gmin) = gmin_w {
+            new_min = new_min.max(self.fixed_base + gmin + outside_min);
+        }
+
+        // Candidate upper bound from this group + outside
+        let candidate_upper = match (gmax_w, outside_max_opt) {
+            (Some(gm), Some(om)) => Some(self.fixed_base + gm + om),
+            _ => None,
+        };
+
+        if let Some(cand) = candidate_upper {
+            new_max = Some(new_max.map_or(cand, |cur| cur.min(cand)));
+        }
+
+        (new_min, new_max)
+    }
 }
 
 /// Small enum for `weighted_extreme_for_t`
@@ -48,15 +220,6 @@ impl PatternLenHints {
     pub(crate) fn is_word_len_possible(&self, len: usize) -> bool {
         len >= self.min_len && self.max_len.is_none_or(|max_len| len <= max_len)
     }
-}
-
-/// A joint constraint over variables *restricted to this form* considered
-/// as a contiguous total length bound for their raw lengths (not weighted).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GroupLenConstraint {
-    pub vars: Vec<char>,          // e.g., ['A','B'] for |AB|
-    pub total_min: usize,         // inclusive
-    pub total_max: Option<usize>, // inclusive, None => unbounded
 }
 
 /// Convert a crate-level `JointConstraint` to a `GroupLenConstraint` interval.
@@ -85,6 +248,73 @@ fn group_from_joint(jc: &JointConstraint) -> Option<GroupLenConstraint> {
     }
 }
 
+/// Compute the weighted extremal sum at fixed total `t` over the rows,
+/// where each row contributes `w * len_i`, and `len_i ∈ [li, ui]`.
+/// If `minimize` is true, distribute remaining length to cheaper weights first;
+/// otherwise to most expensive first.
+///
+/// `sum_li` is Σ li; `sum_ui_opt` is Σ ui if all ui are finite, else None (∞).
+fn weighted_extreme_for_t(
+    rows: &[Row],
+    sum_li: usize,
+    sum_ui_opt: Option<usize>, // Some(sum_ui) if ALL ui are finite; None if ANY ui is "unbounded"
+    t: usize,
+    extreme: Extreme,
+) -> Option<usize> {
+    // Feasibility checks
+    if t < sum_li {
+        return None;
+    }
+    if let Some(su) = sum_ui_opt && t > su {
+        return None;
+    }
+
+    // Base cost at lower bounds
+    let base_weighted = rows.iter().map(|r| r.w.saturating_mul(r.b.li)).sum::<usize>();
+    let mut rem = t - sum_li;
+    if rem == 0 {
+        return Some(base_weighted);
+    }
+
+    // Greedy: assign remaining letters to cheapest (Min) or priciest (Max) first.
+    // We still honor each row's individual capacity (ui - li). A row is "unbounded"
+    // iff r.ui == VarConstraint::DEFAULT_MAX.
+    let mut order: Vec<&Row> = rows.iter().collect();
+    match extreme {
+        Extreme::Min => order.sort_unstable_by_key(|r| r.w),              // cheapest first
+        Extreme::Max => order.sort_unstable_by_key(|r| std::cmp::Reverse(r.w)),     // priciest first
+    }
+
+    let mut extra = 0usize;
+    for r in order {
+        // Per-row capacity above li
+        let cap = if let Some(u) = r.b.ui {
+            u.saturating_sub(r.b.li).min(rem)
+        } else {
+            rem
+        };
+
+        if cap > 0 {
+            extra = extra.saturating_add(r.w.saturating_mul(cap));
+            rem -= cap;
+            // Invariant: `rem` never goes negative because `cap <= rem` at each step.
+            // A debug_assert at the end checks that rem reaches 0 if t was feasible.
+            if rem == 0 {
+                break;
+            }
+        }
+    }
+
+    // If we reach here with rem != 0, `t` wasn't feasible to begin with.
+    // TODO: throw an error?
+    if rem != 0 {
+        return None;
+    }
+
+    debug_assert_eq!(rem, 0);
+    Some(base_weighted.saturating_add(extra))
+}
+
 /// Compute per-form hints from a `ParsedForm` *and* the equation's constraints.
 /// These are just length bounds for a parsed form
 ///
@@ -96,11 +326,6 @@ pub(crate) fn form_len_hints_pf(
     vcs: &VarConstraints,
     jcs: &JointConstraints,
 ) -> PatternLenHints {
-    #[derive(Clone, Copy, Debug)]
-    struct Bounds {
-        li: usize,
-        ui: Option<usize>
-    }
 
     // 1. Scan tokens: accumulate fixed_base, detect '*', and count var frequencies
     let mut fixed_base = 0;
@@ -162,176 +387,18 @@ pub(crate) fn form_len_hints_pf(
     let mut weighted_max = sum_opt.map(|s| fixed_base + s);
 
     // 3. Tighten with group constraints valid for this form
+    let ctx = FormContext {
+        vars: &vars,
+        var_frequency: &var_frequency,
+        bounds_map,
+        fixed_base,
+        vcs,
+        has_star,
+    };
     for g in &group_constraints_for_form(parts, jcs) {
-        #[derive(Clone, Copy)]
-        struct Row {
-            w: usize,
-            li: usize,
-            ui: Option<usize>
-        }
-
-        /// Compute the weighted extremal sum at fixed total `t` over the rows,
-        /// where each row contributes `w * len_i`, and `len_i ∈ [li, ui]`.
-        /// If `minimize` is true, distribute remaining length to cheaper weights first;
-        /// otherwise to most expensive first.
-        ///
-        /// `sum_li` is Σ li; `sum_ui_opt` is Σ ui if all ui are finite, else None (∞).
-        fn weighted_extreme_for_t(
-            rows: &[Row],
-            sum_li: usize,
-            sum_ui_opt: Option<usize>, // Some(sum_ui) if ALL ui are finite; None if ANY ui is "unbounded"
-            t: usize,
-            extreme: Extreme,
-        ) -> Option<usize> {
-            // Feasibility checks
-            if t < sum_li {
-                return None;
-            }
-            if let Some(su) = sum_ui_opt && t > su {
-                return None;
-            }
-
-            // Base cost at lower bounds
-            let base_weighted = rows.iter().map(|r| r.w.saturating_mul(r.li)).sum::<usize>();
-            let mut rem = t - sum_li;
-            if rem == 0 {
-                return Some(base_weighted);
-            }
-
-            // Greedy: assign remaining letters to cheapest (Min) or priciest (Max) first.
-            // We still honor each row's individual capacity (ui - li). A row is "unbounded"
-            // iff r.ui == VarConstraint::DEFAULT_MAX.
-            let mut order: Vec<&Row> = rows.iter().collect();
-            match extreme {
-                Extreme::Min => order.sort_unstable_by_key(|r| r.w),              // cheapest first
-                Extreme::Max => order.sort_unstable_by_key(|r| std::cmp::Reverse(r.w)),     // priciest first
-            }
-
-            let mut extra = 0usize;
-            for r in order {
-                // Per-row capacity above li
-                let cap = if let Some(u) = r.ui {
-                    u.saturating_sub(r.li).min(rem)
-                } else {
-                    rem
-                };
-
-                if cap > 0 {
-                    extra = extra.saturating_add(r.w.saturating_mul(cap));
-                    rem -= cap;
-                    // Invariant: `rem` never goes negative because `cap <= rem` at each step.
-                    // A debug_assert at the end checks that rem reaches 0 if t was feasible.
-                    if rem == 0 {
-                        break;
-                    }
-                }
-            }
-
-            // If we reach here with rem != 0, `t` wasn't feasible to begin with.
-            // TODO: throw an error?
-            if rem != 0 {
-                return None;
-            }
-
-            debug_assert_eq!(rem, 0);
-            Some(base_weighted.saturating_add(extra))
-        }
-
-        if g.vars.is_empty() {
-            continue;
-        }
-
-        // Intersect with the form's variables (only consider vars that appear in this form)
-        let mut gvars: Vec<char> = g
-            .vars
-            .iter()
-            .copied()
-            .filter(|v| var_frequency.contains_key(v))
-            .collect();
-        gvars.sort_unstable();
-        if gvars.is_empty() {
-            continue;
-        }
-
-        // Build rows and Σ li / Σ ui (finite-only)
-        let mut rows: Vec<Row> = Vec::with_capacity(gvars.len());
-        let mut sum_li: usize = 0;
-        let mut sum_ui_opt: Option<usize> = Some(0);
-        for &v in &gvars {
-            let b = bounds_map[&v];
-            rows.push(Row {
-                w: get_weight(v),
-                li: b.li,
-                ui: b.ui
-            });
-            sum_li += b.li;
-            sum_ui_opt = if b.ui.is_none() {
-                None
-            } else {
-                sum_ui_opt.and_then(|a| b.ui.map(|u| a + u))
-            };
-        }
-
-        let weighted_min_for_t =
-            |t: usize| weighted_extreme_for_t(&rows, sum_li, sum_ui_opt, t, Extreme::Min);
-        let weighted_max_for_t =
-            |t: usize| weighted_extreme_for_t(&rows, sum_li, sum_ui_opt, t, Extreme::Max);
-
-        // ---- Account for group vars that are NOT in this form ------------------
-        // They eat into the group's total before we allocate to in-form vars.
-        // outside_form_min = Σ (min of vars outside the form)
-        // outside_form_max_opt = Σ (finite max of vars outside the form), None if any is ∞
-        let (outside_form_min, outside_form_max_opt) = g
-            .vars
-            .iter()
-            .filter(|v| !var_frequency.contains_key(v))
-            .fold((0usize, Some(0usize)), |(min_acc, max_acc_opt), &v| {
-                let (li, ui) = vcs.bounds(v);
-                let min_acc = min_acc + li;
-                let max_acc_opt = ui.and_then(|u| max_acc_opt.map(|a| a + u));
-                (min_acc, max_acc_opt)
-            });
-
-        // Effective totals for the in-form part of this group:
-        // - For the LOWER bound, outside takes as much as possible (use outside_form_max if finite).
-        // - For the UPPER bound, outside takes as little as possible (use outside_form_min).
-        // re 0: if outside can be arbitrarily large, in-form lower could be 0
-        let tmin_eff = outside_form_max_opt.map_or(0, |of_max| g.total_min.saturating_sub(of_max));
-        let tmax_eff_opt = g
-            .total_max
-            .map(|tmax| tmax.saturating_sub(outside_form_min));
-
-        // Evaluate endpoints of the adjusted interval for in-form vars.
-        let gmin_w = weighted_min_for_t(tmin_eff);
-        let gmax_w = tmax_eff_opt.and_then(weighted_max_for_t);
-
-        // Combine with outside-of-group contributions (vars in this form but not in this group)
-        let outside: Vec<char> = vars.iter().copied().filter(|v| !gvars.contains(v)).collect();
-
-        let outside_min = outside
-            .iter()
-            .map(|&v| get_weight(v) * bounds_map[&v].li)
-            .sum::<usize>();
-
-        let outside_max_opt = sum_weighted_ui_opt(&outside);
-
-        if let Some(gmin) = gmin_w {
-            weighted_min = weighted_min.max(fixed_base + gmin + outside_min);
-        }
-
-        // Candidate upper bound from this group + outside
-        let candidate_upper = match (gmax_w, outside_max_opt) {
-            (Some(gm), Some(om)) => Some(fixed_base + gm + om),
-            _ => None,
-        };
-
-        // Combine with the running upper bound:
-        weighted_max = match (weighted_max, candidate_upper) {
-            (Some(cur), Some(cand)) => Some(cur.min(cand)),
-            (None, Some(cand)) => Some(cand),
-            (Some(cur), None) => Some(cur),
-            (None, None) => None,
-        };
+        let (new_min, new_max) = ctx.tighten_with_group(g, weighted_min, weighted_max);
+        weighted_min = new_min;
+        weighted_max = new_max;
     }
 
     PatternLenHints {
