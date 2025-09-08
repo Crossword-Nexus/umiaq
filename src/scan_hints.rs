@@ -89,7 +89,7 @@ struct FormContext<'a> {
 
 impl FormContext<'_> {
     /// Tighten the current `(weighted_min, weighted_max)` bounds with
-    /// respect to a single `GroupConstraint`.
+    /// respect to a single `GroupLenConstraint`.
     ///
     /// Returns the updated `(min, max)` pair.
     fn tighten_with_group(
