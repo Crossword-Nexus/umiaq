@@ -612,7 +612,7 @@ mod tests {
         assert_eq!((VarConstraint::DEFAULT_MIN, Some(3)), parse_length_range("-3").unwrap());
         assert_eq!((1, None), parse_length_range("1-").unwrap());
         assert_eq!((7, Some(7)), parse_length_range("7").unwrap());
-        assert!(matches!(*parse_length_range("").unwrap_err(), ParseError::InvalidLengthRange { input } if input == "" ));
+        assert!(matches!(*parse_length_range("").unwrap_err(), ParseError::InvalidLengthRange { input } if input.is_empty() ));
         assert!(matches!(*parse_length_range("1-2-3").unwrap_err(), ParseError::InvalidLengthRange { input } if input == "1-2-3" ));
     }
 
