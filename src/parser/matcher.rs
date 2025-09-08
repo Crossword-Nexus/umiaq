@@ -5,12 +5,10 @@ use crate::umiaq_char::UmiaqChar;
 
 use super::form::{FormPart, ParsedForm};
 
-/// Check if `prefix` matches the start of `chars`.
-///
 /// If `prefix` is indeed a prefix of `chars`, return a slice pointing to
 /// the remaining portion of `chars` (the part after the prefix).
 /// Otherwise, return `None`.
-fn is_prefix<'a>(prefix: &str, chars: &'a [char]) -> Option<&'a [char]> {
+fn get_rest_if_valid_prefix<'a>(prefix: &str, chars: &'a [char]) -> Option<&'a [char]> {
     // Ensure we have enough characters left to match the prefix
     if chars.len() >= prefix.len()
         // Compare each char of `chars` with each char of `prefix`
@@ -119,7 +117,7 @@ fn match_equation_internal(
 ) {
     // === PREFILTER STEP ===
     // Use the regex prefilter on the parsed form to quickly discard words
-    // that cannot possibly match. This avoids expensive recursive search.
+    // that cannot possibly match. This helps avoid expensive recursive searching.
     if !parsed_form.prefilter.is_match(word).unwrap_or(false) {
         return;
     }
@@ -152,7 +150,7 @@ struct HelperParams<'a> {
     joint_constraints: JointConstraints,
 }
 
-impl<'a> HelperParams<'a> {
+impl HelperParams<'_> {
     /// Recursive backtracking matcher.
     ///
     /// Attempts to match the slice of `chars` against the remaining `parts`.
@@ -178,7 +176,7 @@ impl<'a> HelperParams<'a> {
         match first {
             FormPart::Lit(s) => {
                 // Literal match (case-insensitive, stored lowercase)
-                is_prefix(s, chars).is_some_and(|rest_chars| self.recurse(rest_chars, rest))
+                get_rest_if_valid_prefix(s, chars).is_some_and(|rest_chars| self.recurse(rest_chars, rest))
             }
             FormPart::Star => {
                 // Zero-or-more wildcard; try all possible splits
@@ -202,11 +200,11 @@ impl<'a> HelperParams<'a> {
             FormPart::Var(var_name) | FormPart::RevVar(var_name) => {
                 if let Some(bound_val) = self.bindings.get(*var_name) {
                     // Already bound: must match exactly
-                    is_prefix(&get_reversed_or_not(first, bound_val), chars)
+                    get_rest_if_valid_prefix(&get_reversed_or_not(first, bound_val), chars)
                         .is_some_and(|rest_chars| self.recurse(rest_chars, rest))
                 } else {
                     // Not bound yet: try binding to all possible lengths
-                    // (this block could be split out into `try_bind_var` later)
+                    // (TODO? this block could be split out into `try_bind_var` later)
                     let min_len = self
                         .constraints
                         .get(*var_name)
