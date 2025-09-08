@@ -537,7 +537,7 @@ mod tests {
         let (b_min, b_max) = vcs.bounds('B');
         let (c_min, c_max) = vcs.bounds('C');
 
-        // A cannot exceed 2, since then B would have to be 1 (from A+B=3)
+        // A cannot exceed 2, since then B would have to be less than 1 (from A+B=3)
         assert_eq!(a_max.unwrap(), 2);
         // A should be at least the default min
         assert_eq!(a_min, VarConstraint::DEFAULT_MIN);
@@ -551,5 +551,4 @@ mod tests {
         // And at most 5, since B≥1
         assert_eq!(c_max.unwrap(), 5);
     }
-
 }
