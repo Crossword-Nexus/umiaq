@@ -17,7 +17,7 @@ use crate::errors::ParseError::ParseFailure;
 use crate::parser::utils::letter_to_num;
 use super::prefilter::{form_to_regex_str, get_regex};
 
-/// Parser result type: input, output, with our custom ParseError
+/// Parser result type: input, output, with our custom `ParseError`
 pub type PResult<'a, O> = IResult<&'a str, O, ParseError>;
 
 /// Represents a single parsed token (component) from a "form" string.
