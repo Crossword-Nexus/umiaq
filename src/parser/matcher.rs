@@ -5,6 +5,34 @@ use crate::umiaq_char::UmiaqChar;
 
 use super::form::{FormPart, ParsedForm};
 
+/// Check if `prefix` matches the start of `chars`.
+///
+/// If `prefix` is indeed a prefix of `chars`, return a slice pointing to
+/// the remaining portion of `chars` (the part after the prefix).
+/// Otherwise, return `None`.
+fn is_prefix<'a>(prefix: &str, chars: &'a [char]) -> Option<&'a [char]> {
+    // Ensure we have enough characters left to match the prefix
+    if chars.len() >= prefix.len()
+        // Compare each char of `chars` with each char of `prefix`
+        && chars.iter().take(prefix.len()).copied().eq(prefix.chars())
+    {
+        // Success: return the suffix of `chars` that follows the prefix
+        Some(&chars[prefix.len()..])
+    } else {
+        // Failure: not a prefix
+        None
+    }
+}
+
+/// Helper to reverse a bound value if the part is `RevVar`.
+fn get_reversed_or_not(first: &FormPart, val: &str) -> String {
+    if matches!(first, FormPart::RevVar(_)) {
+        val.chars().rev().collect()
+    } else {
+        val.to_owned()
+    }
+}
+
 /// Validate whether a candidate binding value is allowed under a `VarConstraint`.
 ///
 /// Checks:
@@ -62,11 +90,25 @@ pub fn match_equation_all(
     results
 }
 
-/// Core backtracking search that tries to match `word` against `parts`.
+/// Core entry point for the backtracking search.
 ///
-/// - Uses the compiled `prefilter` on `ParsedForm` (already upgraded upstream).
-/// - Recursively attempts to bind variables and match literals/wildcards.
-/// - Stops early if `all_matches` is false and a single match is found.
+/// This function coordinates matching a `word` against a parsed form:
+/// - **Prefilter step:** quickly reject the word if it cannot possibly match,
+///   using the compiled regex stored in the `ParsedForm`.
+/// - **Recursive search:** initialize a `HelperParams` context and invoke
+///   its `recurse` method, which handles binding variables, matching literals,
+///   wildcards, and enforcing constraints.
+/// - **Result collection:** all successful bindings are pushed into `results`.
+///   If `all_matches` is false, the recursion will stop after the first match.
+///
+/// Arguments:
+/// - `word`: the candidate word to test.
+/// - `parsed_form`: the form (sequence of `FormPart`s) we are matching against.
+/// - `all_matches`: if `true`, collect all possible bindings; if `false`, stop
+///   once a single valid binding is found.
+/// - `results`: accumulator for successful variable bindings.
+/// - `constraints`: variable-level constraints to enforce during binding.
+/// - `joint_constraints`: constraints that involve multiple variables together.
 fn match_equation_internal(
     word: &str,
     parsed_form: &ParsedForm,
@@ -75,42 +117,57 @@ fn match_equation_internal(
     constraints: &VarConstraints,
     joint_constraints: JointConstraints,
 ) {
-    /// Helper to reverse a bound value if the part is `RevVar`.
-    fn get_reversed_or_not(first: &FormPart, val: &str) -> String {
-        if matches!(first, FormPart::RevVar(_)) {
-            val.chars().rev().collect()
-        } else {
-            val.to_owned()
-        }
+    // === PREFILTER STEP ===
+    // Use the regex prefilter on the parsed form to quickly discard words
+    // that cannot possibly match. This avoids expensive recursive search.
+    if !parsed_form.prefilter.is_match(word).unwrap_or(false) {
+        return;
     }
 
-    /// Try to consume exactly one char if present, and apply `pred` to it.
-    /// - If the predicate passes, recurse with the rest of the chars.
-    /// - Otherwise return false (dead end).
+    // === INITIALIZE SEARCH CONTEXT ===
+    // Create a helper context with mutable references to bindings and results,
+    // plus configuration flags and constraints.
+    let mut hp = HelperParams {
+        bindings: &mut Bindings::default(),
+        results,
+        all_matches,
+        word,
+        constraints,
+        joint_constraints,
+    };
+
+    // === RECURSIVE SEARCH ===
+    // Convert the word to a Vec<char> for indexed access, and start recursion.
+    hp.recurse(&word.chars().collect::<Vec<_>>(), &parsed_form.parts);
+}
+
+
+// Helper params for recursion
+struct HelperParams<'a> {
+    bindings: &'a mut Bindings,
+    results: &'a mut Vec<Bindings>,
+    all_matches: bool,
+    word: &'a str,
+    constraints: &'a VarConstraints,
+    joint_constraints: JointConstraints,
+}
+
+impl<'a> HelperParams<'a> {
+    /// Recursive backtracking matcher.
     ///
-    /// Covers Dot (any char), Vowel, Consonant, Charset, etc.
-    fn take_if(
-        chars: &[char],
-        rest: &[FormPart],
-        hp: &mut HelperParams,
-        pred: impl Fn(&char) -> bool,
-    ) -> bool {
-        chars
-            .split_first()
-            .is_some_and(|(c, rest_chars)| pred(c) && helper(rest_chars, rest, hp))
-    }
-
-    // --- Inner recursive matcher -------------------------------------------------
-    fn helper(chars: &[char], parts: &[FormPart], hp: &mut HelperParams) -> bool {
+    /// Attempts to match the slice of `chars` against the remaining `parts`.
+    /// On success, it may push a completed `Bindings` into `self.results`.
+    /// Stops early if `all_matches` is false and one valid match is found.
+    fn recurse(&mut self, chars: &[char], parts: &[FormPart]) -> bool {
         // Base case: no parts left
         if parts.is_empty() {
             if chars.is_empty() {
                 // Check the joint constraints (if any)
-                if hp.joint_constraints.all_satisfied(hp.bindings) {
-                    let mut full_result = hp.bindings.clone();
-                    full_result.set_word(hp.word);
-                    hp.results.push(full_result);
-                    return !hp.all_matches; // Stop early if only one match needed
+                if self.joint_constraints.all_satisfied(self.bindings) {
+                    let mut full_result = self.bindings.clone();
+                    full_result.set_word(self.word);
+                    self.results.push(full_result);
+                    return !self.all_matches; // Stop early if only one match needed
                 }
             }
             return false;
@@ -121,39 +178,40 @@ fn match_equation_internal(
         match first {
             FormPart::Lit(s) => {
                 // Literal match (case-insensitive, stored lowercase)
-                is_prefix(s, chars, rest, hp)
+                is_prefix(s, chars).is_some_and(|rest_chars| self.recurse(rest_chars, rest))
             }
             FormPart::Star => {
                 // Zero-or-more wildcard; try all possible splits
-                (0..=chars.len()).any(|i| helper(&chars[i..], rest, hp))
+                (0..=chars.len()).any(|i| self.recurse(&chars[i..], rest))
             }
 
             // Combined vowel, consonant, charset, dot cases
-            FormPart::Dot => take_if(chars, rest, hp, |_| true),
-            FormPart::Vowel => take_if(chars, rest, hp, char::is_vowel),
-            FormPart::Consonant => take_if(chars, rest, hp, char::is_consonant),
-            FormPart::Charset(s) => take_if(chars, rest, hp, |c| s.contains(c)),
+            FormPart::Dot => self.take_if(chars, rest, |_| true),
+            FormPart::Vowel => self.take_if(chars, rest, char::is_vowel),
+            FormPart::Consonant => self.take_if(chars, rest, char::is_consonant),
+            FormPart::Charset(s) => self.take_if(chars, rest, |c| s.contains(c)),
 
             FormPart::Anagram(ag) => {
                 // Match if the next len chars are an anagram of target
                 let len = ag.len;
                 chars.len() >= len
-                    && ag.is_anagram(&chars[..len]).unwrap() // TODO! handle error
-                    && helper(&chars[len..], rest, hp)
+                    && ag.is_anagram(&chars[..len]).unwrap() // TODO handle error properly
+                    && self.recurse(&chars[len..], rest)
             }
 
             FormPart::Var(var_name) | FormPart::RevVar(var_name) => {
-                if let Some(bound_val) = hp.bindings.get(*var_name) {
+                if let Some(bound_val) = self.bindings.get(*var_name) {
                     // Already bound: must match exactly
-                    is_prefix(&get_reversed_or_not(first, bound_val), chars, rest, hp)
+                    is_prefix(&get_reversed_or_not(first, bound_val), chars)
+                        .is_some_and(|rest_chars| self.recurse(rest_chars, rest))
                 } else {
                     // Not bound yet: try binding to all possible lengths
-                    // To prune the search space, apply length constraints up front
-                    let min_len = hp
+                    // (this block could be split out into `try_bind_var` later)
+                    let min_len = self
                         .constraints
                         .get(*var_name)
                         .map_or(VarConstraint::DEFAULT_MIN, |vc| vc.min_length);
-                    let max_len_cfg = hp
+                    let max_len_cfg = self
                         .constraints
                         .get(*var_name)
                         .and_then(|vc| vc.max_length)
@@ -161,9 +219,8 @@ fn match_equation_internal(
 
                     let avail = chars.len();
 
-                    // If the minimum exceeds what we have left, this path can't work
                     if min_len > avail {
-                        false
+                        false // Not enough chars left
                     } else {
                         // Never try to slice past what's actually available
                         let capped_max = std::cmp::min(max_len_cfg, avail);
@@ -178,18 +235,17 @@ fn match_equation_internal(
                             };
 
                             // Apply variable-specific constraints
-                            let valid = hp
+                            let valid = self
                                 .constraints
-                                .get(*var_name).is_none_or(|c| {
-                                    is_valid_binding(&bound_val, c, hp.bindings)
-                                });
+                                .get(*var_name)
+                                .is_none_or(|c| is_valid_binding(&bound_val, c, self.bindings));
 
                             if valid {
-                                hp.bindings.set(*var_name, bound_val);
-                                let retval = helper(&chars[l..], rest, hp) && !hp.all_matches;
+                                self.bindings.set(*var_name, bound_val);
+                                let retval = self.recurse(&chars[l..], rest) && !self.all_matches;
                                 if !retval {
-                                    // Backtrack only when continuing the search.
-                                    hp.bindings.remove(*var_name);
+                                    // Backtrack only when continuing the search
+                                    self.bindings.remove(*var_name);
                                 }
                                 retval
                             } else {
@@ -202,54 +258,24 @@ fn match_equation_internal(
         }
     }
 
-    /// Returns true if `prefix` is a prefix of `chars`
-    fn is_prefix(
-        prefix: &str,
+    /// Try to consume exactly one char from `chars` if present, and apply `pred` to it.
+    ///
+    /// - If the predicate passes, recurse with the rest of the chars.
+    /// - Otherwise return false (dead end).
+    ///
+    /// Covers Dot (any char), Vowel, Consonant, Charset, etc.
+    fn take_if(
+        &mut self,
         chars: &[char],
         rest: &[FormPart],
-        helper_params: &mut HelperParams,
+        pred: impl Fn(&char) -> bool,
     ) -> bool {
-        let prefix_len = prefix.len();
-        if chars.len() >= prefix_len
-            && chars[..prefix_len]
-                .iter()
-                .copied()
-                .zip(prefix.chars())
-                .all(|(a, b)| a == b)
-        {
-            helper(&chars[prefix_len..], rest, helper_params)
-        } else {
-            false
-        }
+        chars
+            .split_first()
+            .is_some_and(|(c, rest_chars)| pred(c) && self.recurse(rest_chars, rest))
     }
-
-    // === PREFILTER STEP ===
-    if !parsed_form.prefilter.is_match(word).unwrap_or(false) {
-        return;
-    }
-
-    // Normalize word and start recursive matching
-    let mut hp = HelperParams {
-        bindings: &mut Bindings::default(),
-        results,
-        all_matches,
-        word,
-        constraints,
-        joint_constraints,
-    };
-
-    helper(&word.chars().collect::<Vec<_>>(), &parsed_form.parts, &mut hp);
 }
 
-// Helper params for recursion
-struct HelperParams<'a> {
-    bindings: &'a mut Bindings,
-    results: &'a mut Vec<Bindings>,
-    all_matches: bool,
-    word: &'a str,
-    constraints: &'a VarConstraints,
-    joint_constraints: JointConstraints,
-}
 
 #[cfg(test)]
 mod tests {
