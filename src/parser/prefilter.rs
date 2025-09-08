@@ -217,8 +217,7 @@ mod tests {
     fn test_constraint_prefilter_string_single_use() {
         let pf = "A".parse::<ParsedForm>().unwrap();
         let mut vcs = VarConstraints::default();
-        let mut vc = VarConstraint::default();
-        vc.form = Some("x*a".to_string());
+        let vc = VarConstraint { form: Some("x*a".to_string()), ..Default::default() };
         vcs.insert('A', vc);
         let re_str = form_to_regex_str_with_constraints(&pf.parts, &vcs).unwrap();
         assert_eq!(re_str, "(?=x.*a).+");
@@ -228,8 +227,7 @@ mod tests {
     fn test_prefilter_upgrade_prunes_nonmatching_words() {
         let mut pf = "A".parse::<ParsedForm>().unwrap();
         let mut vcs = VarConstraints::default();
-        let mut vc = VarConstraint::default();
-        vc.form = Some("x*a".to_string());
+        let vc = VarConstraint { form: Some("x*a".to_string()), ..Default::default() };
         vcs.insert('A', vc);
 
         assert!(pf.prefilter.is_match("abba").unwrap());
