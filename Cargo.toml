@@ -5,13 +5,14 @@ edition = "2024"
 description = "A Qat-like equation solver"
 repository = "https://github.com/Crossword-Nexus/umiaq"
 license = "MIT"
-default-run = "umiaq"
+default-run = "umiaq_cli"
 
 [lib]
+name = "umiaq"
 crate-type = ["cdylib", "rlib"]
 
 [[bin]]
-name = "umiaq"
+name = "umiaq_cli"
 path = "src/main.rs"
 
 [[bin]]
