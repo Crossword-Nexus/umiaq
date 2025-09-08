@@ -259,7 +259,7 @@ mod tests {
     }
 
     #[test] fn test_parse_failure_error() {
-        assert!(matches!(*"[".parse::<ParsedForm>().unwrap_err(), ParseFailure { .. }));
+        assert!(matches!(*"[".parse::<ParsedForm>().unwrap_err(), ParseFailure { s } if s == "[" ));
     }
 
     #[test] fn test_parse_form_basic() {
