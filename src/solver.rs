@@ -11,6 +11,7 @@ use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
 use instant::Instant;
 use std::time::Duration;
+use crate::errors::ParseError::ParseFailure;
 
 // The amount of time (in seconds) we allow the query to run
 const TIME_BUDGET: u64 = 30;
@@ -42,11 +43,14 @@ pub struct CandidateBuckets {
 }
 
 /// Put the results in uppercase and separated with a bullet
-pub fn solution_to_string(solution: &[Bindings]) -> String {
-    solution.iter()
-        .map(|b| b.get_word().unwrap().to_ascii_uppercase())
-        .collect::<Vec<_>>()
-        .join(" • ")
+pub fn solution_to_string(solution: &[Bindings]) -> Result<String, Box<ParseError>> {
+    let str = solution.iter()
+        // TODO!! update error message; test error path
+        .map(|b| b.get_word().ok_or_else(|| Box::new(ParseFailure { s : format!("cannot find solution in {b:?}") })).map(|c| c.to_ascii_uppercase()))
+        .collect::<Result<Vec<_>, _>>()?
+        .join(" • ");
+
+    Ok(str)
 }
 
 /// Build a stable key for a full solution (bindings in **pattern order**).

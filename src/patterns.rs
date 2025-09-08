@@ -212,7 +212,7 @@ impl Patterns {
 
         let mut next_form_ix = 0; // counts only *forms* we accept
 
-        Ok(for form in &forms {
+        for form in &forms {
             if let Some(cap) = LEN_CMP_RE.captures(form).unwrap() {
                 let var = cap[1].chars().next().unwrap();
                 let op = ComparisonOperator::from_str(&cap[2])?; // TODO better error handling
@@ -256,8 +256,8 @@ impl Patterns {
                         if *old_form != f {
                             return Err(Box::new(ParseError::ConflictingConstraint {
                                 var,
-                                old: old_form.clone(),
-                                new: f,
+                                older: old_form.clone(),
+                                newer: f,
                             }));
                         }
                     } else {
@@ -276,7 +276,9 @@ impl Patterns {
                     // TODO throw exception
                 }
             }
-        })
+        }
+
+        Ok(())
     }
 
     // TODO is this the right way to order things?
@@ -808,18 +810,9 @@ mod tests {
     #[test]
     /// Ensure conflicting complex constraints for the same variable produce an error.
     fn test_conflicting_complex_constraints_error() {
-        let err = "A=(1-5:k*);A=(5-6:a*);A"
-            .parse::<Patterns>()
-            .unwrap_err();
-
-        match *err {
-            ParseError::ConflictingConstraint { var, ref old, ref new } => {
-                assert_eq!(var, 'A');
-                assert_eq!(old, "k*");
-                assert_eq!(new, "a*");
-            }
-            other => panic!("unexpected error: {:?}", other),
-        }
+        assert!(matches!(
+            *"A=(1-5:k*);A=(5-6:a*);A".parse::<Patterns>().unwrap_err(),
+            ParseError::ConflictingConstraint { var, older,  newer } if var == 'A' && older == "k*" && newer == "a*" )
+        );
     }
-
 }

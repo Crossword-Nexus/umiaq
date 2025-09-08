@@ -50,10 +50,9 @@ Umiaq is designed for crossword constructors, wordplay enthusiasts, and puzzle m
 
 ## Development
 
-Build the web version:
-`wasm-pack build --release --target web --out-dir web/pkg`
-Run tests: `cargo test`
-Run benchmarks: `cargo run --bin bench_local --release -- -r 1 -p 0`
+- Build the web version: `wasm-pack build --release --target web --out-dir web/pkg`
+- Run tests: `cargo test`
+- Run benchmarks: `cargo run --bin bench_local --release -- -r 1 -p 0`
 
 ---
 
