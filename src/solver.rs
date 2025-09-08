@@ -41,6 +41,14 @@ pub struct CandidateBuckets {
     pub count: usize,
 }
 
+/// Put the results in uppercase and separated with a bullet
+pub fn solution_to_string(solution: &[Bindings]) -> String {
+    solution.iter()
+        .map(|b| b.get_word().unwrap().to_ascii_uppercase())
+        .collect::<Vec<_>>()
+        .join(" • ")
+}
+
 /// Build a stable key for a full solution (bindings in **pattern order**).
 /// Prefer the whole word if present (`WORD_SENTINEL`). Fall back to sorted (var,val) pairs.
 fn solution_key(solution: &[Bindings]) -> u64 {
