@@ -101,6 +101,16 @@ impl Bounds {
     pub(crate) fn of_unbounded(li: usize) -> Self {
         Bounds { li, ui: None }
     }
+
+    // TODO! tests--esp. instances where neither min_length is `VarConstraint::DEFAULT_MIN` and where neither max_length is `None`
+    // only set what the constraint explicitly provides
+    fn constrain_by(&mut self, other: Bounds) {
+        self.li = self.li.max(other.li);
+        self.ui = self.ui
+            .min(other.ui)
+            .or(self.ui) // since None is treated as less than anything
+            .or(other.ui); // since None is treated as less than anything
+    }
 }
 
 impl Display for Bounds {
@@ -137,6 +147,10 @@ impl VarConstraint {
     /// Get the parsed form
     pub(crate) fn get_parsed_form(&self) -> Option<&ParsedForm> {
         self.form.as_deref().map(|f| self.parsed_form.get_or_init(|| f.parse::<ParsedForm>().unwrap()))
+    }
+
+    pub(crate) fn constrain_by(&mut self, other: &VarConstraint) {
+        self.bounds.constrain_by(other.bounds);
     }
 }
 
