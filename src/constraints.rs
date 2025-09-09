@@ -72,7 +72,6 @@ impl fmt::Display for VarConstraints {
     }
 }
 
-// TODO? move to VarConstraint
 /// Simple lower/upper bound for a variable's length.
 ///
 /// - `li`: minimum length (always finite)
