@@ -39,8 +39,8 @@ fn get_reversed_or_not(first: &FormPart, val: &str) -> String {
 /// 3. The value must not equal any variable listed in `not_equal` that is already bound.
 fn is_valid_binding(val: &str, constraints: &VarConstraint, bindings: &Bindings) -> bool {
     // 1. Length checks (if configured)
-    if val.len() < constraints.min_length
-        || constraints.max_length.is_some_and(|max_len| val.len() > max_len)
+    if val.len() < constraints.bounds.min_len
+        || constraints.bounds.max_len_opt.is_some_and(|max_len| val.len() > max_len)
     {
         return false;
     }
@@ -208,11 +208,11 @@ impl HelperParams<'_> {
                     let min_len = self
                         .constraints
                         .get(*var_name)
-                        .map_or(VarConstraint::DEFAULT_MIN, |vc| vc.min_length);
+                        .map_or(VarConstraint::DEFAULT_MIN, |vc| vc.bounds.min_len);
                     let max_len_cfg = self
                         .constraints
                         .get(*var_name)
-                        .and_then(|vc| vc.max_length)
+                        .and_then(|vc| vc.bounds.max_len_opt)
                         .unwrap_or(chars.len());
 
                     let avail = chars.len();

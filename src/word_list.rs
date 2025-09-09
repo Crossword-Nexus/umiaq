@@ -11,7 +11,6 @@
 //! - Each line in the input is expected to be in the format `word;score`.
 //! - Lines without a semicolon are skipped silently.
 //! - `score` is parsed as an integer, and words with scores below `min_score` are skipped.
-//! - Words longer than `max_len` are skipped.
 //! - All words are normalized to lowercase.
 //! - The final list is deduplicated and sorted by length first, then alphabetically.
 //!
@@ -49,16 +48,16 @@ impl WordList {
     /// # Arguments
     /// * `contents`  — The raw file contents as a `&str`. Each line should be `word;score`.
     /// * `min_score` — Words with scores lower than this are skipped.
-    /// * `max_len`   — Words longer than this are skipped.
     ///
     /// # Returns
     /// * `WordList` — Struct containing all valid entries.
     ///
+    /// // TODO update
     /// # Behavior:
     /// 1. Splits the input into lines.
     /// 2. Skips empty lines and lines without a `;` separator.
     /// 3. Splits each valid line into `word` and `score` parts.
-    /// 4. Parses the score and filters by `min_score` and `max_len`.
+    /// 4. Parses the score and filters by `min_score`.
     /// 5. Converts `word` to lowercase.
     /// 6. Deduplicates the list (case-insensitive because we lowercase early).
     /// 7. Sorts by length, then alphabetically.
@@ -66,7 +65,7 @@ impl WordList {
         contents: &str,
         min_score: i32,
     ) -> WordList {
-        // Step 1: Collect valid words into a Vec<String>.
+        // Steps 1–5: Collect valid words into a Vec<String>.
         //
         // We use `filter_map` instead of `filter` + `map` separately
         // because it allows us to skip invalid lines in one pass.
@@ -105,14 +104,15 @@ impl WordList {
             })
             .collect();
 
-        // Step 2: Deduplicate the list.
+        // TODO is this better than just throwing the entries into a HashSet?
+        // Step 6: Deduplicate the list.
         //
         // We sort alphabetically first, because `dedup()` only removes *adjacent*
         // duplicates — and we want all duplicates next to each other.
         entries.sort();
         entries.dedup();
 
-        // Step 3: Sort by length, then alphabetically.
+        // Step 7: Sort by length, then alphabetically.
         //
         // Why not do this before deduplication?
         // Because alphabetical sorting is required for `dedup()` to work properly,
