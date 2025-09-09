@@ -248,14 +248,14 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
         let mut maxes: Vec<(char, usize)> = Vec::with_capacity(jc.vars.len());
 
         for &v in &jc.vars {
-            let (li, ui) = vcs.bounds(v);
-            sum_min += li;
+            let bounds = vcs.bounds(v);
+            sum_min += bounds.li;
 
             // Track finite sum of maxes; if any is unbounded, the group max is unbounded.
-            sum_max_opt = sum_max_opt.and_then(|a| ui.map(|u| a + u));
+            sum_max_opt = sum_max_opt.and_then(|a| bounds.ui.map(|u| a + u));
 
-            mins.push((v, li));
-            if let Some(u) = ui {
+            mins.push((v, bounds.li));
+            if let Some(u) = bounds.ui {
                 maxes.push((v, u));
             }
         }
@@ -273,23 +273,23 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
         } else {
             // Case 3: generic tightening
             for &v in &jc.vars {
-                let (li, ui) = vcs.bounds(v);
+                let bounds = vcs.bounds(v);
 
                 // Σ other mins
                 let sum_other_min: usize = jc.vars
                     .iter()
                     .filter(|&&w| w != v)
-                    .map(|&w| vcs.bounds(w).0)
+                    .map(|&w| vcs.bounds(w).li)
                     .sum();
 
                 // Σ other finite maxes (None if any is unbounded)
                 let mut sum_other_max_opt: Option<usize> = Some(0);
                 for &w in jc.vars.iter().filter(|&&w| w != v) {
-                    let (_, w_ui) = vcs.bounds(w);
-                    if w_ui.is_none() {
+                    let w_bounds = vcs.bounds(w);
+                    if w_bounds.ui.is_none() {
                         sum_other_max_opt = None;
                     }
-                    sum_other_max_opt = sum_other_max_opt.and_then(|a| w_ui.map(|w| a + w));
+                    sum_other_max_opt = sum_other_max_opt.and_then(|a| w_bounds.ui.map(|w| a + w));
                     if sum_other_max_opt.is_none() {
                         break;
                     }
@@ -299,8 +299,8 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
                 let upper_from_joint = jc.target.saturating_sub(sum_other_min);
 
                 // Tighten and store
-                let new_min = li.max(lower_from_joint);
-                let new_max = ui.unwrap_or(upper_from_joint).min(upper_from_joint);
+                let new_min = bounds.li.max(lower_from_joint);
+                let new_max = bounds.ui.unwrap_or(upper_from_joint).min(upper_from_joint);
 
                 let e = vcs.ensure_entry_mut(v);
                 e.min_length = new_min;
@@ -315,11 +315,7 @@ mod tests {
     use super::*;
     use crate::patterns::FORM_SEPARATOR;
     use crate::constraints::VarConstraints;
-
-    // Helper: extract (min,max) from VarConstraints quickly
-    fn bounds_of(vcs: &VarConstraints, v: char) -> (usize, Option<usize>) {
-        vcs.bounds(v)
-    }
+    use crate::constraints::Bounds;
 
     #[test]
     fn propagate_exact_by_mins_all_explicit() {
@@ -333,8 +329,8 @@ mod tests {
 
         propagate_joint_to_var_bounds(&mut vcs, &jcs);
 
-        assert_eq!(bounds_of(&vcs,'A'), (2, Some(2)));
-        assert_eq!(bounds_of(&vcs,'B'), (3, Some(3)));
+        assert_eq!(vcs.bounds('A'), Bounds::of(2, Some(2)));
+        assert_eq!(vcs.bounds('B'), Bounds::of(3, Some(3)));
     }
 
     #[test]
@@ -351,9 +347,9 @@ mod tests {
         propagate_joint_to_var_bounds(&mut vcs, &jcs);
 
         // All should be exact, B should lock to default=1
-        assert_eq!(bounds_of(&vcs,'A'), (3, Some(3)));
-        assert_eq!(bounds_of(&vcs,'B'), (1, Some(1)));
-        assert_eq!(bounds_of(&vcs,'C'), (3, Some(3)));
+        assert_eq!(vcs.bounds('A'), Bounds::of(3, Some(3)));
+        assert_eq!(vcs.bounds('B'), Bounds::of(1, Some(1)));
+        assert_eq!(vcs.bounds('C'), Bounds::of(3, Some(3)));
     }
 
     #[test]
@@ -369,9 +365,9 @@ mod tests {
         propagate_joint_to_var_bounds(&mut vcs, &jcs);
 
         // Nothing should be forced exact
-        assert_eq!(bounds_of(&vcs,'A'), (3, Some(4)));
-        assert_eq!(bounds_of(&vcs,'B'), (VarConstraint::DEFAULT_MIN, Some(2))); // TODO!!! VC::D_M or just "1"?
-        assert_eq!(bounds_of(&vcs,'C'), (3, Some(4)));
+        assert_eq!(vcs.bounds('A'), Bounds::of(3, Some(4)));
+        assert_eq!(vcs.bounds('B'), Bounds::of(VarConstraint::DEFAULT_MIN, Some(2))); // TODO!!! VC::D_M or just "1"?
+        assert_eq!(vcs.bounds('C'), Bounds::of(3, Some(4)));
     }
 
     #[test]
@@ -386,8 +382,8 @@ mod tests {
 
         propagate_joint_to_var_bounds(&mut vcs, &jcs);
 
-        assert_eq!(bounds_of(&vcs,'A'), (4, Some(4))); // exact=4
-        assert_eq!(bounds_of(&vcs,'B'), (3, Some(3))); // exact=3
+        assert_eq!(vcs.bounds('A'), Bounds::of(4, Some(4))); // exact=4
+        assert_eq!(vcs.bounds('B'), Bounds::of(3, Some(3))); // exact=3
     }
 
     #[test]
@@ -533,21 +529,22 @@ mod tests {
         propagate_joint_to_var_bounds(&mut vcs, &jcs);
 
         // At this stage we expect consistent tightening.
-        let (a_min, a_max) = vcs.bounds('A');
-        let (b_min, b_max) = vcs.bounds('B');
-        let (c_min, c_max) = vcs.bounds('C');
+        let a_bounds = vcs.bounds('A');
+        let b_bounds = vcs.bounds('B');
+        let c_bounds = vcs.bounds('C');
+        let c_max = c_bounds.ui;
 
         // A cannot exceed 2, since then B would have to be less than 1 (from A+B=3)
-        assert_eq!(a_max.unwrap(), 2);
+        assert_eq!(a_bounds.ui.unwrap(), 2);
         // A should be at least the default min
-        assert_eq!(a_min, VarConstraint::DEFAULT_MIN);
+        assert_eq!(a_bounds.li, VarConstraint::DEFAULT_MIN);
 
         // B is between 1 and 2, since A+B=3 and both ≥1
-        assert_eq!(b_min, VarConstraint::DEFAULT_MIN);
-        assert_eq!(b_max.unwrap(), 2);
+        assert_eq!(b_bounds.li, VarConstraint::DEFAULT_MIN);
+        assert_eq!(b_bounds.ui.unwrap(), 2);
 
         // C must be at least 4, since B≤2 and B+C=6
-        assert_eq!(c_min, 4);
+        assert_eq!(c_bounds.li, 4);
         // And at most 5, since B≥1
         assert_eq!(c_max.unwrap(), 5);
     }

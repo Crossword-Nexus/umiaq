@@ -7,6 +7,7 @@ use std::sync::LazyLock;
 use crate::comparison_operator::ComparisonOperator;
 use crate::errors::ParseError;
 use crate::parser::ParsedForm;
+use crate::constraints::Bounds;
 use crate::umiaq_char::UmiaqChar;
 
 /// The character that separates forms, in an equation
@@ -418,21 +419,17 @@ fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint), Box<Parse
                     return Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("too many colons--0 or 1 expected (not {})", inner_constraint_str.chars().filter(|c| *c == ':').count()) }));
                 }
                 let len_range = parse_length_range(len_range_raw)?;
-                (Some(len_range), Some(literal_constraint_str))
+                (len_range, Some(literal_constraint_str))
             } else {
                 match parse_length_range(inner_constraint_str) {
-                    Ok(len_range) => (Some(len_range), None),
-                    Err(_) => (None, Some(inner_constraint_str))
+                    Ok(len_range) => (len_range, None),
+                    Err(_) => (Bounds::default(), Some(inner_constraint_str))
                 }
             };
 
             let vc = VarConstraint {
-                // TODO!!!? instead of `len_range` as `Option<(usize, Option<usize>)`, maybe create a richer
-                // type--say `LenRange`--instead of `(usize, Option<usize>)` whose default is (equiv. to)
-                // `(VarConstraint::DEFAULT_MIN, None)`... and then we'd avoid the outer `Option`, using
-                // `LenRange`'s default instead of `None`
-                min_length: len_range.map_or(VarConstraint::DEFAULT_MIN, |(lrl, _)| lrl),
-                max_length: len_range.and_then(|(_, lru)| lru),
+                min_length: len_range.li,
+                max_length: len_range.ui,
                 form: literal_constraint_str.map(ToString::to_string),
                 not_equal: HashSet::default(),
                 ..Default::default()
@@ -466,7 +463,7 @@ impl<'a> IntoIterator for &'a Patterns {
 
 /// Parses a string like "3-5", "-5", "3-", or "3" into min and max length values.
 /// Returns `((min, max_opt))`.
-fn parse_length_range(input: &str) -> Result<(usize, Option<usize>), Box<ParseError>> {
+fn parse_length_range(input: &str) -> Result<Bounds, Box<ParseError>> {
     let parts: Vec<_> = input.split('-').map(|part| part.parse::<usize>().ok()).collect();
     if parts.is_empty() || (parts.len() == 1 && parts[0].is_none()) || parts.len() > 2 {
         return Err(Box::new(ParseError::InvalidLengthRange { input: input.to_string() }))
@@ -474,7 +471,7 @@ fn parse_length_range(input: &str) -> Result<(usize, Option<usize>), Box<ParseEr
     // TODO!!! is there a better way to do this?
     let min = parts.first().unwrap().unwrap_or(VarConstraint::DEFAULT_MIN);
     let max = *parts.last().unwrap();
-    Ok((min, max))
+    Ok(Bounds::of(min, max))
 }
 
 #[cfg(test)]
@@ -608,10 +605,10 @@ mod tests {
 
     #[test]
     fn test_parse_length_range() {
-        assert_eq!((2, Some(3)), parse_length_range("2-3").unwrap());
-        assert_eq!((VarConstraint::DEFAULT_MIN, Some(3)), parse_length_range("-3").unwrap());
-        assert_eq!((1, None), parse_length_range("1-").unwrap());
-        assert_eq!((7, Some(7)), parse_length_range("7").unwrap());
+        assert_eq!(Bounds::of(2, Some(3)), parse_length_range("2-3").unwrap());
+        assert_eq!(Bounds::of(VarConstraint::DEFAULT_MIN, Some(3)), parse_length_range("-3").unwrap());
+        assert_eq!(Bounds::of(1, None), parse_length_range("1-").unwrap());
+        assert_eq!(Bounds::of(7, Some(7)), parse_length_range("7").unwrap());
         assert!(matches!(*parse_length_range("").unwrap_err(), ParseError::InvalidLengthRange { input } if input.is_empty() ));
         assert!(matches!(*parse_length_range("1-2-3").unwrap_err(), ParseError::InvalidLengthRange { input } if input == "1-2-3" ));
     }
