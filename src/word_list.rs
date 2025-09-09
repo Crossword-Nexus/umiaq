@@ -11,7 +11,6 @@
 //! - Each line in the input is expected to be in the format `word;score`.
 //! - Lines without a semicolon are skipped silently.
 //! - `score` is parsed as an integer, and words with scores below `min_score` are skipped.
-//! - Words longer than `max_word_len` are skipped. // TODO? is this true?
 //! - All words are normalized to lowercase.
 //! - The final list is deduplicated and sorted by length first, then alphabetically.
 //!
@@ -49,16 +48,16 @@ impl WordList {
     /// # Arguments
     /// * `contents`  — The raw file contents as a `&str`. Each line should be `word;score`.
     /// * `min_score` — Words with scores lower than this are skipped.
-    /// * `max_word_len`   — Words longer than this are skipped. // TODO? is this true?
     ///
     /// # Returns
     /// * `WordList` — Struct containing all valid entries.
     ///
+    /// // TODO update
     /// # Behavior:
     /// 1. Splits the input into lines.
     /// 2. Skips empty lines and lines without a `;` separator.
     /// 3. Splits each valid line into `word` and `score` parts.
-    /// 4. Parses the score and filters by `min_score` and `max_word_len`.
+    /// 4. Parses the score and filters by `min_score`.
     /// 5. Converts `word` to lowercase.
     /// 6. Deduplicates the list (case-insensitive because we lowercase early).
     /// 7. Sorts by length, then alphabetically.
