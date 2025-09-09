@@ -65,7 +65,7 @@ impl WordList {
         contents: &str,
         min_score: i32,
     ) -> WordList {
-        // Step 1: Collect valid words into a Vec<String>.
+        // Steps 1–5: Collect valid words into a Vec<String>.
         //
         // We use `filter_map` instead of `filter` + `map` separately
         // because it allows us to skip invalid lines in one pass.
@@ -104,14 +104,15 @@ impl WordList {
             })
             .collect();
 
-        // Step 2: Deduplicate the list.
+        // TODO is this better than just throwing the entries into a HashSet?
+        // Step 6: Deduplicate the list.
         //
         // We sort alphabetically first, because `dedup()` only removes *adjacent*
         // duplicates — and we want all duplicates next to each other.
         entries.sort();
         entries.dedup();
 
-        // Step 3: Sort by length, then alphabetically.
+        // Step 7: Sort by length, then alphabetically.
         //
         // Why not do this before deduplication?
         // Because alphabetical sorting is required for `dedup()` to work properly,
