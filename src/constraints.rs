@@ -2,6 +2,7 @@
 use std::cell::OnceCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::fmt::Display;
 use crate::parser::ParsedForm;
 
 /// A collection of constraints for variables in a pattern-matching equation.
@@ -31,7 +32,7 @@ impl VarConstraints {
     }
 
     pub(crate) fn bounds(&self, v: char) -> Bounds {
-        self.get(v).map_or(Bounds::default(), |vc| Bounds::of(vc.min_length, vc.max_length))
+        self.get(v).map_or(Bounds::default(), |vc| vc.bounds)
     }
 
     /// Ensure an entry exists and return it mutably.
@@ -76,9 +77,10 @@ impl fmt::Display for VarConstraints {
 ///
 /// - `li`: minimum length (always finite)
 /// - `ui`: optional maximum length (`None` means unbounded)
+// TODO? rename li, ui (to min, max?)
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct Bounds {
-    pub(crate) li: usize,
+pub struct Bounds {
+    pub(crate) li: usize, // TODO? minimize direct assignment of li and/or ui (instead using Bounds::of(_no_max) whenever possible/sensible)
     pub(crate) ui: Option<usize>
 }
 
@@ -92,8 +94,21 @@ impl Default for Bounds {
 }
 
 impl Bounds {
-    pub(crate) fn of(li: usize, ui: Option<usize>) -> Self {
-        Bounds { li, ui }
+    pub(crate) fn of(li: usize, ui_raw: usize) -> Self {
+        Bounds { li, ui: Some(ui_raw) }
+    }
+
+    pub(crate) fn of_unbounded(li: usize) -> Self {
+        Bounds { li, ui: None }
+    }
+}
+
+impl Display for Bounds {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = self.ui
+            .map(|max_len| { format!("[{},{max_len}]", self.li) })
+            .unwrap_or(format!("[{},∞)", self.li));
+        write!(f, "{s}")
     }
 }
 
@@ -104,25 +119,12 @@ impl Bounds {
 /// - `form` is an optional sub-pattern the variable's match must satisfy
 ///   (e.g., `"a*"` means "must start with `a`"; `"*z*"` means "must contain `z`").
 /// - `not_equal` lists variables whose matches must *not* be identical to this one.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct VarConstraint {
-    pub min_length: usize, // TODO? use Bounds
-    pub max_length: Option<usize>,
+    pub bounds: Bounds,
     pub form: Option<String>,
     pub not_equal: HashSet<char>,
     pub parsed_form: OnceCell<ParsedForm>,
-}
-
-impl Default for VarConstraint {
-    fn default() -> Self {
-        VarConstraint {
-            min_length: VarConstraint::DEFAULT_MIN,
-            max_length: Option::default(),
-            form: Option::default(),
-            not_equal: HashSet::default(),
-            parsed_form: OnceCell::default(), // OnceCell::new()
-        }
-    }
 }
 
 impl VarConstraint {
@@ -130,8 +132,7 @@ impl VarConstraint {
 
     /// Set both min and max to the same exact length.
     pub(crate) fn set_exact_len(&mut self, len: usize) {
-        self.min_length = len;
-        self.max_length = Some(len);
+        self.bounds = Bounds::of(len, len);
     }
     /// Get the parsed form
     pub(crate) fn get_parsed_form(&self) -> Option<&ParsedForm> {
@@ -142,8 +143,7 @@ impl VarConstraint {
 // Implement equality for VarConstraint
 impl PartialEq for VarConstraint {
     fn eq(&self, other: &Self) -> bool {
-        self.min_length == other.min_length
-            && self.max_length == other.max_length
+        self.bounds == other.bounds
             && self.form == other.form
             && self.not_equal == other.not_equal
         // ignore parsed_form
@@ -161,12 +161,6 @@ impl Eq for VarConstraint {}
 /// - the set of variables it must not equal, in sorted order
 impl fmt::Display for VarConstraint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Format the length range nicely.
-        // Handle both cases: both bounds or only max.
-        let len_str = self.max_length
-            .map(|max_len| { format!("[{},{max_len}]", self.min_length) })
-            .unwrap_or(format!("[{},∞)", self.min_length));
-
         // Show the "form" string if present, otherwise `-`
         let form_str = self.form.as_deref().unwrap_or("*");
 
@@ -181,7 +175,7 @@ impl fmt::Display for VarConstraint {
         };
 
         // Final compact output
-        write!(f, "len={len_str}; form={form_str}; not_equal={ne_str}")
+        write!(f, "len={}; form={form_str}; not_equal={ne_str}", self.bounds)
     }
 }
 
@@ -196,9 +190,9 @@ mod tests {
         {
             let a = vcs.ensure('A');
             // default created; tweak it
-            a.min_length = 3;
+            a.bounds.li = 3;
         }
-        assert_eq!(3, vcs.get('A').unwrap().min_length);
+        assert_eq!(3, vcs.get('A').unwrap().bounds.li);
         assert_eq!(1, vcs.len());
     }
 
@@ -217,8 +211,7 @@ mod tests {
     #[test]
     fn display_var_constraint_is_stable() {
         let mut vc = VarConstraint {
-            min_length: 2,
-            max_length: Some(4),
+            bounds: Bounds::of(2, 4),
             form: Some("a*".into()),
             ..Default::default()
         };
@@ -231,9 +224,9 @@ mod tests {
     #[test]
     fn display_var_constraints_multiline_sorted() {
         let mut vcs = VarConstraints::default();
-        let a = VarConstraint { min_length: 1, ..Default::default() };
+        let a = VarConstraint { bounds: Bounds::of_unbounded(1), ..Default::default() };
         let b = VarConstraint { form: Some("*x*".into()), ..Default::default() };
-        let c = VarConstraint { max_length: Some(2), ..Default::default() };
+        let c = VarConstraint { bounds: Bounds::of(1, 2), ..Default::default() };
         // Insert out of order to verify deterministic sort in Display
         vcs.insert('C', c);
         vcs.insert('A', a);

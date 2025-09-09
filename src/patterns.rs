@@ -223,10 +223,10 @@ impl Patterns {
                 match op {
                     ComparisonOperator::EQ => vc.set_exact_len(n),
                     ComparisonOperator::NE => {}
-                    ComparisonOperator::LE => vc.max_length = Some(n),
-                    ComparisonOperator::GE => vc.min_length = n,
-                    ComparisonOperator::LT => vc.max_length = n.checked_sub(1),   // n-1 (None if n==0)
-                    ComparisonOperator::GT => vc.min_length = n + 1, // TODO? check for overflow
+                    ComparisonOperator::LE => vc.bounds.ui = Some(n),
+                    ComparisonOperator::GE => vc.bounds.li = n,
+                    ComparisonOperator::LT => vc.bounds.ui = n.checked_sub(1),   // n-1 (None if n==0)
+                    ComparisonOperator::GT => vc.bounds.li = n + 1, // TODO? check for overflow
                 }
             } else if let Some(cap) = NEQ_RE.captures(form).unwrap() {
                 // Extract all variables from inequality constraint
@@ -245,12 +245,12 @@ impl Patterns {
 
                 // TODO! test instances where neither min_length is none and where neither max_length is none
                 // only set what the constraint explicitly provides
-                var_constraint.min_length = var_constraint.min_length.max(cc_vc.min_length);
-                var_constraint.max_length = var_constraint
-                    .max_length
-                    .min(cc_vc.max_length)
-                    .or(var_constraint.max_length)
-                    .or(cc_vc.max_length);
+                var_constraint.bounds.li = var_constraint.bounds.li.max(cc_vc.bounds.li);
+                var_constraint.bounds.ui = var_constraint
+                    .bounds.ui
+                    .min(cc_vc.bounds.ui)
+                    .or(var_constraint.bounds.ui)
+                    .or(cc_vc.bounds.ui);
 
                 if let Some(f) = cc_vc.form {
                     if let Some(old_form) = &var_constraint.form {
@@ -428,8 +428,7 @@ fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint), Box<Parse
             };
 
             let vc = VarConstraint {
-                min_length: len_range.li,
-                max_length: len_range.ui,
+                bounds: len_range,
                 form: literal_constraint_str.map(ToString::to_string),
                 not_equal: HashSet::default(),
                 ..Default::default()
@@ -471,7 +470,7 @@ fn parse_length_range(input: &str) -> Result<Bounds, Box<ParseError>> {
     // TODO!!! is there a better way to do this?
     let min = parts.first().unwrap().unwrap_or(VarConstraint::DEFAULT_MIN);
     let max = *parts.last().unwrap();
-    Ok(Bounds::of(min, max))
+    Ok(max.map_or(Bounds::of_unbounded(min), |u| Bounds::of(min, u)))
 }
 
 #[cfg(test)]
@@ -490,8 +489,7 @@ mod tests {
         let a = patterns.var_constraints.get('A').unwrap();
 
         let expected_a = VarConstraint {
-            min_length: 3,
-            max_length: Some(3),
+            bounds: Bounds::of(3, 3),
             form: None,
             not_equal: HashSet::from_iter(['B']),
             ..Default::default()
@@ -500,8 +498,7 @@ mod tests {
 
         let b = patterns.var_constraints.get('B').unwrap();
         let expected_b = VarConstraint {
-            min_length: 2,
-            max_length: Some(2),
+            bounds: Bounds::of(2, 2),
             form: Some("b*".to_string()),
             not_equal: HashSet::from_iter(['A']),
             ..Default::default()
@@ -514,8 +511,7 @@ mod tests {
         let patterns = "A;A=(6)".parse::<Patterns>().unwrap();
 
         let expected = VarConstraint {
-            min_length: 6,
-            max_length: Some(6),
+            bounds: Bounds::of(6, 6),
             form: None,
             ..Default::default()
         };
@@ -527,8 +523,7 @@ mod tests {
         let patterns = "A;A=(g*)".parse::<Patterns>().unwrap();
 
         let expected = VarConstraint {
-            min_length: VarConstraint::DEFAULT_MIN,
-            max_length: None,
+            bounds: Bounds::of_unbounded(VarConstraint::DEFAULT_MIN),
             form: Some("g*".to_string()),
             ..Default::default()
         };
@@ -539,8 +534,7 @@ mod tests {
         let patterns = "A;A=(3-4:x*)".parse::<Patterns>().unwrap();
 
         let expected = VarConstraint {
-            min_length: 3,
-            max_length: Some(4),
+            bounds: Bounds::of(3, 4),
             form: Some("x*".to_string()),
             ..Default::default()
         };
@@ -552,8 +546,7 @@ mod tests {
         let patterns = "A;A=(3-:x*)".parse::<Patterns>().unwrap();
 
         let expected = VarConstraint {
-            min_length: 3,
-            max_length: None,
+            bounds: Bounds::of_unbounded(3),
             form: Some("x*".to_string()),
             ..Default::default()
         };
@@ -565,8 +558,7 @@ mod tests {
         let patterns = "A;A=(-4:x*)".parse::<Patterns>().unwrap();
 
         let expected = VarConstraint {
-            min_length: VarConstraint::DEFAULT_MIN,
-            max_length: Some(4),
+            bounds: Bounds::of(VarConstraint::DEFAULT_MIN, 4),
             form: Some("x*".to_string()),
             ..Default::default()
         };
@@ -578,8 +570,7 @@ mod tests {
         let patterns = "A;A=(6:x*)".parse::<Patterns>().unwrap();
 
         let expected = VarConstraint {
-            min_length: 6,
-            max_length: Some(6),
+            bounds: Bounds::of(6, 6),
             form: Some("x*".to_string()),
             ..Default::default()
         };
@@ -605,10 +596,10 @@ mod tests {
 
     #[test]
     fn test_parse_length_range() {
-        assert_eq!(Bounds::of(2, Some(3)), parse_length_range("2-3").unwrap());
-        assert_eq!(Bounds::of(VarConstraint::DEFAULT_MIN, Some(3)), parse_length_range("-3").unwrap());
-        assert_eq!(Bounds::of(1, None), parse_length_range("1-").unwrap());
-        assert_eq!(Bounds::of(7, Some(7)), parse_length_range("7").unwrap());
+        assert_eq!(Bounds::of(2, 3), parse_length_range("2-3").unwrap());
+        assert_eq!(Bounds::of(VarConstraint::DEFAULT_MIN, 3), parse_length_range("-3").unwrap());
+        assert_eq!(Bounds::of_unbounded(1), parse_length_range("1-").unwrap());
+        assert_eq!(Bounds::of(7, 7), parse_length_range("7").unwrap());
         assert!(matches!(*parse_length_range("").unwrap_err(), ParseError::InvalidLengthRange { input } if input.is_empty() ));
         assert!(matches!(*parse_length_range("1-2-3").unwrap_err(), ParseError::InvalidLengthRange { input } if input == "1-2-3" ));
     }
@@ -617,16 +608,16 @@ mod tests {
     fn test_len_gt() {
         let patterns = "|A|>4;A".parse::<Patterns>().unwrap();
         let a = patterns.var_constraints.get('A').unwrap();
-        assert_eq!(a.min_length, 5);
-        assert_eq!(a.max_length, None);
+        assert_eq!(a.bounds.li, 5);
+        assert_eq!(a.bounds.ui, None);
     }
 
     #[test]
     fn test_len_ge() {
         let patterns = "|A|>=4;A".parse::<Patterns>().unwrap();
         let a = patterns.var_constraints.get('A').unwrap();
-        assert_eq!(a.min_length, 4);
-        assert_eq!(a.max_length, None);
+        assert_eq!(a.bounds.li, 4);
+        assert_eq!(a.bounds.ui, None);
     }
 
     #[test]
@@ -634,16 +625,16 @@ mod tests {
         let patterns = "|A|<4;A".parse::<Patterns>().unwrap();
         let a = patterns.var_constraints.get('A').unwrap();
         // For <4, max becomes 3; <1 would become None via checked_sub
-        assert_eq!(a.min_length, VarConstraint::DEFAULT_MIN);
-        assert_eq!(a.max_length, Some(3));
+        assert_eq!(a.bounds.li, VarConstraint::DEFAULT_MIN);
+        assert_eq!(a.bounds.ui, Some(3));
     }
 
     #[test]
     fn test_len_le() {
         let patterns = "|A|<=4;A".parse::<Patterns>().unwrap();
         let a = patterns.var_constraints.get('A').unwrap();
-        assert_eq!(a.min_length, VarConstraint::DEFAULT_MIN);
-        assert_eq!(a.max_length, Some(4));
+        assert_eq!(a.bounds.li, VarConstraint::DEFAULT_MIN);
+        assert_eq!(a.bounds.ui, Some(4));
     }
 
     #[test]
@@ -653,8 +644,7 @@ mod tests {
         let a = patterns.var_constraints.get('A').unwrap().clone();
 
         let expected = VarConstraint {
-            min_length: 7,
-            max_length: Some(7),
+            bounds: Bounds::of(7, 7),
             form: Some("x*a".to_string()),
             ..Default::default()
         };
@@ -751,8 +741,8 @@ mod tests {
         // |A|>=5 and A=(3-7:abc) -> min should be 5, max should be 7, form = abc
         let patterns = "A;|A|>=5;A=(3-7:abc)".parse::<Patterns>().unwrap();
         let a = patterns.var_constraints.get('A').unwrap();
-        assert_eq!(a.min_length, 5);
-        assert_eq!(a.max_length, Some(7));
+        assert_eq!(a.bounds.li, 5);
+        assert_eq!(a.bounds.ui, Some(7));
         assert_eq!(a.form.as_deref(), Some("abc"));
     }
 

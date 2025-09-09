@@ -90,7 +90,7 @@ impl FormContext<'_> {
     ) -> Bounds {
         // Skip if group has no vars at all
         if g.vars.is_empty() {
-            return Bounds::of(weighted_min, weighted_max);
+            return weighted_max.map_or(Bounds::of_unbounded(weighted_min), |max| Bounds::of(weighted_min, max))
         }
 
         // Intersect with the form's variables (only consider vars that appear in this form)
@@ -102,7 +102,7 @@ impl FormContext<'_> {
             .collect();
         gvars.sort_unstable();
         if gvars.is_empty() {
-            return Bounds::of(weighted_min, weighted_max);
+            return weighted_max.map_or(Bounds::of_unbounded(weighted_min), |max| Bounds::of(weighted_min, max))
         }
 
         // Build rows, Σ li, and Σ ui (finite only)
@@ -197,7 +197,7 @@ impl FormContext<'_> {
             new_max = Some(new_max.map_or(cand, |cur| cur.min(cand)));
         }
 
-        Bounds::of(new_min, new_max)
+        new_max.map_or(Bounds::of_unbounded(new_min), |max| Bounds::of(new_min, max))
     }
 }
 
@@ -316,7 +316,6 @@ pub(crate) fn form_len_hints_pf(
     vcs: &VarConstraints,
     jcs: &JointConstraints,
 ) -> PatternLenHints {
-
     // 1. Scan tokens: accumulate fixed_base, detect '*', and count var frequencies
     let mut fixed_base = 0;
     let mut has_star = false;
@@ -456,8 +455,7 @@ mod tests {
 
         // A in [2,4]
         let a = vcs.ensure('A');
-        a.min_length = 2;
-        a.max_length = Some(4);
+        a.bounds = Bounds::of(2, 4);
 
         let hints = form_len_hints_pf(&form, &vcs, &JointConstraints::default());
 
@@ -475,12 +473,10 @@ mod tests {
         let mut vcs = VarConstraints::default();
 
         let a = vcs.ensure('A');
-        a.min_length = 2;
-        a.max_length = Some(3);
+        a.bounds = Bounds::of(2, 3);
 
         let b = vcs.ensure('B');
-        b.min_length = 1;
-        b.max_length = Some(5);
+        b.bounds = Bounds::of(1, 5);
 
         let hints = form_len_hints_pf(&form, &vcs, &JointConstraints::default());
 
@@ -531,8 +527,7 @@ mod tests {
         let mut vcs = VarConstraints::default();
 
         let a = vcs.ensure('A');
-        a.min_length = 2;
-        a.max_length = Some(2);
+        a.bounds = Bounds::of(2, 2);
 
         let jc = JointConstraint {
             vars: vec!['A', 'B'],
@@ -556,12 +551,10 @@ mod tests {
         let mut vcs = VarConstraints::default();
 
         let a = vcs.ensure('A');
-        a.min_length = 1;
-        a.max_length = Some(5);
+        a.bounds = Bounds::of(1, 5);
 
         let b = vcs.ensure('B');
-        b.min_length = 1;
-        b.max_length = Some(10);
+        b.bounds = Bounds::of(1, 10);
 
         let g1 = JointConstraint {
             vars: vec!['A', 'B'],
@@ -637,12 +630,10 @@ mod tests {
         let mut vcs = VarConstraints::default();
 
         let a = vcs.ensure('A');
-        a.min_length = 3;
-        a.max_length = Some(5);
+        a.bounds = Bounds::of(3, 5);
 
         let b = vcs.ensure('B');
-        b.min_length = 2;
-        b.max_length = Some(10);
+        b.bounds = Bounds::of(2, 10);
 
         let g1 = JointConstraint { vars: vec!['A','B'], target: 4, rel: RelMask::GE };
         let g2 = JointConstraint { vars: vec!['A','B'], target: 6, rel: RelMask::LE };
@@ -666,16 +657,13 @@ mod tests {
         let mut vcs = VarConstraints::default();
 
         let a = vcs.ensure('A');
-        a.min_length = 2;
-        a.max_length = Some(5);
+        a.bounds = Bounds::of(2, 5);
 
         let b = vcs.ensure('B');
-        b.min_length = 1;
-        b.max_length = Some(7);
+        b.bounds = Bounds::of(1, 7);
 
         let c = vcs.ensure('C');
-        c.min_length = 3;
-        c.max_length = Some(4);
+        c.bounds = Bounds::of(3, 4);
 
         let ge = JointConstraint { vars: vec!['A','B','C'], target: 10, rel: RelMask::GE };
         let le = JointConstraint { vars: vec!['A','B','C'], target: 12, rel: RelMask::LE };
