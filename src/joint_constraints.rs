@@ -249,21 +249,21 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
 
         for &v in &jc.vars {
             let bounds = vcs.bounds(v);
-            sum_min += bounds.li;
+            sum_min += bounds.min_len;
 
             // Track finite sum of maxes; if any is unbounded, the group max is unbounded.
-            sum_max_opt = sum_max_opt.and_then(|a| bounds.ui.map(|u| a + u));
+            sum_max_opt = sum_max_opt.and_then(|a| bounds.max_len_opt.map(|u| a + u));
 
-            mins.push((v, bounds.li));
-            if let Some(u) = bounds.ui {
+            mins.push((v, bounds.min_len));
+            if let Some(u) = bounds.max_len_opt {
                 maxes.push((v, u));
             }
         }
 
         if sum_min == jc.target {
             // Case 1: exact by mins
-            for (v, li) in mins {
-                vcs.ensure_entry_mut(v).set_exact_len(li);
+            for (v, min_len) in mins {
+                vcs.ensure_entry_mut(v).set_exact_len(min_len);
             }
         } else if let Some(sum_max) = sum_max_opt && sum_max == jc.target {
             // Case 2: exact by finite maxes
@@ -279,17 +279,17 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
                 let sum_other_min: usize = jc.vars
                     .iter()
                     .filter(|&&w| w != v)
-                    .map(|&w| vcs.bounds(w).li)
+                    .map(|&w| vcs.bounds(w).min_len)
                     .sum();
 
                 // Σ other finite maxes (None if any is unbounded)
                 let mut sum_other_max_opt: Option<usize> = Some(0);
                 for &w in jc.vars.iter().filter(|&&w| w != v) {
                     let w_bounds = vcs.bounds(w);
-                    if w_bounds.ui.is_none() {
+                    if w_bounds.max_len_opt.is_none() {
                         sum_other_max_opt = None;
                     }
-                    sum_other_max_opt = sum_other_max_opt.and_then(|a| w_bounds.ui.map(|w| a + w));
+                    sum_other_max_opt = sum_other_max_opt.and_then(|a| w_bounds.max_len_opt.map(|w| a + w));
                     if sum_other_max_opt.is_none() {
                         break;
                     }
@@ -299,8 +299,8 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
                 let upper_from_joint = jc.target.saturating_sub(sum_other_min);
 
                 // Tighten and store
-                let new_min = bounds.li.max(lower_from_joint);
-                let new_max = bounds.ui.unwrap_or(upper_from_joint).min(upper_from_joint);
+                let new_min = bounds.min_len.max(lower_from_joint);
+                let new_max = bounds.max_len_opt.unwrap_or(upper_from_joint).min(upper_from_joint);
 
                 let e = vcs.ensure_entry_mut(v);
                 e.bounds = Bounds::of(new_min, new_max);
@@ -531,19 +531,19 @@ mod tests {
         let a_bounds = vcs.bounds('A');
         let b_bounds = vcs.bounds('B');
         let c_bounds = vcs.bounds('C');
-        let c_max = c_bounds.ui;
+        let c_max = c_bounds.max_len_opt;
 
         // A cannot exceed 2, since then B would have to be less than 1 (from A+B=3)
-        assert_eq!(a_bounds.ui.unwrap(), 2);
+        assert_eq!(a_bounds.max_len_opt.unwrap(), 2);
         // A should be at least the default min
-        assert_eq!(a_bounds.li, VarConstraint::DEFAULT_MIN);
+        assert_eq!(a_bounds.min_len, VarConstraint::DEFAULT_MIN);
 
         // B is between 1 and 2, since A+B=3 and both ≥1
-        assert_eq!(b_bounds.li, VarConstraint::DEFAULT_MIN);
-        assert_eq!(b_bounds.ui.unwrap(), 2);
+        assert_eq!(b_bounds.min_len, VarConstraint::DEFAULT_MIN);
+        assert_eq!(b_bounds.max_len_opt.unwrap(), 2);
 
         // C must be at least 4, since B≤2 and B+C=6
-        assert_eq!(c_bounds.li, 4);
+        assert_eq!(c_bounds.min_len, 4);
         // And at most 5, since B≥1
         assert_eq!(c_max.unwrap(), 5);
     }

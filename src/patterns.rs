@@ -223,10 +223,10 @@ impl Patterns {
                 match op {
                     ComparisonOperator::EQ => vc.set_exact_len(n),
                     ComparisonOperator::NE => {}
-                    ComparisonOperator::LE => vc.bounds.ui = Some(n),
-                    ComparisonOperator::GE => vc.bounds.li = n,
-                    ComparisonOperator::LT => vc.bounds.ui = n.checked_sub(1),   // n-1 (None if n==0)
-                    ComparisonOperator::GT => vc.bounds.li = n + 1, // TODO? check for overflow
+                    ComparisonOperator::LE => vc.bounds.max_len_opt = Some(n),
+                    ComparisonOperator::GE => vc.bounds.min_len = n,
+                    ComparisonOperator::LT => vc.bounds.max_len_opt = n.checked_sub(1),   // n-1 (None if n==0)
+                    ComparisonOperator::GT => vc.bounds.min_len = n + 1, // TODO? check for overflow
                 }
             } else if let Some(cap) = NEQ_RE.captures(form).unwrap() {
                 // Extract all variables from inequality constraint
@@ -601,16 +601,16 @@ mod tests {
     fn test_len_gt() {
         let patterns = "|A|>4;A".parse::<Patterns>().unwrap();
         let a = patterns.var_constraints.get('A').unwrap();
-        assert_eq!(a.bounds.li, 5);
-        assert_eq!(a.bounds.ui, None);
+        assert_eq!(a.bounds.min_len, 5);
+        assert_eq!(a.bounds.max_len_opt, None);
     }
 
     #[test]
     fn test_len_ge() {
         let patterns = "|A|>=4;A".parse::<Patterns>().unwrap();
         let a = patterns.var_constraints.get('A').unwrap();
-        assert_eq!(a.bounds.li, 4);
-        assert_eq!(a.bounds.ui, None);
+        assert_eq!(a.bounds.min_len, 4);
+        assert_eq!(a.bounds.max_len_opt, None);
     }
 
     #[test]
@@ -618,16 +618,16 @@ mod tests {
         let patterns = "|A|<4;A".parse::<Patterns>().unwrap();
         let a = patterns.var_constraints.get('A').unwrap();
         // For <4, max becomes 3; <1 would become None via checked_sub
-        assert_eq!(a.bounds.li, VarConstraint::DEFAULT_MIN);
-        assert_eq!(a.bounds.ui, Some(3));
+        assert_eq!(a.bounds.min_len, VarConstraint::DEFAULT_MIN);
+        assert_eq!(a.bounds.max_len_opt, Some(3));
     }
 
     #[test]
     fn test_len_le() {
         let patterns = "|A|<=4;A".parse::<Patterns>().unwrap();
         let a = patterns.var_constraints.get('A').unwrap();
-        assert_eq!(a.bounds.li, VarConstraint::DEFAULT_MIN);
-        assert_eq!(a.bounds.ui, Some(4));
+        assert_eq!(a.bounds.min_len, VarConstraint::DEFAULT_MIN);
+        assert_eq!(a.bounds.max_len_opt, Some(4));
     }
 
     #[test]
@@ -734,8 +734,8 @@ mod tests {
         // |A|>=5 and A=(3-7:abc) -> min should be 5, max should be 7, form = abc
         let patterns = "A;|A|>=5;A=(3-7:abc)".parse::<Patterns>().unwrap();
         let a = patterns.var_constraints.get('A').unwrap();
-        assert_eq!(a.bounds.li, 5);
-        assert_eq!(a.bounds.ui, Some(7));
+        assert_eq!(a.bounds.min_len, 5);
+        assert_eq!(a.bounds.max_len_opt, Some(7));
         assert_eq!(a.form.as_deref(), Some("abc"));
     }
 

@@ -24,9 +24,10 @@ struct Cli {
     #[arg(short = 'm', long, default_value_t = 50)]
     min_score: i32,
 
+    // TODO? remove? (is this unused?)
     /// Maximum allowed word length
     #[arg(short = 'L', long, default_value_t = 21)]
-    max_len: usize,
+    max_word_len: usize,
 
     /// Maximum number of results to return
     #[arg(short = 'n', long, default_value_t = 100)]

@@ -75,49 +75,48 @@ impl fmt::Display for VarConstraints {
 
 /// Simple lower/upper bound for a variable's length.
 ///
-/// - `li`: minimum length (always finite)
-/// - `ui`: optional maximum length (`None` means unbounded)
-// TODO? rename li, ui (to min, max?)
+/// - `min_len`: minimum length (always finite)
+/// - `max_len_opt`: optional maximum length (`None` means unbounded)
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Bounds {
-    pub(crate) li: usize, // TODO? minimize direct assignment of li and/or ui (instead using Bounds::of(_no_max) whenever possible/sensible)
-    pub(crate) ui: Option<usize>
+    pub(crate) min_len: usize, // TODO? minimize direct assignment of min_len and/or max_len_opt (instead using Bounds::of(_no_max) whenever possible/sensible)
+    pub(crate) max_len_opt: Option<usize>
 }
 
 impl Default for Bounds {
     fn default() -> Self {
         Bounds {
-            li: VarConstraint::DEFAULT_MIN,
-            ui: Option::default()
+            min_len: VarConstraint::DEFAULT_MIN,
+            max_len_opt: Option::default()
         }
     }
 }
 
 impl Bounds {
-    pub(crate) fn of(li: usize, ui_raw: usize) -> Self {
-        Bounds { li, ui: Some(ui_raw) }
+    pub(crate) fn of(min_len: usize, max_len: usize) -> Self {
+        Bounds { min_len, max_len_opt: Some(max_len) }
     }
 
-    pub(crate) fn of_unbounded(li: usize) -> Self {
-        Bounds { li, ui: None }
+    pub(crate) fn of_unbounded(min_len: usize) -> Self {
+        Bounds { min_len, max_len_opt: None }
     }
 
-    // TODO! tests--esp. instances where neither min_length is `VarConstraint::DEFAULT_MIN` and where neither max_length is `None`
+    // TODO! tests--esp. instances where neither `min_len` is `VarConstraint::DEFAULT_MIN` and where neither `max_len_opt` is `None`
     // only set what the constraint explicitly provides
     fn constrain_by(&mut self, other: Bounds) {
-        self.li = self.li.max(other.li);
-        self.ui = self.ui
-            .min(other.ui)
-            .or(self.ui) // since None is treated as less than anything
-            .or(other.ui); // since None is treated as less than anything
+        self.min_len = self.min_len.max(other.min_len);
+        self.max_len_opt = self.max_len_opt
+            .min(other.max_len_opt)
+            .or(self.max_len_opt) // since None is treated as less than anything
+            .or(other.max_len_opt); // since None is treated as less than anything
     }
 }
 
 impl Display for Bounds {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = self.ui
-            .map(|max_len| { format!("[{},{max_len}]", self.li) })
-            .unwrap_or(format!("[{},∞)", self.li));
+        let s = self.max_len_opt
+            .map(|max_len| { format!("[{},{max_len}]", self.min_len) })
+            .unwrap_or(format!("[{},∞)", self.min_len));
         write!(f, "{s}")
     }
 }
@@ -125,7 +124,7 @@ impl Display for Bounds {
 /// A set of rules restricting what a single variable can match.
 ///
 /// Fields are optional so that constraints can be partial:
-/// - `min_length` / `max_length` limit how many characters the variable can bind to.
+/// - `bounds` limit how many characters the variable can bind to.
 /// - `form` is an optional sub-pattern the variable's match must satisfy
 ///   (e.g., `"a*"` means "must start with `a`"; `"*z*"` means "must contain `z`").
 /// - `not_equal` lists variables whose matches must *not* be identical to this one.
@@ -206,7 +205,7 @@ mod tests {
             // default created; tweak it
             a.bounds = Bounds::of_unbounded(3);
         }
-        assert_eq!(3, vcs.get('A').unwrap().bounds.li);
+        assert_eq!(3, vcs.get('A').unwrap().bounds.min_len);
         assert_eq!(1, vcs.len());
     }
 
