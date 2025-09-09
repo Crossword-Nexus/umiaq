@@ -320,8 +320,8 @@ mod tests {
     fn propagate_exact_by_mins_all_explicit() {
         // |AB| = 5, with A.min=2, B.min=3
         let mut vcs = VarConstraints::default();
-        vcs.ensure_entry_mut('A').bounds.li = 2;
-        vcs.ensure_entry_mut('B').bounds.li = 3;
+        vcs.ensure_entry_mut('A').bounds = Bounds::of_unbounded(2);
+        vcs.ensure_entry_mut('B').bounds = Bounds::of_unbounded(3);
 
         let jc = JointConstraint { vars: vec!['A','B'], target: 5, rel: RelMask::EQ };
         let jcs = JointConstraints::of(vec![jc]);
@@ -336,9 +336,9 @@ mod tests {
     fn propagate_exact_by_mins_with_implicit_default() {
         // |ABC| = 7, with A.min=3, B.min=None (implicit default=1), C.min=3
         let mut vcs = VarConstraints::default();
-        vcs.ensure_entry_mut('A').bounds.li = 3;
+        vcs.ensure_entry_mut('A').bounds = Bounds::of_unbounded(3);
         // B left unconstrained -> min_length=None
-        vcs.ensure_entry_mut('C').bounds.li = 3;
+        vcs.ensure_entry_mut('C').bounds = Bounds::of_unbounded(3);
 
         let jc = JointConstraint { vars: vec!['A','B','C'], target: 7, rel: RelMask::EQ };
         let jcs = JointConstraints::of(vec![jc]);
@@ -355,8 +355,8 @@ mod tests {
     fn propagate_no_exact_when_sum_min_lt_target() {
         // |ABC| = 8, A.min=3, B.min=1 (from lack of explicit min), C.min=3 → sum_min=7 < 8
         let mut vcs = VarConstraints::default();
-        vcs.ensure_entry_mut('A').bounds.li = 3;
-        vcs.ensure_entry_mut('C').bounds.li = 3;
+        vcs.ensure_entry_mut('A').bounds = Bounds::of_unbounded(3);
+        vcs.ensure_entry_mut('C').bounds = Bounds::of_unbounded(3);
 
         let jc = JointConstraint { vars: vec!['A','B','C'], target: 8, rel: RelMask::EQ };
         let jcs = JointConstraints::of(vec![jc]);
@@ -373,8 +373,8 @@ mod tests {
     fn propagate_exact_by_maxes() {
         // |AB| = 7, with A.max=4, B.max=3
         let mut vcs = VarConstraints::default();
-        vcs.ensure_entry_mut('A').bounds.ui = Some(4);
-        vcs.ensure_entry_mut('B').bounds.ui = Some(3);
+        vcs.ensure_entry_mut('A').bounds = Bounds::of(VarConstraint::DEFAULT_MIN, 4);
+        vcs.ensure_entry_mut('B').bounds = Bounds::of(VarConstraint::DEFAULT_MIN, 3);
 
         let jc = JointConstraint { vars: vec!['A','B'], target: 7, rel: RelMask::EQ };
         let jcs = JointConstraints::of(vec![jc]);

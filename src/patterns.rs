@@ -243,7 +243,7 @@ impl Patterns {
             } else if let Ok((var, cc_vc)) = get_complex_constraint(form) {
                 let var_constraint = self.var_constraints.ensure(var);
 
-                // TODO! test instances where neither min_length is none and where neither max_length is none
+                // TODO! test instances where neither min_length is `VarConstraint::DEFAULT_MIN` and where neither max_length is `None`
                 // only set what the constraint explicitly provides
                 var_constraint.bounds.li = var_constraint.bounds.li.max(cc_vc.bounds.li);
                 var_constraint.bounds.ui = var_constraint

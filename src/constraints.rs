@@ -190,7 +190,7 @@ mod tests {
         {
             let a = vcs.ensure('A');
             // default created; tweak it
-            a.bounds.li = 3;
+            a.bounds = Bounds::of_unbounded(3);
         }
         assert_eq!(3, vcs.get('A').unwrap().bounds.li);
         assert_eq!(1, vcs.len());
