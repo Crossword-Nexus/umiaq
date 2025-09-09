@@ -26,7 +26,7 @@
 
 use std::cmp::max;
 use std::collections::{HashMap, HashSet};
-use crate::constraints::{VarConstraint, VarConstraints};
+use crate::constraints::{Bounds, VarConstraint, VarConstraints};
 use crate::joint_constraints::{JointConstraint, JointConstraints, RelMask};
 use crate::parser::{FormPart, ParsedForm};
 
@@ -46,17 +46,6 @@ pub struct PatternLenHints {
     pub min_len: usize,
     /// Upper bound on the form's length. `None` = unbounded above.
     pub max_len: Option<usize>,
-}
-
-// TODO? always use this for bounds pairs (i.e., instead of `(usize, Option<usize>)`)
-/// Simple lower/upper bound for a variable's length.
-///
-/// - `li`: minimum length (always finite)
-/// - `ui`: optional maximum length (`None` means unbounded)
-#[derive(Clone, Copy, Debug)]
-struct Bounds {
-    li: usize,
-    ui: Option<usize>
 }
 
 /// Weighted row used in group constraint calculations.
@@ -98,10 +87,10 @@ impl FormContext<'_> {
         g: &GroupLenConstraint,
         weighted_min: usize,
         weighted_max: Option<usize>,
-    ) -> (usize, Option<usize>) {
+    ) -> Bounds {
         // Skip if group has no vars at all
         if g.vars.is_empty() {
-            return (weighted_min, weighted_max);
+            return Bounds::of(weighted_min, weighted_max);
         }
 
         // Intersect with the form's variables (only consider vars that appear in this form)
@@ -113,7 +102,7 @@ impl FormContext<'_> {
             .collect();
         gvars.sort_unstable();
         if gvars.is_empty() {
-            return (weighted_min, weighted_max);
+            return Bounds::of(weighted_min, weighted_max);
         }
 
         // Build rows, Σ li, and Σ ui (finite only)
@@ -148,9 +137,9 @@ impl FormContext<'_> {
             .iter()
             .filter(|v| !self.var_frequency.contains_key(v))
             .fold((0usize, Some(0usize)), |(min_acc, max_acc_opt), &v| {
-                let (li, ui) = self.vcs.bounds(v);
-                let min_acc = min_acc + li;
-                let max_acc_opt = ui.and_then(|u| max_acc_opt.map(|a| a + u));
+                let bounds = self.vcs.bounds(v);
+                let min_acc = min_acc + bounds.li;
+                let max_acc_opt = bounds.ui.and_then(|u| max_acc_opt.map(|a| a + u));
                 (min_acc, max_acc_opt)
             });
 
@@ -208,7 +197,7 @@ impl FormContext<'_> {
             new_max = Some(new_max.map_or(cand, |cur| cur.min(cand)));
         }
 
-        (new_min, new_max)
+        Bounds::of(new_min, new_max)
     }
 }
 
@@ -357,10 +346,7 @@ pub(crate) fn form_len_hints_pf(
 
     let bounds_map = &vars
         .iter()
-        .map(|&v| {
-            let (li, ui) = vcs.bounds(v);
-            (v, Bounds { li, ui })
-        })
+        .map(|&v| { (v, vcs.bounds(v)) })
         .collect::<HashMap<char, Bounds>>();
 
     let get_weight = |v: char| *var_frequency.get(&v).unwrap_or(&0);
@@ -397,9 +383,9 @@ pub(crate) fn form_len_hints_pf(
         has_star,
     };
     for g in &group_constraints_for_form(parts, jcs) {
-        let (new_min, new_max) = ctx.tighten_with_group(g, weighted_min, weighted_max);
-        weighted_min = new_min;
-        weighted_max = new_max;
+        let new_bounds = ctx.tighten_with_group(g, weighted_min, weighted_max);
+        weighted_min = new_bounds.li;
+        weighted_max = new_bounds.ui;
     }
 
     PatternLenHints {

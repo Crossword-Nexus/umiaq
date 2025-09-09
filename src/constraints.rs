@@ -30,8 +30,8 @@ impl VarConstraints {
         self.inner.entry(var).or_default()
     }
 
-    pub(crate) fn bounds(&self, v: char) -> (usize, Option<usize>) {
-        self.get(v).map_or((VarConstraint::DEFAULT_MIN, None), |vc| (vc.min_length, vc.max_length))
+    pub(crate) fn bounds(&self, v: char) -> Bounds {
+        self.get(v).map_or(Bounds::default(), |vc| Bounds::of(vc.min_length, vc.max_length))
     }
 
     /// Ensure an entry exists and return it mutably.
@@ -72,6 +72,32 @@ impl fmt::Display for VarConstraints {
     }
 }
 
+// TODO? move to VarConstraint
+/// Simple lower/upper bound for a variable's length.
+///
+/// - `li`: minimum length (always finite)
+/// - `ui`: optional maximum length (`None` means unbounded)
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct Bounds {
+    pub(crate) li: usize,
+    pub(crate) ui: Option<usize>
+}
+
+impl Default for Bounds {
+    fn default() -> Self {
+        Bounds {
+            li: VarConstraint::DEFAULT_MIN,
+            ui: Option::default()
+        }
+    }
+}
+
+impl Bounds {
+    pub(crate) fn of(li: usize, ui: Option<usize>) -> Self {
+        Bounds { li, ui }
+    }
+}
+
 /// A set of rules restricting what a single variable can match.
 ///
 /// Fields are optional so that constraints can be partial:
@@ -81,7 +107,7 @@ impl fmt::Display for VarConstraints {
 /// - `not_equal` lists variables whose matches must *not* be identical to this one.
 #[derive(Debug, Clone)]
 pub struct VarConstraint {
-    pub min_length: usize,
+    pub min_length: usize, // TODO? use Bounds
     pub max_length: Option<usize>,
     pub form: Option<String>,
     pub not_equal: HashSet<char>,
