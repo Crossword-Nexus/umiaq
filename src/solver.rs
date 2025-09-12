@@ -226,12 +226,11 @@ struct RecursiveJoinParameters {
 
 /// Depth-first recursive join of per-pattern candidate buckets into full solutions.
 ///
-/// This mirrors `recursive_filter` from `umiaq.py`. We walk patterns in order
-/// (index `idx`) and at each step select only the bucket of candidates whose
-/// shared variables agree with what we've already chosen (`env`).
+/// This mirrors `recursive_filter` from `umiaq.py`. We walk patterns in order and at each step
+/// select only the bucket of candidates whose shared variables agree with what we've already
+/// chosen (`env`).
 ///
 /// Parameters:
-/// - `idx`: which pattern we're placing now (0-based).
 /// - `selected`: the partial solution (one chosen `Bindings` per pattern so far).
 /// - `env`: the accumulated variable → value environment from earlier choices.
 /// - `results`: completed solutions (each is a `Vec<Binding>`, one per pattern).
@@ -241,7 +240,8 @@ struct RecursiveJoinParameters {
 ///   patterns.
 ///
 /// Return:
-/// - This function mutates `results` and stops early once it has `num_results_requested`.
+/// - This function mutates `results` and stops early once `results` contains
+///   `num_results_requested` values.
 fn recursive_join(
     selected: &mut Vec<Bindings>,
     env: &mut HashMap<char, String>,
