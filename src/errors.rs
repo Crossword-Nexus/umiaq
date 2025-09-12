@@ -1,8 +1,9 @@
-use std::{fmt, io};
-use std::fmt::Formatter;
-use std::num::ParseIntError;
 use crate::errors::ParseError::ParseFailure;
 use nom::error::{ErrorKind, ParseError as NomParseError};
+use std::fmt::Formatter;
+use std::num::ParseIntError;
+use std::{fmt, io};
+
 
 /// Custom error type for parsing operations
 #[derive(Debug, thiserror::Error)]
@@ -25,8 +26,8 @@ pub enum ParseError {
     #[error("Dangling '-' at end of charset")]
     DanglingCharsetDash,
 
-    #[error("Conflicting constraints for {var} ({older} / {newer})")]
-    ConflictingConstraint { var: char, older: String, newer: String },
+    #[error("Conflicting constraints for {var_char} ({older} / {newer})")]
+    ConflictingConstraint { var_char: char, older: String, newer: String },
 
     // ... existing variants, e.g., from variables, constraints, etc. ...
     #[error("nom parser error: {0:?}")]

@@ -1,6 +1,6 @@
 pub mod form;
-pub mod prefilter;
 pub mod matcher;
+pub mod prefilter;
 mod utils;
 
 // Re-export the public API so existing call sites keep working.

@@ -23,11 +23,11 @@ fn get_rest_if_valid_prefix<'a>(prefix: &str, chars: &'a [char]) -> Option<&'a [
 }
 
 /// Helper to reverse a bound value if the part is `RevVar`.
-fn get_reversed_or_not(first: &FormPart, val: &str) -> String {
+fn get_reversed_or_not(first: &FormPart, var_val: &str) -> String {
     if matches!(first, FormPart::RevVar(_)) {
-        val.chars().rev().collect()
+        var_val.chars().rev().collect()
     } else {
-        val.to_owned()
+        var_val.to_owned()
     }
 }
 
@@ -37,24 +37,24 @@ fn get_reversed_or_not(first: &FormPart, val: &str) -> String {
 /// 1. If length constraints are present, enforce them
 /// 2. If `form` is present, the value must itself match that form.
 /// 3. The value must not equal any variable listed in `not_equal` that is already bound.
-fn is_valid_binding(val: &str, constraints: &VarConstraint, bindings: &Bindings) -> bool {
+fn is_valid_binding(var_val: &str, constraints: &VarConstraint, bindings: &Bindings) -> bool {
     // 1. Length checks (if configured)
-    if val.len() < constraints.bounds.min_len
-        || constraints.bounds.max_len_opt.is_some_and(|max_len| val.len() > max_len)
+    if var_val.len() < constraints.bounds.min_len
+        || constraints.bounds.max_len_opt.is_some_and(|max_len| var_val.len() > max_len)
     {
         return false;
     }
 
     // 2. Apply nested-form constraint if present (use cached parse)
     if let Some(parsed) = constraints.get_parsed_form()
-        && !match_equation_exists(val, parsed, &VarConstraints::default(), JointConstraints::default())
+        && !match_equation_exists(var_val, parsed, &VarConstraints::default(), JointConstraints::default())
     {
         return false;
     }
 
     // 3. Check "not equal" constraints
     for &other in &constraints.not_equal {
-        if let Some(existing) = bindings.get(other) && existing == val {
+        if let Some(existing) = bindings.get(other) && existing == var_val {
             return false;
         }
     }
@@ -198,9 +198,9 @@ impl HelperParams<'_> {
             }
 
             FormPart::Var(var_name) | FormPart::RevVar(var_name) => {
-                if let Some(bound_val) = self.bindings.get(*var_name) {
+                if let Some(var_val) = self.bindings.get(*var_name) {
                     // Already bound: must match exactly
-                    get_rest_if_valid_prefix(&get_reversed_or_not(first, bound_val), chars)
+                    get_rest_if_valid_prefix(&get_reversed_or_not(first, var_val), chars)
                         .is_some_and(|rest_chars| self.recurse(rest_chars, rest))
                 } else {
                     // Not bound yet: try binding to all possible lengths
@@ -226,7 +226,7 @@ impl HelperParams<'_> {
                         (min_len..=capped_max).any(|l| {
                             let candidate_chars = &chars[..l];
 
-                            let bound_val: String = if matches!(first, FormPart::RevVar(_)) {
+                            let var_val: String = if matches!(first, FormPart::RevVar(_)) {
                                 candidate_chars.iter().rev().collect()
                             } else {
                                 candidate_chars.iter().collect()
@@ -236,10 +236,10 @@ impl HelperParams<'_> {
                             let valid = self
                                 .constraints
                                 .get(*var_name)
-                                .is_none_or(|c| is_valid_binding(&bound_val, c, self.bindings));
+                                .is_none_or(|c| is_valid_binding(&var_val, c, self.bindings));
 
                             if valid {
-                                self.bindings.set(*var_name, bound_val);
+                                self.bindings.set(*var_name, var_val);
                                 let retval = self.recurse(&chars[l..], rest) && !self.all_matches;
                                 if !retval {
                                     // Backtrack only when continuing the search

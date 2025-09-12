@@ -1,10 +1,12 @@
-use std::collections::HashSet;
-use std::str::FromStr;
+use super::prefilter::{form_to_regex_str, get_regex};
+use crate::errors::ParseError;
+use crate::errors::ParseError::ParseFailure;
+use crate::parser::utils::letter_to_num;
 use crate::umiaq_char::{ALPHABET_SIZE, LITERAL_CHARS, VARIABLE_CHARS};
 use fancy_regex::Regex;
 use nom::{
     branch::alt,
-    bytes::complete::{tag, is_not},
+    bytes::complete::{is_not, tag},
     character::complete::one_of,
     combinator::map,
     multi::many1,
@@ -12,10 +14,8 @@ use nom::{
     IResult,
     Parser,
 };
-use crate::errors::ParseError;
-use crate::errors::ParseError::ParseFailure;
-use crate::parser::utils::letter_to_num;
-use super::prefilter::{form_to_regex_str, get_regex};
+use std::collections::{HashMap, HashSet};
+use std::str::FromStr;
 
 /// Parser result type: input, output, with our custom `ParseError`
 pub type PResult<'a, O> = IResult<&'a str, O, Box<ParseError>>;
@@ -109,7 +109,7 @@ pub struct ParsedForm {
 
 impl ParsedForm {
     fn of(parts: Vec<FormPart>) -> Result<Self, Box<ParseError>> {
-        // Build the base regex string from tokens only (no var-constraints).
+        // Build the base regex string from tokens only (no var constraints).
         let regex_str = form_to_regex_str(&parts)?;
         let anchored = format!("^{regex_str}$");
         let prefilter = get_regex(&anchored)?;
@@ -126,13 +126,13 @@ impl ParsedForm {
     /// Returns `None` if any required var is unbound or if a nondeterministic part is present.
     pub(crate) fn materialize_deterministic_with_env(
         &self,
-        env: &std::collections::HashMap<char, String>,
+        env: &HashMap<char, String>,
     ) -> Option<String> {
         self.iter()
             .map(|part| match part {
                 FormPart::Lit(s) => Some(s.clone()),
-                FormPart::Var(v) => Some(env.get(v)?.clone()),
-                FormPart::RevVar(v) => Some(env.get(v)?.chars().rev().collect()),
+                FormPart::Var(var_char) => Some(env.get(var_char)?.clone()),
+                FormPart::RevVar(var_char) => Some(env.get(var_char)?.chars().rev().collect()),
                 _ => None, // stop at first nondeterministic token
             })
             .collect::<Option<String>>()

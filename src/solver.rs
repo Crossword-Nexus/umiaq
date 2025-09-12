@@ -1,17 +1,18 @@
 use crate::bindings::{Bindings, WORD_SENTINEL};
 use crate::errors::{MaterializationError, ParseError};
 use crate::joint_constraints::{propagate_joint_to_var_bounds, JointConstraints};
-use crate::parser::{match_equation_all, ParsedForm};
 use crate::parser::prefilter::build_prefilter_regex;
+use crate::parser::{match_equation_all, ParsedForm};
 use crate::patterns::{Pattern, Patterns};
 use crate::scan_hints::{form_len_hints_pf, PatternLenHints};
 
+use crate::constraints::VarConstraints;
+use crate::errors::ParseError::ParseFailure;
+use instant::Instant;
+use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
-use std::collections::hash_map::DefaultHasher;
-use instant::Instant;
 use std::time::Duration;
-use crate::errors::ParseError::ParseFailure;
 
 // The amount of time (in seconds) we allow the query to run
 const TIME_BUDGET: u64 = 30;
@@ -22,7 +23,7 @@ const HASH_SPLIT: u16 = 0xFFFFu16;
 
 /// Bucket key for indexing candidates by the subset of variables that must agree.
 /// - `None` means "no lookup constraints for this pattern" (Python's `words[i][None]`).
-/// - When present, we store a *sorted* `(var, value)` list so the key is deterministic
+/// - When present, we store a *sorted* `(var_char, var_val)` list so the key is deterministic
 ///   and implements `Eq`/`Hash` naturally. This mirrors Python's
 ///   `frozenset(dict(...).items())`, but with a stable order.
 /// - The sort happens once when we construct the key, not on hash/compare.
@@ -58,7 +59,7 @@ pub fn solution_to_string(solution: &[Bindings]) -> Result<String, Box<ParseErro
 }
 
 /// Build a stable key for a full solution (bindings in **pattern order**).
-/// Prefer the whole word if present (`WORD_SENTINEL`). Fall back to sorted (var,val) pairs.
+/// Prefer the whole word if present (`WORD_SENTINEL`). Fall back to sorted `(var_char, var_val)` pairs.
 fn solution_key(solution: &[Bindings]) -> u64 {
     let mut hasher = DefaultHasher::new();
 
@@ -70,13 +71,13 @@ fn solution_key(solution: &[Bindings]) -> u64 {
             // this should never happen
             // TODO: throw an error if it does
             /*
-            // Fall back: hash all (var,val) pairs sorted by var
+            // Fall back: hash all (var_char, var_val) pairs sorted by var
             let mut pairs: Vec<(char, String)> =
-                b.iter().map(|(k, v)| (*k, v.clone())).collect();
-            pairs.sort_unstable_by_key(|(k, _)| *k);
-            for (k, v) in pairs {
-                k.hash(&mut hasher);
-                v.hash(&mut hasher);
+                b.iter().map(|(var_char, var_val)| (*var_char, var_val.clone())).collect();
+            pairs.sort_unstable_by_key(|(var_char, _)| *var_char);
+            for (var_char, string) in pairs {
+                var_char.hash(&mut hasher);
+                string.hash(&mut hasher);
             }
             */
         }
@@ -124,17 +125,17 @@ impl TimeBudget {
 /// Build the deterministic lookup key for a binding given the pattern's lookup vars.
 /// Returns:
 ///   - None: pattern has no lookup constraints (unkeyed bucket)
-///   - Some(vec): concrete key (sorted by var char)
+///   - Some(vec): concrete key (sorted by `var_char`)
 ///   - Some(empty vec): sentinel meaning "required key missing" → caller should skip
 fn lookup_key_for_binding(
     binding: &Bindings,
     keys: HashSet<char>,
 ) -> LookupKey {
-    // Collect (var, value) for all required keys; bail out immediately if any is missing.
+    // Collect (var_char, var_val) for all required keys; bail out immediately if any is missing.
     let mut pairs: Vec<(char, String)> = Vec::with_capacity(keys.len());
-    for var in keys {
-        match binding.get(var) {
-            Some(val) => pairs.push((var, val.clone())),
+    for var_char in keys {
+        match binding.get(var_char) {
+            Some(var_val) => pairs.push((var_char, var_val.clone())),
             None => return Vec::new(), // "impossible" sentinel; caller will skip // TODO is this right?
         }
     }
@@ -162,7 +163,7 @@ fn scan_batch(
     patterns: &Patterns,
     parsed_forms: &[ParsedForm],
     scan_hints: &[PatternLenHints],
-    var_constraints: &crate::constraints::VarConstraints,
+    var_constraints: &VarConstraints,
     joint_constraints: &JointConstraints,
     words: &mut [CandidateBuckets],
     budget: &TimeBudget,
@@ -226,12 +227,11 @@ struct RecursiveJoinParameters {
 
 /// Depth-first recursive join of per-pattern candidate buckets into full solutions.
 ///
-/// This mirrors `recursive_filter` from `umiaq.py`. We walk patterns in order
-/// (index `idx`) and at each step select only the bucket of candidates whose
-/// shared variables agree with what we've already chosen (`env`).
+/// This mirrors `recursive_filter` from `umiaq.py`. We walk patterns in order and at each step
+/// select only the bucket of candidates whose shared variables agree with what we've already
+/// chosen (`env`).
 ///
 /// Parameters:
-/// - `idx`: which pattern we're placing now (0-based).
 /// - `selected`: the partial solution (one chosen `Bindings` per pattern so far).
 /// - `env`: the accumulated variable → value environment from earlier choices.
 /// - `results`: completed solutions (each is a `Vec<Binding>`, one per pattern).
@@ -241,7 +241,8 @@ struct RecursiveJoinParameters {
 ///   patterns.
 ///
 /// Return:
-/// - This function mutates `results` and stops early once it has `num_results_requested`.
+/// - This function mutates `results` and stops early once `results` contains
+///   `num_results_requested` values.
 fn recursive_join(
     selected: &mut Vec<Bindings>,
     env: &mut HashMap<char, String>,
@@ -274,10 +275,10 @@ fn recursive_join(
             // - include only vars that belong to this pattern (they must already be in env)
             let mut binding = Bindings::default();
             binding.set_word(&expected);
-            for &v in &p.variables {
+            for &var_char in &p.variables {
                 // safe to unwrap because all vars are in lookup_keys ⇒ must be in env
-                if let Some(val) = env.get(&v) {
-                    binding.set(v, val.clone());
+                if let Some(var_val) = env.get(&var_char) {
+                    binding.set(var_char, var_val.clone());
                 }
             }
 
@@ -294,13 +295,13 @@ fn recursive_join(
         //   `Some(sorted_pairs)` using the current `env` and fetch that bucket.
         //   (This includes the case keys.is_empty() → key is `Some([])`.)
         let bucket_candidates_opt: Option<&Vec<Bindings>> = {
-            // Build (var, value) pairs from env using the set of shared vars.
+            // Build (var_char, var_val) pairs from env using the set of shared vars.
             // NOTE: HashSet iteration order is arbitrary — we sort the pairs below
             // so the final key is stable/deterministic.
             let mut pairs: Vec<(char, String)> = Vec::with_capacity(rjp_cur.lookup_keys.len());
-            for &var in &rjp_cur.lookup_keys {
-                if let Some(v) = env.get(&var) {
-                    pairs.push((var, v.clone()));
+            for &var_char in &rjp_cur.lookup_keys {
+                if let Some(var_val) = env.get(&var_char) {
+                    pairs.push((var_char, var_val.clone()));
                 } else {
                     // If any required var isn't bound yet, there can be no matches for this branch.
                     return Ok(());
@@ -327,20 +328,20 @@ fn recursive_join(
             // its value must match the candidate. This *should* already be true
             // because we selected the bucket using the shared vars—but keep this
             // in case upstream bucketing logic ever changes.
-            if cand.iter().filter(|(k, _)| **k != WORD_SENTINEL).any(|(k, v)| env.get(k).is_some_and(|prev| prev != v)) {
+            if cand.iter().filter(|(var_char, _)| **var_char != WORD_SENTINEL).any(|(var_char, var_val)| env.get(var_char).is_some_and(|prev| prev != var_val)) {
                 continue;
             }
 
             // Extend `env` with any *new* bindings from this candidate (don't overwrite).
             // Track what we added so we can backtrack cleanly.
             let mut added_vars: Vec<char> = vec![];
-            for (k, v) in cand.iter() {
-                if *k == WORD_SENTINEL {
+            for (var_char, var_val) in cand.iter() {
+                if *var_char == WORD_SENTINEL {
                     continue;
                 }
-                if !env.contains_key(k) {
-                    env.insert(*k, v.clone());
-                    added_vars.push(*k);
+                if !env.contains_key(var_char) {
+                    env.insert(*var_char, var_val.clone());
+                    added_vars.push(*var_char);
                 }
             }
 

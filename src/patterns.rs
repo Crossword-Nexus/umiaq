@@ -1,14 +1,14 @@
+use crate::comparison_operator::ComparisonOperator;
+use crate::constraints::Bounds;
 use crate::constraints::{VarConstraint, VarConstraints};
+use crate::errors::ParseError;
+use crate::parser::ParsedForm;
+use crate::umiaq_char::UmiaqChar;
 use fancy_regex::Regex;
 use std::cmp::Reverse;
 use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::LazyLock;
-use crate::comparison_operator::ComparisonOperator;
-use crate::errors::ParseError;
-use crate::parser::ParsedForm;
-use crate::constraints::Bounds;
-use crate::umiaq_char::UmiaqChar;
 
 /// The character that separates forms, in an equation
 pub const FORM_SEPARATOR: char = ';';
@@ -215,10 +215,10 @@ impl Patterns {
 
         for form in &forms {
             if let Some(cap) = LEN_CMP_RE.captures(form).unwrap() {
-                let var = cap[1].chars().next().unwrap();
+                let var_char = cap[1].chars().next().unwrap();
                 let op = ComparisonOperator::from_str(&cap[2])?; // TODO better error handling
                 let n = cap[3].parse::<usize>()?;
-                let vc = self.var_constraints.ensure(var);
+                let vc = self.var_constraints.ensure(var_char);
 
                 match op {
                     ComparisonOperator::EQ => vc.set_exact_len(n),
@@ -236,12 +236,12 @@ impl Patterns {
                 // * !=AB means A != B
                 // * !=ABC means A != B, A != C, B != C
                 let vars: Vec<char> = cap[1].chars().collect();
-                for &v in &vars {
-                    let var_constraint = self.var_constraints.ensure(v);
-                    var_constraint.not_equal = vars.iter().copied().filter(|&x| x != v).collect();
+                for &var_char in &vars {
+                    let var_constraint = self.var_constraints.ensure(var_char);
+                    var_constraint.not_equal = vars.iter().copied().filter(|&x| x != var_char).collect();
                 }
-            } else if let Ok((var, cc_vc)) = get_complex_constraint(form) {
-                let var_constraint = self.var_constraints.ensure(var);
+            } else if let Ok((var_char, cc_vc)) = get_complex_constraint(form) {
+                let var_constraint = self.var_constraints.ensure(var_char);
 
                 var_constraint.constrain_by(&cc_vc);
 
@@ -249,7 +249,7 @@ impl Patterns {
                     if let Some(old_form) = &var_constraint.form {
                         if *old_form != f {
                             return Err(Box::new(ParseError::ConflictingConstraint {
-                                var,
+                                var_char,
                                 older: old_form.clone(),
                                 newer: f,
                             }));
@@ -395,7 +395,7 @@ fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint), Box<Parse
                 return Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("expected 1 equals sign (not {})", form.chars().filter(|c| *c == '=').count()) }));
             }
 
-            let var = var_str.chars().next().unwrap();
+            let var_char = var_str.chars().next().unwrap();
 
             // remove outer parentheses if they are there
             let inner_constraint_str = if constraint_str.starts_with('(') && constraint_str.ends_with(')') {
@@ -427,7 +427,7 @@ fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint), Box<Parse
                 ..Default::default()
             };
 
-            Ok((var, vc))
+            Ok((var_char, vc))
         } else {
             Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("expected 1 character (as the variable) to the left of \"=\" (not {})", var_str.len()) }))
         }
@@ -792,7 +792,7 @@ mod tests {
     fn test_conflicting_complex_constraints_error() {
         assert!(matches!(
             *"A=(1-5:k*);A=(5-6:a*);A".parse::<Patterns>().unwrap_err(),
-            ParseError::ConflictingConstraint { var, older,  newer } if var == 'A' && older == "k*" && newer == "a*" )
+            ParseError::ConflictingConstraint { var_char, older,  newer } if var_char == 'A' && older == "k*" && newer == "a*" )
         );
     }
 }

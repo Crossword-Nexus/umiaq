@@ -1,8 +1,8 @@
-use wasm_bindgen::prelude::*;
 use crate::bindings::Bindings;
 use crate::errors::ParseError;
 use crate::solver::solve_equation;
 use crate::word_list::WordList;
+use wasm_bindgen::prelude::*;
 
 use serde_wasm_bindgen::to_value;
 
