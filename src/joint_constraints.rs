@@ -89,7 +89,7 @@ impl JointConstraint {
         // If not all vars are bound, skip this check for now.
         if bindings.contains_all_vars(&self.vars) {
             // Sum the lengths of the bound strings for the referenced vars.
-            let total: usize = self.vars.iter().map(|var| bindings.get(*var).unwrap().len()).sum();
+            let total: usize = self.vars.iter().map(|var_char| bindings.get(*var_char).unwrap().len()).sum();
 
             // Compare once via Ordering -> mask test.
             self.rel.allows(total.cmp(&self.target))
@@ -103,7 +103,7 @@ impl JointConstraint {
     /// Returns `false` if *any* referenced var is unbound across `parts`.
     pub fn is_strictly_satisfied_by_parts(&self, parts: &[Bindings]) -> bool {
         let mut total: usize = 0;
-        for var_len in self.vars.iter().map(|var| resolve_var_len(parts, *var)) {
+        for var_len in self.vars.iter().map(|var_char| resolve_var_len(parts, *var_char)) {
             let Some(len) = var_len else { return false };
             total += len;
         }
@@ -114,20 +114,20 @@ impl JointConstraint {
     //     This keeps tests independent of crate::bindings internals.
     #[cfg(test)]
     fn is_satisfied_by_map(&self, map: &HashMap<char, String>) -> bool {
-        if !self.vars.iter().all(|v| map.contains_key(v)) {
+        if !self.vars.iter().all(|var_char| map.contains_key(var_char)) {
             true
         } else {
-            let total: usize = self.vars.iter().map(|v| map.get(v).unwrap().len()).sum();
+            let total: usize = self.vars.iter().map(|var_char| map.get(var_char).unwrap().len()).sum();
             self.rel.allows(total.cmp(&self.target))
         }
     }
 }
 
-/// Helper: find the current length of variable `v` across a slice of Bindings.
-/// Returns None if `v` is unbound in all Bindings in `parts`.
+/// Helper: find the current length of variable `var_char` across a slice of `Bindings`.
+/// Returns `None` if `var_char` is unbound in all Bindings in `parts`.
 #[inline]
-fn resolve_var_len(parts: &[Bindings], v: char) -> Option<usize> {
-    parts.iter().find_map(|bindings| bindings.get(v).map(String::len))
+fn resolve_var_len(parts: &[Bindings], var_char: char) -> Option<usize> {
+    parts.iter().find_map(|bindings| bindings.get(var_char).map(String::len))
 }
 
 // TODO derive "=|!=|<=|>=|<|>" from a single source (e.g., COMPARISON_OPERATORS)
@@ -249,44 +249,44 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
         let mut mins: Vec<(char, usize)> = Vec::with_capacity(jc.vars.len());
         let mut maxes: Vec<(char, usize)> = Vec::with_capacity(jc.vars.len());
 
-        for &v in &jc.vars {
-            let bounds = vcs.bounds(v);
+        for &var_char in &jc.vars {
+            let bounds = vcs.bounds(var_char);
             sum_min += bounds.min_len;
 
             // Track finite sum of maxes; if any is unbounded, the group max is unbounded.
             sum_max_opt = sum_max_opt.and_then(|a| bounds.max_len_opt.map(|u| a + u));
 
-            mins.push((v, bounds.min_len));
+            mins.push((var_char, bounds.min_len));
             if let Some(u) = bounds.max_len_opt {
-                maxes.push((v, u));
+                maxes.push((var_char, u));
             }
         }
 
         if sum_min == jc.target {
             // Case 1: exact by mins
-            for (v, min_len) in mins {
-                vcs.ensure_entry_mut(v).set_exact_len(min_len);
+            for (var_char, min_len) in mins {
+                vcs.ensure_entry_mut(var_char).set_exact_len(min_len);
             }
         } else if let Some(sum_max) = sum_max_opt && sum_max == jc.target {
             // Case 2: exact by finite maxes
-            for (v, u) in maxes {
-                vcs.ensure_entry_mut(v).set_exact_len(u);
+            for (var_char, u) in maxes {
+                vcs.ensure_entry_mut(var_char).set_exact_len(u);
             }
         } else {
             // Case 3: generic tightening
-            for &v in &jc.vars {
-                let bounds = vcs.bounds(v);
+            for &var_char in &jc.vars {
+                let bounds = vcs.bounds(var_char);
 
                 // Σ other mins
                 let sum_other_min: usize = jc.vars
                     .iter()
-                    .filter(|&&w| w != v)
+                    .filter(|&&w| w != var_char)
                     .map(|&w| vcs.bounds(w).min_len)
                     .sum();
 
                 // Σ other finite maxes (None if any is unbounded)
                 let mut sum_other_max_opt: Option<usize> = Some(0);
-                for &w in jc.vars.iter().filter(|&&w| w != v) {
+                for &w in jc.vars.iter().filter(|&&w| w != var_char) {
                     let w_bounds = vcs.bounds(w);
                     if w_bounds.max_len_opt.is_none() {
                         sum_other_max_opt = None;
@@ -304,7 +304,7 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
                 let new_min = bounds.min_len.max(lower_from_joint);
                 let new_max = bounds.max_len_opt.unwrap_or(upper_from_joint).min(upper_from_joint);
 
-                let e = vcs.ensure_entry_mut(v);
+                let e = vcs.ensure_entry_mut(var_char);
                 e.bounds = Bounds::of(new_min, new_max);
             }
         }

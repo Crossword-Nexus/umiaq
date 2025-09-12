@@ -21,28 +21,28 @@ impl VarConstraints {
 
     /// Insert a complete `VarConstraint` for a variable.
     #[cfg(test)]
-    pub(crate) fn insert(&mut self, var: char, constraint: VarConstraint) {
-        self.inner.insert(var, constraint);
+    pub(crate) fn insert(&mut self, var_char: char, constraint: VarConstraint) {
+        self.inner.insert(var_char, constraint);
     }
 
     /// Ensure a variable has an entry; create a default constraint if missing.
     /// Returns a mutable reference so the caller can update it in place.
-    pub(crate) fn ensure(&mut self, var: char) -> &mut VarConstraint {
-        self.inner.entry(var).or_default()
+    pub(crate) fn ensure(&mut self, var_char: char) -> &mut VarConstraint {
+        self.inner.entry(var_char).or_default()
     }
 
-    pub(crate) fn bounds(&self, var: char) -> Bounds {
-        self.get(var).map_or(Bounds::default(), |vc| vc.bounds)
+    pub(crate) fn bounds(&self, var_char: char) -> Bounds {
+        self.get(var_char).map_or(Bounds::default(), |vc| vc.bounds)
     }
 
     /// Ensure an entry exists and return it mutably.
-    pub fn ensure_entry_mut(&mut self, var: char) -> &mut VarConstraint {
-        self.ensure(var)
+    pub fn ensure_entry_mut(&mut self, var_char: char) -> &mut VarConstraint {
+        self.ensure(var_char)
     }
 
     /// Retrieve a read-only reference to the constraints for a variable, if any.
-    pub(crate) fn get(&self, var: char) -> Option<&VarConstraint> {
-        self.inner.get(&var)
+    pub(crate) fn get(&self, var_char: char) -> Option<&VarConstraint> {
+        self.inner.get(&var_char)
     }
 
     // Iterate over `(variable, constraint)` pairs.

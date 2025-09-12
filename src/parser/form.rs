@@ -109,7 +109,7 @@ pub struct ParsedForm {
 
 impl ParsedForm {
     fn of(parts: Vec<FormPart>) -> Result<Self, Box<ParseError>> {
-        // Build the base regex string from tokens only (no var-constraints).
+        // Build the base regex string from tokens only (no var constraints).
         let regex_str = form_to_regex_str(&parts)?;
         let anchored = format!("^{regex_str}$");
         let prefilter = get_regex(&anchored)?;
@@ -131,8 +131,8 @@ impl ParsedForm {
         self.iter()
             .map(|part| match part {
                 FormPart::Lit(s) => Some(s.clone()),
-                FormPart::Var(v) => Some(env.get(v)?.clone()),
-                FormPart::RevVar(v) => Some(env.get(v)?.chars().rev().collect()),
+                FormPart::Var(var_char) => Some(env.get(var_char)?.clone()),
+                FormPart::RevVar(var_char) => Some(env.get(var_char)?.chars().rev().collect()),
                 _ => None, // stop at first nondeterministic token
             })
             .collect::<Option<String>>()

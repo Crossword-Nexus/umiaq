@@ -98,7 +98,7 @@ impl FormContext<'_> {
             .vars
             .iter()
             .copied()
-            .filter(|v| self.var_frequency.contains_key(v))
+            .filter(|var_char| self.var_frequency.contains_key(var_char))
             .collect();
         gvars.sort_unstable();
         if gvars.is_empty() {
@@ -109,10 +109,10 @@ impl FormContext<'_> {
         let mut rows: Vec<Row> = Vec::with_capacity(gvars.len());
         let mut sum_min_len: usize = 0;
         let mut sum_max_len_opt: Option<usize> = Some(0);
-        for &v in &gvars {
-            let b = self.bounds_map[&v];
+        for &var_char in &gvars {
+            let b = self.bounds_map[&var_char];
             rows.push(Row {
-                w: *self.var_frequency.get(&v).unwrap_or(&0),
+                w: *self.var_frequency.get(&var_char).unwrap_or(&0),
                 b,
             });
             sum_min_len += b.min_len;
@@ -135,9 +135,9 @@ impl FormContext<'_> {
         let (outside_form_min, outside_form_max_opt) = g
             .vars
             .iter()
-            .filter(|v| !self.var_frequency.contains_key(v))
-            .fold((0usize, Some(0usize)), |(min_acc, max_acc_opt), &v| {
-                let bounds = self.vcs.bounds(v);
+            .filter(|var_char| !self.var_frequency.contains_key(var_char))
+            .fold((0usize, Some(0usize)), |(min_acc, max_acc_opt), &var_char| {
+                let bounds = self.vcs.bounds(var_char);
                 let min_acc = min_acc + bounds.min_len;
                 let max_acc_opt = bounds.max_len_opt.and_then(|u| max_acc_opt.map(|a| a + u));
                 (min_acc, max_acc_opt)
@@ -162,20 +162,20 @@ impl FormContext<'_> {
             .vars
             .iter()
             .copied()
-            .filter(|v| !gvars.contains(v))
+            .filter(|var_char| !gvars.contains(var_char))
             .collect();
 
         let outside_min = outside
             .iter()
-            .map(|&v| *self.var_frequency.get(&v).unwrap_or(&0) * self.bounds_map[&v].min_len)
+            .map(|&var_char| *self.var_frequency.get(&var_char).unwrap_or(&0) * self.bounds_map[&var_char].min_len)
             .sum::<usize>();
 
         let outside_max_opt = if self.has_star {
             None
         } else {
-            outside.iter().copied().try_fold(0usize, |acc, v| {
-                self.bounds_map[&v].max_len_opt.map(|u| {
-                    acc + *self.var_frequency.get(&v).unwrap_or(&0) * u
+            outside.iter().copied().try_fold(0usize, |acc, var_char| {
+                self.bounds_map[&var_char].max_len_opt.map(|u| {
+                    acc + *self.var_frequency.get(&var_char).unwrap_or(&0) * u
                 })
             })
         };
@@ -327,7 +327,7 @@ pub(crate) fn form_len_hints_pf(
             FormPart::Dot | FormPart::Vowel | FormPart::Consonant | FormPart::Charset(_) => fixed_base += 1,
             FormPart::Lit(s) => fixed_base += s.len(),
             FormPart::Anagram(ag) => fixed_base += ag.len,
-            FormPart::Var(v) | FormPart::RevVar(v) => *var_frequency.entry(*v).or_insert(0) += VarConstraint::DEFAULT_MIN,
+            FormPart::Var(var_char) | FormPart::RevVar(var_char) => *var_frequency.entry(*var_char).or_insert(0) += VarConstraint::DEFAULT_MIN,
         }
     }
 
@@ -345,16 +345,16 @@ pub(crate) fn form_len_hints_pf(
 
     let bounds_map = &vars
         .iter()
-        .map(|&v| { (v, vcs.bounds(v)) })
+        .map(|&var_char| { (var_char, vcs.bounds(var_char)) })
         .collect::<HashMap<char, Bounds>>();
 
-    let get_weight = |v: char| *var_frequency.get(&v).unwrap_or(&0);
+    let get_weight = |var_char: char| *var_frequency.get(&var_char).unwrap_or(&0);
 
     // Baseline min/max ignoring groups
     let mut weighted_min = {
         let sum = vars
             .iter()
-            .map(|&v| get_weight(v) * bounds_map[&v].min_len)
+            .map(|&var_char| get_weight(var_char) * bounds_map[&var_char].min_len)
             .sum::<usize>();
         fixed_base + sum
     };
@@ -364,8 +364,8 @@ pub(crate) fn form_len_hints_pf(
         if has_star {
             return None;
         }
-        vars.iter().copied().try_fold(0usize, |acc, v| {
-            bounds_map[&v].max_len_opt.map(|u| acc + get_weight(v) * u)
+        vars.iter().copied().try_fold(0usize, |acc, var_char| {
+            bounds_map[&var_char].max_len_opt.map(|u| acc + get_weight(var_char) * u)
         })
     };
 
@@ -400,13 +400,13 @@ fn group_constraints_for_form(form: &ParsedForm, jcs: &JointConstraints) -> Vec<
         vec![]
     } else {
         let present: HashSet<char> = form.iter().filter_map(|p| match p {
-            FormPart::Var(v) | FormPart::RevVar(v) => Some(*v),
+            FormPart::Var(var_char) | FormPart::RevVar(var_char) => Some(*var_char),
             _ => None,
         }).collect();
 
         jcs.clone().into_iter()
             // ← revert to ANY overlap so constraints like |AB|=6 still inform A-only forms
-            .filter(|jc| jc.vars.iter().any(|v| present.contains(v)))
+            .filter(|jc| jc.vars.iter().any(|var_char| present.contains(var_char)))
             .filter_map(|jc: JointConstraint| group_from_joint(&jc))
             .collect()
     }

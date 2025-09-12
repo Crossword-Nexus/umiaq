@@ -19,18 +19,18 @@ impl Display for Bindings {
 
 impl Bindings {
     /// Bind a variable to a value
-    pub(crate) fn set(&mut self, var: char, val: String) {
-        self.map.insert(var, val);
+    pub(crate) fn set(&mut self, var_char: char, var_val: String) {
+        self.map.insert(var_char, var_val);
     }
 
     /// Retrieve the binding for a variable
-    pub(crate) fn get(&self, var: char) -> Option<&String> {
-        self.map.get(&var)
+    pub(crate) fn get(&self, var_char: char) -> Option<&String> {
+        self.map.get(&var_char)
     }
 
     /// Remove a binding for the given variable (if it exists)
-    pub(crate) fn remove(&mut self, var: char) {
-        self.map.remove(&var);
+    pub(crate) fn remove(&mut self, var_char: char) {
+        self.map.remove(&var_char);
     }
 
     /// Assign the word binding to '*'
@@ -50,6 +50,6 @@ impl Bindings {
     }
 
     pub(crate) fn contains_all_vars(&self, vars: &[char]) -> bool {
-        vars.iter().all(|var| self.map.contains_key(var))
+        vars.iter().all(|var_char| self.map.contains_key(var_char))
     }
 }
