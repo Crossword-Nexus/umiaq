@@ -1,17 +1,18 @@
 use crate::bindings::{Bindings, WORD_SENTINEL};
 use crate::errors::{MaterializationError, ParseError};
 use crate::joint_constraints::{propagate_joint_to_var_bounds, JointConstraints};
-use crate::parser::{match_equation_all, ParsedForm};
 use crate::parser::prefilter::build_prefilter_regex;
+use crate::parser::{match_equation_all, ParsedForm};
 use crate::patterns::{Pattern, Patterns};
 use crate::scan_hints::{form_len_hints_pf, PatternLenHints};
 
+use crate::constraints::VarConstraints;
+use crate::errors::ParseError::ParseFailure;
+use instant::Instant;
+use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
-use std::collections::hash_map::DefaultHasher;
-use instant::Instant;
 use std::time::Duration;
-use crate::errors::ParseError::ParseFailure;
 
 // The amount of time (in seconds) we allow the query to run
 const TIME_BUDGET: u64 = 30;
@@ -162,7 +163,7 @@ fn scan_batch(
     patterns: &Patterns,
     parsed_forms: &[ParsedForm],
     scan_hints: &[PatternLenHints],
-    var_constraints: &crate::constraints::VarConstraints,
+    var_constraints: &VarConstraints,
     joint_constraints: &JointConstraints,
     words: &mut [CandidateBuckets],
     budget: &TimeBudget,

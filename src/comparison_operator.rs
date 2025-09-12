@@ -1,7 +1,7 @@
-use std::fmt;
-use std::str::FromStr;
 use crate::comparison_operator::ComparisonOperator::{EQ, GE, GT, LE, LT, NE};
 use crate::errors::ParseError::ParseFailure;
+use std::fmt;
+use std::str::FromStr;
 
 // pub(crate) static COMPARISON_OPERATORS: [ComparisonOperator; 6] = [EQ,NE,LE,GE,LT,GT];
 

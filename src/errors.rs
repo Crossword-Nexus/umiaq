@@ -1,8 +1,9 @@
-use std::{fmt, io};
-use std::fmt::Formatter;
-use std::num::ParseIntError;
 use crate::errors::ParseError::ParseFailure;
 use nom::error::{ErrorKind, ParseError as NomParseError};
+use std::fmt::Formatter;
+use std::num::ParseIntError;
+use std::{fmt, io};
+
 
 /// Custom error type for parsing operations
 #[derive(Debug, thiserror::Error)]

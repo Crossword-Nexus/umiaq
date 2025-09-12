@@ -1,9 +1,9 @@
 // constraints.rs
+use crate::parser::ParsedForm;
 use std::cell::OnceCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fmt::Display;
-use crate::parser::ParsedForm;
 
 /// A collection of constraints for variables in a pattern-matching equation.
 ///
@@ -31,13 +31,13 @@ impl VarConstraints {
         self.inner.entry(var).or_default()
     }
 
-    pub(crate) fn bounds(&self, v: char) -> Bounds {
-        self.get(v).map_or(Bounds::default(), |vc| vc.bounds)
+    pub(crate) fn bounds(&self, var: char) -> Bounds {
+        self.get(var).map_or(Bounds::default(), |vc| vc.bounds)
     }
 
     /// Ensure an entry exists and return it mutably.
-    pub fn ensure_entry_mut(&mut self, v: char) -> &mut VarConstraint {
-        self.ensure(v)
+    pub fn ensure_entry_mut(&mut self, var: char) -> &mut VarConstraint {
+        self.ensure(var)
     }
 
     /// Retrieve a read-only reference to the constraints for a variable, if any.

@@ -24,11 +24,11 @@
 //   an arbitrary number of extra characters.
 // -----------------------------------------------------------------------------
 
-use std::cmp::max;
-use std::collections::{HashMap, HashSet};
 use crate::constraints::{Bounds, VarConstraint, VarConstraints};
 use crate::joint_constraints::{JointConstraint, JointConstraints, RelMask};
 use crate::parser::{FormPart, ParsedForm};
+use std::cmp::max;
+use std::collections::{HashMap, HashSet};
 
 /// A joint constraint over variables *restricted to this form* considered
 /// as a contiguous total length bound for their raw lengths (not weighted).

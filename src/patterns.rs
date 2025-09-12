@@ -1,14 +1,14 @@
+use crate::comparison_operator::ComparisonOperator;
+use crate::constraints::Bounds;
 use crate::constraints::{VarConstraint, VarConstraints};
+use crate::errors::ParseError;
+use crate::parser::ParsedForm;
+use crate::umiaq_char::UmiaqChar;
 use fancy_regex::Regex;
 use std::cmp::Reverse;
 use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::LazyLock;
-use crate::comparison_operator::ComparisonOperator;
-use crate::errors::ParseError;
-use crate::parser::ParsedForm;
-use crate::constraints::Bounds;
-use crate::umiaq_char::UmiaqChar;
 
 /// The character that separates forms, in an equation
 pub const FORM_SEPARATOR: char = ';';

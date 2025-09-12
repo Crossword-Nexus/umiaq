@@ -1,12 +1,14 @@
-use crate::errors::ParseError;
 use crate::bindings::Bindings;
-use crate::patterns::FORM_SEPARATOR;
-use std::cmp::Ordering;
-use std::str::FromStr;
-use std::sync::LazyLock;
-use fancy_regex::Regex;
 use crate::comparison_operator::ComparisonOperator;
 use crate::constraints::{Bounds, VarConstraint, VarConstraints};
+use crate::errors::ParseError;
+use crate::patterns::FORM_SEPARATOR;
+use fancy_regex::Regex;
+use std::cmp::Ordering;
+#[cfg(test)]
+use std::collections::HashMap;
+use std::str::FromStr;
+use std::sync::LazyLock;
 
 /// Compact representation of the relation between (sum) and (target).
 ///
@@ -87,7 +89,7 @@ impl JointConstraint {
         // If not all vars are bound, skip this check for now.
         if bindings.contains_all_vars(&self.vars) {
             // Sum the lengths of the bound strings for the referenced vars.
-            let total: usize = self.vars.iter().map(|v| bindings.get(*v).unwrap().len()).sum();
+            let total: usize = self.vars.iter().map(|var| bindings.get(*var).unwrap().len()).sum();
 
             // Compare once via Ordering -> mask test.
             self.rel.allows(total.cmp(&self.target))
@@ -111,7 +113,7 @@ impl JointConstraint {
     // --- Test-only convenience for asserting behavior without needing real `Bindings`.
     //     This keeps tests independent of crate::bindings internals.
     #[cfg(test)]
-    fn is_satisfied_by_map(&self, map: &std::collections::HashMap<char, String>) -> bool {
+    fn is_satisfied_by_map(&self, map: &HashMap<char, String>) -> bool {
         if !self.vars.iter().all(|v| map.contains_key(v)) {
             true
         } else {
@@ -205,7 +207,7 @@ impl JointConstraints {
     #[cfg(test)]
     fn all_satisfied_map(
         &self,
-        map: &std::collections::HashMap<char, String>
+        map: &HashMap<char, String>
     ) -> bool {
         self.clone().into_iter().all(|jc| jc.is_satisfied_by_map(map))
     }
@@ -478,7 +480,7 @@ mod tests {
         // |AB| = 5
         let jc = JointConstraint { vars: vec!['A','B'], target: 5, rel: RelMask::EQ };
 
-        let mut map = std::collections::HashMap::from([('A', "HI".to_string())]); // len 2
+        let mut map = HashMap::from([('A', "HI".to_string())]); // len 2
         // 'B' unbound -> should return true (skip mid-search)
         assert!(jc.is_satisfied_by_map(&map));
 
@@ -500,7 +502,7 @@ mod tests {
             ]
         );
 
-        let mut map = std::collections::HashMap::from([
+        let mut map = HashMap::from([
             ('A', "NO".to_string()), // 2
             ('B', "YES".to_string()), // 3
             ('C', "X".to_string())] // 1
