@@ -60,7 +60,7 @@ impl VarConstraints {
 
 /// Pretty, deterministic display (sorted by variable) like:
 /// `A: len=[2, 4], form=Some("a*"), not_equal={B,C}`
-impl fmt::Display for VarConstraints {
+impl Display for VarConstraints {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut keys: Vec<_> = self.inner.keys().copied().collect();
         keys.sort_unstable();
@@ -172,7 +172,7 @@ impl Eq for VarConstraint {}
 /// - the allowed length range (e.g., `[3,5]`, `[3,∞)`)
 /// - the optional form string (or `*` if absent)
 /// - the set of variables it must not equal, in sorted order
-impl fmt::Display for VarConstraint {
+impl Display for VarConstraint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Show the "form" string if present, otherwise `-`
         let form_str = self.form.as_deref().unwrap_or("*");

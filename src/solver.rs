@@ -507,7 +507,7 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
         );
         if let Err(e) = rj_result {
             // e is a `MaterializationError` // TODO check/enforce this?
-            return Err(Box::new(ParseError::ParseFailure { s: e.to_string() }))
+            return Err(Box::new(ParseFailure { s: e.to_string() }))
         }
 
         // We exit early in three cases
