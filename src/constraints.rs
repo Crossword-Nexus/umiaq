@@ -62,7 +62,7 @@ impl VarConstraints {
 /// `A: len=[2, 4], form=Some("a*"), not_equal={B,C}`
 impl fmt::Display for VarConstraints {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut keys: Vec<char> = self.inner.keys().copied().collect();
+        let mut keys: Vec<_> = self.inner.keys().copied().collect();
         keys.sort_unstable();
         for (i, k) in keys.iter().enumerate() {
             let vc = &self.inner[k];
@@ -178,7 +178,7 @@ impl fmt::Display for VarConstraint {
         let form_str = self.form.as_deref().unwrap_or("*");
 
         // Collect the `not_equal` set into a sorted Vec<char> for stable output
-        let mut ne: Vec<char> = self.not_equal.iter().copied().collect();
+        let mut ne: Vec<_> = self.not_equal.iter().copied().collect();
         ne.sort_unstable();
         // Turn it into a string: e.g., ['A','B','C'] → "ABC"
         let ne_str = if ne.is_empty() {
@@ -246,7 +246,7 @@ mod tests {
         vcs.insert('B', b);
 
         let s = vcs.to_string();
-        let lines: Vec<&str> = s.lines().collect();
+        let lines: Vec<_> = s.lines().collect();
 
         let expected = vec![
             "A: len=[1,∞); form=*; not_equal=∅",

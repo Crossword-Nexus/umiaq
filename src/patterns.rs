@@ -208,7 +208,7 @@ impl Patterns {
     ///
     /// Non-constraint entries are added to `self.list` as actual patterns.
     fn set_var_constraints(&mut self, input: &str) -> Result<(), Box<ParseError>> {
-        let forms: Vec<&str> = input.split(FORM_SEPARATOR).collect();
+        let forms: Vec<_> = input.split(FORM_SEPARATOR).collect();
         // Iterate through all parts of the input string, split by `;`
 
         let mut next_form_ix = 0; // counts only *forms* we accept
@@ -235,7 +235,7 @@ impl Patterns {
                 // Examples:
                 // * !=AB means A != B
                 // * !=ABC means A != B, A != C, B != C
-                let vars: Vec<char> = cap[1].chars().collect();
+                let vars: Vec<_> = cap[1].chars().collect();
                 for &var_char in &vars {
                     let var_constraint = self.var_constraints.ensure(var_char);
                     var_constraint.not_equal = vars.iter().copied().filter(|&x| x != var_char).collect();
@@ -292,7 +292,7 @@ impl Patterns {
 
         while !p_list.is_empty() {
             // Vars already "seen" in previously chosen patterns
-            let found_vars: HashSet<char> = ordered
+            let found_vars = ordered
                 .iter()
                 .flat_map(|p: &Pattern| p.variables.iter().copied())
                 .collect();
@@ -576,7 +576,7 @@ mod tests {
         let input = "ABC;BC;C";
         let patterns = input.parse::<Patterns>().unwrap();
 
-        let actual: Vec<String> = patterns
+        let actual: Vec<_> = patterns
             .ordered_list
             .iter()
             .map(|p| p.raw_string.clone())
@@ -772,8 +772,8 @@ mod tests {
     /// Confirm that `IntoIterator` yields `ordered_list` without consuming `Patterns`.
     fn test_into_iterator_yields_ordered_list() {
         let patterns = "AB;BC".parse::<Patterns>().unwrap();
-        let from_iter: Vec<String> = (&patterns).into_iter().map(|p| p.raw_string.clone()).collect();
-        let ordered: Vec<String> = patterns.ordered_list.iter().map(|p| p.raw_string.clone()).collect();
+        let from_iter: Vec<_> = (&patterns).into_iter().map(|p| p.raw_string.clone()).collect();
+        let ordered: Vec<_> = patterns.ordered_list.iter().map(|p| p.raw_string.clone()).collect();
         assert_eq!(from_iter, ordered);
     }
 
