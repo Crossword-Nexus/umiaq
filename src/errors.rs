@@ -18,6 +18,10 @@ pub enum ParseError {
     InvalidLengthRange { input: String },
     #[error("{str}")]
     InvalidComplexConstraint { str: String },
+
+    #[error("Invalid input: {str}")]
+    InvalidInput { str: String },
+    
     #[error("int-parsing error: {0}")]
     ParseIntError(#[from] ParseIntError),
 

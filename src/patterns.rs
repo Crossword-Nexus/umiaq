@@ -1,6 +1,5 @@
 use crate::comparison_operator::ComparisonOperator;
-use crate::constraints::Bounds;
-use crate::constraints::{VarConstraint, VarConstraints};
+use crate::constraints::{Bounds, VarConstraint, VarConstraints};
 use crate::errors::ParseError;
 use crate::parser::ParsedForm;
 use crate::umiaq_char::UmiaqChar;
@@ -9,6 +8,7 @@ use std::cmp::Reverse;
 use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::LazyLock;
+use crate::joint_constraints::JointConstraint;
 
 /// The character that separates forms, in an equation
 pub const FORM_SEPARATOR: char = ';';
@@ -20,6 +20,15 @@ static LEN_CMP_RE: LazyLock<Regex> =
 
 /// Matches inequality constraints like `!=AB`
 static NEQ_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^!=([A-Z]+)$").unwrap());
+
+enum FormKind {
+    LenConstraint(char, ComparisonOperator, usize),
+    NeqConstraint(Vec<char>),
+    ComplexConstraint(char, VarConstraint),
+    JointConstraint(JointConstraint),
+    Pattern(ParsedForm),
+}
+
 
 /// Matches complex constraints like `A=(3-5:a*)` with length and/or pattern
 // syntax:
@@ -155,6 +164,35 @@ impl Pattern {
             .sum()
     }
 }
+
+fn classify_form(form: &str) -> Result<FormKind, Box<ParseError>> {
+    if let Some(cap) = LEN_CMP_RE.captures(form).unwrap() {
+        let var_char = cap[1].chars().next().unwrap();
+        let op = ComparisonOperator::from_str(&cap[2])?;
+        let n = cap[3].parse::<usize>()?;
+        return Ok(FormKind::LenConstraint(var_char, op, n));
+    }
+
+    if let Some(cap) = NEQ_RE.captures(form).unwrap() {
+        let vars: Vec<_> = cap[1].chars().collect();
+        return Ok(FormKind::NeqConstraint(vars));
+    }
+
+    if let Ok((var_char, vc)) = get_complex_constraint(form) {
+        return Ok(FormKind::ComplexConstraint(var_char, vc));
+    }
+
+    if let Ok(jc) = form.parse::<JointConstraint>() {
+        return Ok(FormKind::JointConstraint(jc));
+    }
+
+    if let Ok(parsed) = form.parse::<ParsedForm>() {
+        return Ok(FormKind::Pattern(parsed));
+    }
+
+    Err(Box::new(ParseError::InvalidInput { str: form.to_string() }))
+}
+
 
 #[derive(Debug, Default)]
 /// The **parsed equation** at a structural level: extracted constraints + collected forms +
