@@ -102,7 +102,7 @@ impl JointConstraint {
     /// (one Bindings per form/pattern). Duplicates in `vars` count toward the sum.
     /// Returns `false` if *any* referenced var is unbound across `parts`.
     pub fn is_strictly_satisfied_by_parts(&self, parts: &[Bindings]) -> bool {
-        let mut total: usize = 0;
+        let mut total = 0;
         for var_len in self.vars.iter().map(|var_char| resolve_var_len(parts, *var_char)) {
             let Some(len) = var_len else { return false };
             total += len;
@@ -243,11 +243,11 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
         if jc.rel != RelMask::EQ { continue; }
 
         // Cache per-var (min,max) and aggregate sums
-        let mut sum_min = 0usize;
-        let mut sum_max_opt: Option<usize> = Some(0);
+        let mut sum_min = 0;
+        let mut sum_max_opt = Some(0);
 
-        let mut mins: Vec<(char, usize)> = Vec::with_capacity(jc.vars.len());
-        let mut maxes: Vec<(char, usize)> = Vec::with_capacity(jc.vars.len());
+        let mut mins = Vec::with_capacity(jc.vars.len());
+        let mut maxes = Vec::with_capacity(jc.vars.len());
 
         for &var_char in &jc.vars {
             let bounds = vcs.bounds(var_char);
@@ -278,14 +278,14 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
                 let bounds = vcs.bounds(var_char);
 
                 // Σ other mins
-                let sum_other_min: usize = jc.vars
+                let sum_other_min = jc.vars
                     .iter()
                     .filter(|&&w| w != var_char)
                     .map(|&w| vcs.bounds(w).min_len)
                     .sum();
 
                 // Σ other finite maxes (None if any is unbounded)
-                let mut sum_other_max_opt: Option<usize> = Some(0);
+                let mut sum_other_max_opt = Some(0);
                 for &w in jc.vars.iter().filter(|&&w| w != var_char) {
                     let w_bounds = vcs.bounds(w);
                     if w_bounds.max_len_opt.is_none() {

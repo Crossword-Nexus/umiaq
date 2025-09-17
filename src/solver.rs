@@ -384,14 +384,14 @@ fn recursive_join(
 // TODO? add more detail in Errors section
 pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: usize) -> Result<Vec<Vec<Bindings>>, Box<ParseError>> {
     // 0. Make a hash set version of our word list
-    let word_list_as_set: HashSet<&str> = word_list.iter().copied().collect();
+    let word_list_as_set = word_list.iter().copied().collect();
 
     // 1. Parse the input equation string into our `Patterns` struct.
     //    This holds each pattern string, its parsed form, and its `lookup_keys` (shared vars).
     let patterns = input.parse::<Patterns>()?;
 
     // 2. Build per-pattern lookup key specs (shared vars) for the join
-    let lookup_keys: Vec<HashSet<char>> =
+    let lookup_keys: Vec<_> =
         patterns.iter().map(|p| p.lookup_keys.clone()).collect();
 
     // 3. Prepare storage for candidate buckets, one per pattern.
@@ -433,7 +433,7 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
 
     // 8. Build cheap, per-form length hints once (index-aligned with patterns/parsed_forms)
     // The hints are length bounds for each form
-    let scan_hints: Vec<PatternLenHints> = parsed_forms
+    let scan_hints: Vec<_> = parsed_forms
         .iter()
         .map(|pf| form_len_hints_pf(pf, &patterns.var_constraints, &joint_constraints.clone()))
         .collect();
@@ -445,15 +445,15 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
     let mut selected: Vec<Bindings> = vec![];
     let mut env: HashMap<char, String> = HashMap::new();
 
-    // scan_pos tracks how far we've scanned into the word list.
-    let mut scan_pos: usize = 0;
+    // scan_pos tracks how far into the word list we've scanned.
+    let mut scan_pos = 0;
 
     // Global set of fingerprints for already-emitted solutions.
     // Ensures we don't return duplicate solutions across scan/join rounds.
     let mut seen: HashSet<u64> = HashSet::new();
 
     // batch_size controls how many words to scan this round (adaptive).
-    let mut batch_size: usize = DEFAULT_BATCH_SIZE;
+    let mut batch_size = DEFAULT_BATCH_SIZE;
 
     // High-level solver driver. Alternates between:
     //   1. scanning more words from the dictionary into candidate buckets
@@ -507,7 +507,7 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
         );
         if let Err(e) = rj_result {
             // e is a `MaterializationError` // TODO check/enforce this?
-            return Err(Box::new(ParseError::ParseFailure { s: e.to_string() }))
+            return Err(Box::new(ParseFailure { s: e.to_string() }))
         }
 
         // We exit early in three cases

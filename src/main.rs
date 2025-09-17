@@ -1,7 +1,6 @@
 use clap::Parser;
 use std::time::Instant;
 
-use umiaq::bindings::Bindings;
 use umiaq::solver;
 use umiaq::word_list;
 
@@ -36,10 +35,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let wl = word_list::WordList::load_from_path(&cli.word_list, cli.min_score)?;
     let load_secs = t_load.elapsed().as_secs_f64();
 
-    let words_ref: Vec<&str> = wl.entries.iter().map(String::as_str).collect();
+    let words_ref: Vec<_> = wl.entries.iter().map(String::as_str).collect();
 
     let t_solve = Instant::now();
-    let solutions: Vec<Vec<Bindings>> = solver::solve_equation(&cli.pattern, &words_ref, cli.num_results_requested)?; // TODO! handle better
+    let solutions = solver::solve_equation(&cli.pattern, &words_ref, cli.num_results_requested)?; // TODO! handle better
     let solve_secs = t_solve.elapsed().as_secs_f64();
 
     for solution in &solutions {

@@ -94,7 +94,7 @@ impl FormContext<'_> {
         }
 
         // Intersect with the form's variables (only consider vars that appear in this form)
-        let mut gvars: Vec<char> = g
+        let mut gvars: Vec<_> = g
             .vars
             .iter()
             .copied()
@@ -107,7 +107,7 @@ impl FormContext<'_> {
 
         // Build rows, Σ min_len, and Σ max_len (finite only)
         let mut rows: Vec<Row> = Vec::with_capacity(gvars.len());
-        let mut sum_min_len: usize = 0;
+        let mut sum_min_len = 0;
         let mut sum_max_len_opt: Option<usize> = Some(0);
         for &var_char in &gvars {
             let b = self.bounds_map[&var_char];
@@ -136,7 +136,7 @@ impl FormContext<'_> {
             .vars
             .iter()
             .filter(|var_char| !self.var_frequency.contains_key(var_char))
-            .fold((0usize, Some(0usize)), |(min_acc, max_acc_opt), &var_char| {
+            .fold((0, Some(0)), |(min_acc, max_acc_opt), &var_char| {
                 let bounds = self.vcs.bounds(var_char);
                 let min_acc = min_acc + bounds.min_len;
                 let max_acc_opt = bounds.max_len_opt.and_then(|u| max_acc_opt.map(|a| a + u));
@@ -158,7 +158,7 @@ impl FormContext<'_> {
         let gmax_w = tmax_eff_opt.and_then(weighted_max_for_t);
 
         // Combine with outside-of-group contributions (vars in this form but not in this group)
-        let outside: Vec<char> = self
+        let outside: Vec<_> = self
             .vars
             .iter()
             .copied()
@@ -173,7 +173,7 @@ impl FormContext<'_> {
         let outside_max_opt = if self.has_star {
             None
         } else {
-            outside.iter().copied().try_fold(0usize, |acc, var_char| {
+            outside.iter().copied().try_fold(0, |acc, var_char| {
                 self.bounds_map[&var_char].max_len_opt.map(|u| {
                     acc + *self.var_frequency.get(&var_char).unwrap_or(&0) * u
                 })
@@ -269,7 +269,7 @@ fn weighted_extreme_for_t(
     // Greedy: assign remaining letters to cheapest (Min) or priciest (Max) first.
     // We still honor each row's individual capacity (max_len - min_len). A row is "unbounded"
     // iff r.max_len_opt is None.
-    let mut order: Vec<&Row> = rows.iter().collect();
+    let mut order: Vec<_> = rows.iter().collect();
     match extreme {
         Extreme::Min => order.sort_unstable_by_key(|r| r.w),              // cheapest first
         Extreme::Max => order.sort_unstable_by_key(|r| std::cmp::Reverse(r.w)),     // priciest first
@@ -340,7 +340,7 @@ pub(crate) fn form_len_hints_pf(
     }
 
     // 2. Pull unary bounds just for vars in this form
-    let mut vars: Vec<char> = var_frequency.keys().copied().collect();
+    let mut vars: Vec<_> = var_frequency.keys().copied().collect();
     vars.sort_unstable();
 
     let bounds_map = &vars
@@ -364,7 +364,7 @@ pub(crate) fn form_len_hints_pf(
         if has_star {
             return None;
         }
-        vars.iter().copied().try_fold(0usize, |acc, var_char| {
+        vars.iter().copied().try_fold(0, |acc, var_char| {
             bounds_map[&var_char].max_len_opt.map(|u| acc + get_weight(var_char) * u)
         })
     };
@@ -399,7 +399,7 @@ fn group_constraints_for_form(form: &ParsedForm, jcs: &JointConstraints) -> Vec<
     if jcs.is_empty() {
         vec![]
     } else {
-        let present: HashSet<char> = form.iter().filter_map(|p| match p {
+        let present: HashSet<_> = form.iter().filter_map(|p| match p {
             FormPart::Var(var_char) | FormPart::RevVar(var_char) => Some(*var_char),
             _ => None,
         }).collect();

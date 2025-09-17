@@ -118,7 +118,7 @@ fn main() -> std::io::Result<()> {
     eprintln!("Loaded {} words in {:.3}s", wl.entries.len(), load_secs);
 
     // Keep references to avoid reallocating strings during benchmarks.
-    let words_ref: Vec<&str> = wl.entries.iter().map(String::as_str).collect();
+    let words_ref: Vec<_> = wl.entries.iter().map(String::as_str).collect();
 
     let cases = get_cases();
     // Store (pattern, median_seconds, solutions_last_run, static_s, delta_pct_opt) for the summary.
