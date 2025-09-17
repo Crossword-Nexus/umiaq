@@ -258,7 +258,7 @@ impl Patterns {
                         var_constraint.form = Some(f);
                     }
                 }
-            } else { // TODO? avoid swallowing error?
+            } else {
                 // We only want to add a form if it is parseable
                 // Specifically, things like |AB|=7 should not be picked up here
                 // TODO do we check for those separately?
@@ -267,7 +267,9 @@ impl Patterns {
                     self.p_list.push(Pattern::create(*form, next_form_ix));
                     next_form_ix += 1;
                 } else {
-                    // TODO throw exception
+                    return Err(Box::new(ParseError::InvalidInput {
+                        str: form.to_string(),
+                    }));
                 }
             }
         }
