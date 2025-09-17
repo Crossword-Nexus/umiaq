@@ -82,12 +82,17 @@ fn render_parts_to_regex(
                 let already_has_group = var_to_backreference_num[idx] != 0;
 
                 // Inline constraint form if present
-                let lookahead = constraints
-                    .and_then(|cs| cs.get(*c))
-                    .and_then(|vc| vc.get_parsed_form())
-                    // Constraint forms are guaranteed to be var-free
-                    .map(|pf| render_parts_to_regex(&pf.parts, None))
-                    .transpose()?;
+                let lookahead: Result<Option<String>, Box<ParseError>> =
+                    match constraints.and_then(|cs| cs.get(*c)) {
+                        Some(vc) => {
+                            if let Some(parsed) = vc.get_parsed_form()? {
+                                Ok(Some(render_parts_to_regex(&parsed.parts, None)?))
+                            } else {
+                                Ok(None)
+                            }
+                        }
+                        None => Ok(None),
+                    };
 
                 if already_has_group {
                     // Subsequent occurrences → backreference
@@ -96,13 +101,13 @@ fn render_parts_to_regex(
                     // First of multiple occurrences → capture group
                     backreference_index += 1;
                     var_to_backreference_num[idx] = backreference_index;
-                    if let Some(nested) = lookahead {
+                    if let Some(nested) = lookahead? {
                         // Capture group with constraint
                         let _ = write!(regex_str, "(?={nested})(.+)");
                     } else {
                         regex_str.push_str("(.+)");
                     }
-                } else if let Some(nested) = lookahead {
+                } else if let Some(nested) = lookahead? {
                     // Single-use variable with constraint
                     let _ = write!(regex_str, "(?={nested}).+");
                 } else {
@@ -187,12 +192,22 @@ fn get_var_and_rev_var_counts(
 }
 
 /// True if any `Var` in `parts` has a `.form` constraint we can inline.
-pub(crate) fn has_inlineable_var_form(parts: &[FormPart], constraints: &VarConstraints) -> bool {
-    parts.iter().any(|p| match p {
-        FormPart::Var(c) => constraints.get(*c).and_then(|vc| vc.get_parsed_form()).is_some(),
-        _ => false,
-    })
+pub(crate) fn has_inlineable_var_form(
+    parts: &[FormPart],
+    constraints: &VarConstraints,
+) -> Result<bool, Box<ParseError>> {
+    for p in parts {
+        if let FormPart::Var(c) = p {
+            if let Some(vc) = constraints.get(*c) {
+                if vc.get_parsed_form()?.is_some() {
+                    return Ok(true);
+                }
+            }
+        }
+    }
+    Ok(false)
 }
+
 
 /// Try to improve the prefilter for this (form, constraints) pair by building a constraint-aware
 /// regex (with lookaheads) if possible; otherwise, reuse the already-cached `ParsedForm.prefilter`.
@@ -200,13 +215,22 @@ pub(crate) fn build_prefilter_regex(
     parsed_form: &ParsedForm,
     vcs: &VarConstraints,
 ) -> Result<Regex, Box<ParseError>> {
-    if has_inlineable_var_form(&parsed_form.parts, vcs) {
-        let anchored = format!("^{}$", form_to_regex_str_with_constraints(&parsed_form.parts, vcs)?);
-        Ok(get_regex(&anchored).unwrap_or_else(|_| parsed_form.prefilter.clone()))
+    // Decide which regex string to use
+    let regex_str = if has_inlineable_var_form(&parsed_form.parts, vcs)? {
+        // inlineable: regenerate from parts
+        format!(
+            "^{}$",
+            form_to_regex_str_with_constraints(&parsed_form.parts, vcs)?
+        )
     } else {
-        Ok(parsed_form.prefilter.clone()) // TODO DRY w/2 lines above
-    }
+        // not inlineable: just reuse prefilter string
+        parsed_form.prefilter.as_str().to_string()
+    };
+
+    // Compile, fall back to existing prefilter if needed
+    Ok(get_regex(&regex_str).unwrap_or_else(|_| parsed_form.prefilter.clone()))
 }
+
 
 #[cfg(test)]
 mod tests {

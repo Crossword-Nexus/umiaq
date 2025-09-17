@@ -28,27 +28,61 @@ struct Cli {
     num_results_requested: usize,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// Entry point of the Umiaq CLI solver.
+///
+/// Delegates to [`try_main`], catching any errors and printing them
+/// in a user-friendly way before exiting with code 1.
+fn main() {
+    if let Err(e) = try_main() {
+        // Print the error message to stderr
+        eprintln!("Error: {e}");
+        // Exit explicitly with a non-zero code so scripts can detect failure
+        std::process::exit(1);
+    }
+}
+
+/// Core application logic for the Umiaq CLI solver.
+///
+/// Steps:
+/// 1. Parse CLI arguments with Clap.
+/// 2. Load the word list from disk, applying the minimum score filter.
+/// 3. Solve the given pattern against the word list.
+/// 4. Print each solution on stdout.
+/// 5. Print performance metrics (timings, counts) on stderr.
+///
+/// Returns `Ok(())` on success or an error (e.g., invalid pattern,
+/// failed regex parse, missing word list file) which bubbles up to [`main`].
+fn try_main() -> Result<(), Box<dyn std::error::Error>> {
+    // Parse command-line arguments
     let cli = Cli::parse();
 
+    // 1. Load the word list from disk, filtering out low-score entries
     let t_load = Instant::now();
     let wl = word_list::WordList::load_from_path(&cli.word_list, cli.min_score)?;
     let load_secs = t_load.elapsed().as_secs_f64();
 
+    // Build a Vec<&str> of word references for the solver
     let words_ref: Vec<_> = wl.entries.iter().map(String::as_str).collect();
 
+    // 2. Solve the pattern against the word list
     let t_solve = Instant::now();
-    let solutions = solver::solve_equation(&cli.pattern, &words_ref, cli.num_results_requested)?; // TODO! handle better
+    let solutions = solver::solve_equation(&cli.pattern, &words_ref, cli.num_results_requested)?;
     let solve_secs = t_solve.elapsed().as_secs_f64();
 
+    // 3. Print each solution on stdout
     for solution in &solutions {
         println!("{}", solver::solution_to_string(solution)?);
     }
 
+    // 4. Print diagnostics (word list size, timings, number of results) to stderr
     eprintln!(
         "Loaded {} words in {:.3}s; solved in {:.3}s ({} tuples).",
-        wl.entries.len(), load_secs, solve_secs, solutions.len()
+        wl.entries.len(),
+        load_secs,
+        solve_secs,
+        solutions.len()
     );
 
     Ok(())
 }
+

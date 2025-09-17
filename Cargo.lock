@@ -340,6 +340,7 @@ dependencies = [
  "fancy-regex",
  "instant",
  "nom",
+ "once_cell",
  "serde",
  "serde-wasm-bindgen",
  "thiserror",
