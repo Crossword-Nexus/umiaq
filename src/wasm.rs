@@ -8,7 +8,7 @@ use serde_wasm_bindgen::to_value;
 
 /// Implement `Box<ParseError>` for `JsValue`s
 impl From<Box<ParseError>> for JsValue {
-    fn from(e: Box<ParseError>) -> JsValue { JsValue::from_str(format!("parse error: {}", *e).as_str()) }
+    fn from(e: Box<ParseError>) -> JsValue { JsValue::from_str(format!("[parse error] {}", *e).as_str()) }
 }
 
 #[wasm_bindgen(start)]
