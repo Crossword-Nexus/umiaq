@@ -1,7 +1,7 @@
 use crate::comparison_operator::ComparisonOperator;
 use crate::constraints::{Bounds, VarConstraint, VarConstraints};
 use crate::errors::ParseError;
-use crate::parser::ParsedForm;
+use crate::parser::{FormPart, ParsedForm};
 use crate::umiaq_char::UmiaqChar;
 use fancy_regex::Regex;
 use std::cmp::Reverse;
@@ -25,30 +25,38 @@ static NEQ_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^!=([A-Z]+)$").un
 /// supported categories.
 ///
 /// Each variant corresponds to a different type of constraint or pattern
-/// that the solver recognizes. This is produced by the `classify_form`
-/// helper and consumed by `EquationContext::set_var_constraints`.
+/// that the solver recognizes, which is produced and consumed by
+/// `EquationContext::set_var_constraints`.
 enum FormKind {
-    /// A length constraint on a single variable, e.g. `|A|=5` or `|B|>3`.
+    /// A length constraint on a single variable, e.g., `|A|=5` or `|B|>3`.
     /// Carries the variable character, the comparison operator, and the
     /// numeric bound.
-    LenConstraint(char, ComparisonOperator, usize),
+    LenConstraint { var_char: char, op: ComparisonOperator, bound: usize },
 
-    /// An inequality constraint among a set of variables, e.g. `AB≠CD`.
+    /// An inequality constraint among a set of variables, e.g., `!=ABC`.
     /// Stores the set of variable characters that must differ.
-    NeqConstraint(Vec<char>),
+    NeqConstraint { var_chars: Vec<char> },
 
     /// A more complex constraint derived from parsing (such as a
-    /// restricted sub-form). Associates a variable with the specific
+    /// restricted subform). Associates a variable with the specific
     /// `VarConstraint` that applies to it.
-    ComplexConstraint(char, VarConstraint),
+    ComplexConstraint { var_char: char, vc: VarConstraint },
 
-    /// A "joint" constraint, e.g. `|AB|=7`, where the combined length
+    /// A "joint" constraint, e.g., `|AB|=7`, where the combined length
     /// of multiple variables is restricted.
-    JointConstraint(JointConstraint),
+    JointConstraint { jc: JointConstraint },
 
     /// A normal parsed pattern (non-constraint), represented as a
     /// `ParsedForm` ready for matching against candidate words.
-    Pattern(ParsedForm),
+    Pattern { parsed_form: ParsedForm },
+}
+
+impl FromStr for FormKind {
+    type Err = Box<ParseError>;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        classify_form(s) // TODO! inline
+    }
 }
 
 
@@ -135,36 +143,10 @@ pub struct Pattern {
 /// Implementation for the `Pattern` struct, representing a single pattern string
 /// and utilities to extract its variable set.
 impl Pattern {
-    /// Constructs a new `Pattern` from any type that can be converted into a `String`.
-    /// The resulting `lookup_keys` is initialized to `None`.
-    /// `original_index` is the index for this `Pattern`'s position in the original equation.
-    fn create(string: impl Into<String>, original_index: usize) -> Self {
-        let raw_string = string.into();
-        // Determine if the pattern is deterministic
-        let deterministic = &raw_string.parse::<ParsedForm>()
-            .map(|parts| { parts.iter().all(|p| { p.is_deterministic() }) })
-            .unwrap_or(false);
-
-        // Get the variables involved
-        let vars = raw_string
-            .chars()
-            .filter(char::is_variable)
-            .collect();
-
-        Self {
-            raw_string,
-            lookup_keys: HashSet::default(),
-            original_index,
-            is_deterministic: *deterministic,
-            variables: vars,
-        }
-    }
-
     /// Construct a `Pattern` from an already-parsed `ParsedForm`.
     ///
-    /// This avoids reparsing the raw string (as `create` does),
-    /// which is useful when classification has already produced
-    /// a `ParsedForm`.
+    /// This avoids reparsing the raw string, which is useful when classification
+    /// has already produced a `ParsedForm`.
     ///
     /// # Arguments
     ///
@@ -180,9 +162,9 @@ impl Pattern {
     ///   in the raw string.
     /// - `lookup_keys` is initialized empty; it will be populated
     ///   later during solver setup.
-    pub fn from_parsed(parsed: ParsedForm, raw: &str, original_index: usize) -> Self {
+    pub fn from_parsed(parsed: &ParsedForm, raw: &str, original_index: usize) -> Self {
         // Check whether every part of the parsed form is deterministic.
-        let deterministic = parsed.iter().all(|p| p.is_deterministic());
+        let is_deterministic = parsed.iter().all(FormPart::is_deterministic);
 
         // Collect all variable characters that appear in the raw string.
         let vars = raw.chars().filter(char::is_variable).collect();
@@ -191,7 +173,7 @@ impl Pattern {
             raw_string: raw.to_string(),
             lookup_keys: HashSet::default(), // filled during indexing
             original_index,
-            is_deterministic: deterministic,
+            is_deterministic,
             variables: vars,
         }
     }
@@ -235,10 +217,10 @@ impl Pattern {
 /// dispatched on by `EquationContext::set_var_constraints`.
 ///
 /// # Order of checks
-/// 1. Length constraints, e.g. `|A|=5` or `|B|>3`.
-/// 2. Inequality constraints, e.g. `AB≠CD`.
+/// 1. Length constraints, e.g., `|A|=5` or `|B|>3`.
+/// 2. Inequality constraints, e.g., `!=ABC`.
 /// 3. Complex constraints (`get_complex_constraint`).
-/// 4. Joint constraints, e.g. `|AB|=7`.
+/// 4. Joint constraints, e.g., `|AB|=7`.
 /// 5. Plain parsed forms (patterns).
 ///
 /// If none of these succeed, returns a `ParseError::InvalidInput`.
@@ -248,38 +230,32 @@ impl Pattern {
 ///   as any recognized type.
 fn classify_form(form: &str) -> Result<FormKind, Box<ParseError>> {
     // 1. Check for a simple length comparison constraint: |A|=5
+    // NB: this assumes that any form that matches LEN_CMP_RE is either a LenConstraint or is
+    // malformed (see the "?"s at the end of deriving op and bound)
     if let Some(cap) = LEN_CMP_RE.captures(form).unwrap() {
         let var_char = cap[1].chars().next().unwrap();
         let op = ComparisonOperator::from_str(&cap[2])?;
-        let n = cap[3].parse::<usize>()?;
-        return Ok(FormKind::LenConstraint(var_char, op, n));
-    }
-
-    // 2. Check for inequality constraints: e.g. AB≠CD
-    if let Some(cap) = NEQ_RE.captures(form).unwrap() {
-        let vars: Vec<_> = cap[1].chars().collect();
-        return Ok(FormKind::NeqConstraint(vars));
-    }
-
+        let bound = cap[3].parse::<usize>()?;
+        Ok(FormKind::LenConstraint { var_char, op, bound })
+    // 2. Check for inequality constraints: e.g., !=ABC
+    } else if let Some(cap) = NEQ_RE.captures(form).unwrap() {
+        let var_chars: Vec<_> = cap[1].chars().collect();
+        Ok(FormKind::NeqConstraint { var_chars })
     // 3. Complex constraints (delegate to helper)
-    if let Ok((var_char, vc)) = get_complex_constraint(form) {
-        return Ok(FormKind::ComplexConstraint(var_char, vc));
-    }
-
+    } else if let Ok((var_char, vc)) = get_complex_constraint(form) {
+        Ok(FormKind::ComplexConstraint { var_char, vc })
     // 4. Joint constraints: |AB|=7
-    if let Ok(jc) = form.parse::<JointConstraint>() {
-        return Ok(FormKind::JointConstraint(jc));
-    }
-
+    } else if let Ok(jc) = form.parse::<JointConstraint>() {
+        Ok(FormKind::JointConstraint { jc })
     // 5. Fallback: try to parse as a pattern
-    if let Ok(parsed) = form.parse::<ParsedForm>() {
-        return Ok(FormKind::Pattern(parsed));
+    } else if let Ok(parsed_form) = form.parse::<ParsedForm>() {
+        Ok(FormKind::Pattern { parsed_form })
+    } else {
+        // Nothing matched → invalid form
+        Err(Box::new(ParseError::InvalidInput {
+            str: form.to_string(),
+        }))
     }
-
-    // Nothing matched → invalid form
-    Err(Box::new(ParseError::InvalidInput {
-        str: form.to_string(),
-    }))
 }
 
 
@@ -332,13 +308,12 @@ impl EquationContext {
     /// Parses a semicolon-separated string of forms into constraints and patterns,
     /// and records them in this `EquationContext`.
     ///
-    /// Each form is first classified by [`classify_form`] into a [`FormKind`],
-    /// then dispatched here:
+    /// Each form is first classified into a [`FormKind`], then dispatched here:
     ///
     /// - [`FormKind::LenConstraint`] — variable length constraints like `|A|=5`, `|B|>3`.
-    /// - [`FormKind::NeqConstraint`] — inequality constraints like `AB≠CD`.
-    /// - [`FormKind::ComplexConstraint`] — compound constraints (e.g. bounded length plus a sub-pattern).
-    /// - [`FormKind::JointConstraint`] — constraints across multiple variables, e.g. `|AB|=7`.
+    /// - [`FormKind::NeqConstraint`] — inequality constraints like `!=ABC`.
+    /// - [`FormKind::ComplexConstraint`] — compound constraints (e.g., bounded length plus a sub-pattern).
+    /// - [`FormKind::JointConstraint`] — constraints across multiple variables, e.g., `|AB|=7`.
     /// - [`FormKind::Pattern`] — ordinary parsed forms that become candidate patterns.
     ///
     /// # Errors
@@ -352,41 +327,41 @@ impl EquationContext {
         let mut next_form_ix = 0;
 
         for form in &forms {
-            match classify_form(form)? {
-                // --- Length constraint on a single variable (e.g. |A|=5, |B|>3) ---
-                FormKind::LenConstraint(var_char, op, n) => {
+            match form.parse::<FormKind>()? {
+                // --- Length constraint on a single variable (e.g., |A|=5, |B|>3) ---
+                FormKind::LenConstraint { var_char, op, bound } => {
                     let vc = self.var_constraints.ensure(var_char);
                     match op {
-                        ComparisonOperator::EQ => vc.set_exact_len(n),
-                        ComparisonOperator::NE => {} // handled separately as NeqConstraint
-                        ComparisonOperator::LE => vc.bounds.max_len_opt = Some(n),
-                        ComparisonOperator::GE => vc.bounds.min_len = n,
-                        ComparisonOperator::LT => vc.bounds.max_len_opt = n.checked_sub(1),
+                        ComparisonOperator::EQ => vc.set_exact_len(bound),
+                        ComparisonOperator::NE => {} // handled separately as NeqConstraint // TODO! throw an exception, right?
+                        ComparisonOperator::LE => vc.bounds.max_len_opt = Some(bound),
+                        ComparisonOperator::GE => vc.bounds.min_len = bound,
+                        ComparisonOperator::LT => vc.bounds.max_len_opt = bound.checked_sub(1),
                         ComparisonOperator::GT => {
-                            vc.bounds.min_len = n.checked_add(1).ok_or_else(|| {
+                            vc.bounds.min_len = bound.checked_add(1).ok_or_else(|| {
                                 Box::new(ParseError::InvalidInput {
-                                    str: form.to_string(),
+                                    str: (*form).to_string(),
                                 })
-                            })?
+                            })?;
                         }
                     }
                 }
 
-                // --- Inequality constraint among variables (e.g. AB≠CD) ---
-                FormKind::NeqConstraint(vars) => {
-                    for &var_char in &vars {
+                // --- Inequality constraint among variables (e.g., !=ABC) ---
+                FormKind::NeqConstraint { var_chars } => {
+                    for &var_char in &var_chars {
                         let vc = self.var_constraints.ensure(var_char);
                         // For each variable, store the set of other variables it must differ from.
-                        vc.not_equal = vars.iter().copied().filter(|&x| x != var_char).collect();
+                        vc.not_equal = var_chars.iter().copied().filter(|&x| x != var_char).collect();
                     }
                 }
 
                 // --- Complex constraint: bounds + embedded pattern ---
-                FormKind::ComplexConstraint(var_char, cc_vc) => {
+                FormKind::ComplexConstraint { var_char, vc: cc_vc} => {
                     let vc = self.var_constraints.ensure(var_char);
                     vc.constrain_by(&cc_vc);
 
-                    // If the complex constraint carries a sub-form, ensure consistency
+                    // If the complex constraint carries a subform, ensure consistency
                     // with any prior form assigned to this variable.
                     if let Some(f) = cc_vc.form {
                         if let Some(old_form) = &vc.form {
@@ -403,15 +378,15 @@ impl EquationContext {
                     }
                 }
 
-                // --- Joint constraint (e.g. |AB|=7) ---
-                FormKind::JointConstraint(jc) => {
+                // --- Joint constraint (e.g., |AB|=7) ---
+                FormKind::JointConstraint { jc } => {
                     self.joint_constraints.add(jc);
                 }
 
                 // --- Regular pattern (not a constraint) ---
-                FormKind::Pattern(parsed) => {
+                FormKind::Pattern { parsed_form } => {
                     // Wrap into a Pattern object, reusing the already-parsed form.
-                    self.p_list.push(Pattern::from_parsed(parsed, form, next_form_ix));
+                    self.p_list.push(Pattern::from_parsed(&parsed_form, form, next_form_ix));
                     next_form_ix += 1;
                 }
             }
@@ -429,7 +404,7 @@ impl EquationContext {
     ///
     /// Tie-breakers (applied in order):
     /// 1. Higher `constraint_score` first
-    /// 2. Non-deterministic before deterministic
+    /// 2. Nondeterministic before deterministic
     /// 3. Lower original index first
     fn ordered_patterns(&self) -> Vec<Pattern> {
         let mut p_list = self.p_list.clone();
@@ -532,6 +507,7 @@ impl FromStr for EquationContext {
 }
 
 // TODO? do this via regex?
+// TODO? Result vs. Option
 // e.g., A=(3-:x*)
 fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint), Box<ParseError>> {
     if let Some((var_str, constraint_str)) = form.split_once('=') {
@@ -790,28 +766,41 @@ mod tests {
         assert_eq!(expected, a);
     }
 
+    #[cfg(test)]
+    fn framework_test_constraint_score(s: &str, expected_constraint_score: usize) {
+        assert_eq!(expected_constraint_score, get_pattern(s).constraint_score());
+    }
+
+    #[cfg(test)]
+    fn get_pattern(s: &str) -> Pattern {
+        let original_index = 1; // needed for `from_parsed`, but not used beyond that
+        let parsed_form = s.parse::<ParsedForm>().unwrap();
+        let pattern = Pattern::from_parsed(&parsed_form, s, original_index);
+        pattern
+    }
+
     #[test]
     /// Verify `constraint_score` calculation and `all_vars_in_lookup_keys` logic—all literals.
     fn test_constraint_score_and_all_vars_in_lookup_keys_all_literals() {
-        assert_eq!(Pattern::create("abc", 0).constraint_score(), 9);
+        framework_test_constraint_score("abc", 9);
     }
 
     #[test]
     /// Verify `constraint_score` calculation and `all_vars_in_lookup`_keys logic—var + class.
     fn test_constraint_score_and_all_vars_in_lookup_keys_var_class() {
-        assert_eq!(Pattern::create("A@", 1).constraint_score(), 1);
+        framework_test_constraint_score("A@", 1);
     }
 
     #[test]
     /// Verify `constraint_score` calculation and `all_vars_in_lookup_keys` logic—class + var.
     fn test_constraint_score_and_all_vars_in_lookup_keys_class_var() {
-        assert_eq!(Pattern::create("#B", 2).constraint_score(), 1);
+        framework_test_constraint_score("#B", 1);
     }
 
     #[test]
     /// Verify `all_vars_in_lookup_keys` logic.
     fn test_constraint_score_and_all_vars_in_lookup_keys() {
-        let mut p = Pattern::create("AB", 3);
+        let mut p = get_pattern("AB");
         assert!(!p.all_vars_in_lookup_keys());
         p.lookup_keys = HashSet::from_iter(['B']);
         assert!(!p.all_vars_in_lookup_keys());
@@ -908,7 +897,7 @@ mod tests {
     #[test]
     /// Test ordering tiebreakers: deterministic flag.
     fn test_ordered_patterns_tiebreak_deterministic() {
-        // deterministic vs non-deterministic: "AB" (det) vs "A.B" (non-det)
+        // deterministic vs. nondeterministic: "AB" (det.) vs "A.B" (nondet.)
         let patterns = "A.B;AB".parse::<EquationContext>().unwrap();
         assert_eq!(patterns.ordered_list.iter().map(|p| p.raw_string.clone()).collect::<Vec<_>>(), vec!["A.B", "AB"]);
     }

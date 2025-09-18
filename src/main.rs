@@ -36,7 +36,7 @@ fn main() {
     if let Err(e) = try_main() {
         // Print the error message to stderr
         eprintln!("Error: {e}");
-        // Exit explicitly with a non-zero code so scripts can detect failure
+        // Exit explicitly with a nonzero code so scripts can detect failure
         std::process::exit(1);
     }
 }
