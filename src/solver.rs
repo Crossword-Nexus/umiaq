@@ -619,4 +619,25 @@ mod tests {
 
         assert!(matches!(*actual.unwrap_err(), ParseFailure { s } if s == "cannot find solution in bindings [A→a]" ));
     }
+
+    #[test]
+    fn test_fully_bound() {
+
+        // Toy word list: short, predictable words
+        let wl = vec!["atime", "btime", "ab"];
+
+        // Equation has two deterministic patterns Atime, Btime, and then AB
+        let eq = "Atime;Btime;AB";
+
+        // Solve with a small limit to ensure it runs to completion
+        let sols = solve_equation(eq, &wl, 5)
+            .expect("equation should not trigger MaterializationError");
+
+        // We expect at least one solution: A="a", B="b" works
+        assert!(
+            !sols.is_empty(),
+            "expected a solution, got none for equation {eq}"
+        );
+    }
+
 }

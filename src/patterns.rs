@@ -510,50 +510,36 @@ impl FromStr for EquationContext {
 
     /// Build a fully-initialized `EquationContext` from a raw equation string.
     ///
-    /// This constructor wraps all the setup work that used to live in
-    /// `solve_equation` (steps 4–7):
-    ///
-    /// - Calls [`EquationContext::set_var_constraints`] to populate
-    ///   patterns (`p_list`), per-variable constraints, and joint constraints.
-    /// - Parses each pattern string once into a `ParsedForm` and stores
-    ///   them in `parsed_forms`.
-    /// - Upgrades each `ParsedForm`'s regex prefilter to respect any
-    ///   variable constraints (e.g. turn `.+` into `g.*`).
-    /// - Propagates joint constraints into the per-variable constraints
-    ///   to tighten variable length bounds.
-    /// - Builds the solver ordering and index maps.
-    ///
-    /// After this returns, the `EquationContext` is ready for solving:
-    /// all constraints and forms are parsed and upgraded, and ordering is set.
+    /// Steps:
+    /// 1) Parse forms into patterns, per-var constraints, and joint constraints.
+    /// 2) Propagate joint constraints into per-var bounds (tighten now).
+    /// 3) Parse raw pattern strings into `ParsedForm`s.
+    /// 4) Upgrade each `ParsedForm` prefilter using the (now-final) var constraints.
+    /// 5) Compute ordering and index maps.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let mut ctx = EquationContext::default();
 
-        // Step 1: Parse the input string into patterns + constraints.
-        // This fills in `p_list`, `var_constraints`, and `joint_constraints`.
+        // 1) Forms → p_list, var_constraints, joint_constraints
         ctx.set_var_constraints(s)?;
 
-        // Step 2: Parse each raw pattern string into a `ParsedForm`.
-        // These are kept parallel to `p_list` in `parsed_forms`.
+        // 2) Tighten per-var bounds using joint constraints *before* building prefilters
+        if !ctx.joint_constraints.is_empty() {
+            propagate_joint_to_var_bounds(&mut ctx.var_constraints, &ctx.joint_constraints);
+        }
+
+        // 3) Parse each raw pattern once
         ctx.parsed_forms = ctx
             .p_list
             .iter()
             .map(|p| p.raw_string.parse::<ParsedForm>())
             .collect::<Result<_, _>>()?;
 
-        // Step 3: Upgrade prefilters for each parsed form using variable constraints.
-        // For example, if |A| has form `g*`, prefilter `.+` can be tightened to `g.*`.
+        // 4) Upgrade prefilters with the *final* var constraints
         for pf in &mut ctx.parsed_forms {
-            let upgraded = build_prefilter_regex(pf, &ctx.var_constraints)?;
-            pf.prefilter = upgraded;
+            pf.prefilter = build_prefilter_regex(pf, &ctx.var_constraints)?;
         }
 
-        // Step 4: Apply joint constraints to tighten per-variable bounds.
-        // E.g. from |AB|=7 we infer additional length limits for |A| and |B|.
-        if !ctx.joint_constraints.is_empty() {
-            propagate_joint_to_var_bounds(&mut ctx.var_constraints, &ctx.joint_constraints);
-        }
-
-        // Step 5: Establish solving order and index maps.
+        // 5) Establish solving order and index maps
         ctx.ordered_list = ctx.ordered_patterns();
         ctx.build_order_maps();
 
