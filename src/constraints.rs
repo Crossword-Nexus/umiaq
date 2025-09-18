@@ -146,12 +146,14 @@ impl VarConstraint {
     }
     /// Get the parsed form
     pub(crate) fn get_parsed_form(&self) -> Result<Option<&ParsedForm>, Box<ParseError>> {
-        if let Some(f) = &self.form {
+        let parsed_form_raw = if let Some(f) = &self.form {
             let parsed = self.parsed_form.get_or_try_init(|| f.parse::<ParsedForm>())?;
-            Ok(Some(parsed))
+            Some(parsed)
         } else {
-            Ok(None)
-        }
+            None
+        };
+
+        Ok(parsed_form_raw)
     }
 
     pub(crate) fn constrain_by(&mut self, other: &VarConstraint) {

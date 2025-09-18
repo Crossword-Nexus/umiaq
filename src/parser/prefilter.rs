@@ -81,19 +81,6 @@ fn render_parts_to_regex(
                 let occurs_many = var_counts[idx] > 1;
                 let already_has_group = var_to_backreference_num[idx] != 0;
 
-                // Inline constraint form if present
-                let lookahead: Result<Option<String>, Box<ParseError>> =
-                    match constraints.and_then(|cs| cs.get(*c)) {
-                        Some(vc) => {
-                            if let Some(parsed) = vc.get_parsed_form()? {
-                                Ok(Some(render_parts_to_regex(&parsed.parts, None)?))
-                            } else {
-                                Ok(None)
-                            }
-                        }
-                        None => Ok(None),
-                    };
-
                 if already_has_group {
                     // Subsequent occurrences → backreference
                     let _ = write!(regex_str, "\\{}", var_to_backreference_num[idx]);
@@ -101,13 +88,15 @@ fn render_parts_to_regex(
                     // First of multiple occurrences → capture group
                     backreference_index += 1;
                     var_to_backreference_num[idx] = backreference_index;
-                    if let Some(nested) = lookahead? {
+                    // Inline constraint form if present
+                    if let Some(nested) = get_lookahead(constraints, *c)? {
                         // Capture group with constraint
                         let _ = write!(regex_str, "(?={nested})(.+)");
                     } else {
                         regex_str.push_str("(.+)");
                     }
-                } else if let Some(nested) = lookahead? {
+                // Inline constraint form if present
+                } else if let Some(nested) = get_lookahead(constraints, *c)? {
                     // Single-use variable with constraint
                     let _ = write!(regex_str, "(?={nested}).+");
                 } else {
@@ -155,6 +144,22 @@ fn render_parts_to_regex(
     Ok(regex_str)
 }
 
+fn get_lookahead(constraints: Option<&VarConstraints>, c: char) -> Result<Option<String>, Box<ParseError>> {
+    let lookahead_raw = match constraints.and_then(|cs| cs.get(c)) {
+        Some(vc) => {
+            if let Some(parsed) = vc.get_parsed_form()? {
+                Some(render_parts_to_regex(&parsed.parts, None)?)
+            } else {
+                None
+            }
+        }
+        None => None,
+    };
+
+    Ok(lookahead_raw)
+}
+
+
 /// Convert a parsed form into a regex string without constraints.
 ///
 /// This is a thin wrapper over `render_parts_to_regex` with `constraints = None`.
@@ -196,14 +201,12 @@ pub(crate) fn has_inlineable_var_form(
     parts: &[FormPart],
     constraints: &VarConstraints,
 ) -> Result<bool, Box<ParseError>> {
-    for p in parts {
-        if let FormPart::Var(c) = p {
-            if let Some(vc) = constraints.get(*c) {
-                if vc.get_parsed_form()?.is_some() {
-                    return Ok(true);
-                }
+    for part in parts {
+        if let FormPart::Var(c) = part
+            && let Some(vc) = constraints.get(*c)
+            && vc.get_parsed_form()?.is_some() {
+                return Ok(true);
             }
-        }
     }
     Ok(false)
 }
@@ -227,6 +230,7 @@ pub(crate) fn build_prefilter_regex(
         parsed_form.prefilter.as_str().to_string()
     };
 
+    // TODO perhaps get_regex shouldn't be throwing exceptions on cases that we shouldn't be panicking on
     // Compile, fall back to existing prefilter if needed
     Ok(get_regex(&regex_str).unwrap_or_else(|_| parsed_form.prefilter.clone()))
 }
