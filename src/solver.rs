@@ -266,9 +266,8 @@ fn recursive_join(
                 rjp_cur.parsed_form.materialize_deterministic_with_env(env)
             else {
                 eprintln!(
-                    "MaterializationError: failed to materialize pattern {:?} with env {:?}",
-                    rjp_cur.parsed_form, // or p.raw_string if you want the original string
-                    env
+                    "MaterializationError: pattern {:?}, variables {:?}, lookup_keys {:?}, env {:?}",
+                    p.raw_string, p.variables, p.lookup_keys, env
                 );
                 return Err(MaterializationError);
             };
