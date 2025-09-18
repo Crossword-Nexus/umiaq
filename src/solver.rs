@@ -403,8 +403,11 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
         words.push(CandidateBuckets::default());
     }
 
+    // TODO: move a bunch of the next few steps into EquationContext creation
+
     // 4. Parse each pattern's string form once into a `ParsedForm` (essentially a `Vec` of
     //    `FormPart`s). These are index-aligned with `equation_context`.
+
     let mut parsed_forms: Vec<_> = equation_context
         .iter()
         .map(|p| {
@@ -427,9 +430,7 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
 
     // 7. Get the joint constraints and use them to tighten per-variable constraints
     // This gets length bounds on variables (from the joint constraints)
-    // TODO: pull this from EquationContext
-    let joint_constraints = JointConstraints::parse_equation(input);
-
+    let joint_constraints = equation_context.joint_constraints.clone();
     propagate_joint_to_var_bounds(&mut var_constraints, &joint_constraints);
 
     // 8. Build cheap, per-form length hints once (index-aligned with equation_context/parsed_forms)
@@ -633,5 +634,25 @@ mod tests {
         let actual = solution_to_string(&bindings_list);
 
         assert!(matches!(*actual.unwrap_err(), ParseFailure { s } if s == "cannot find solution in bindings [A→a]" ));
+    }
+
+    #[test]
+    fn test_fully_bound() {
+
+        // Toy word list: short, predictable words
+        let wl = vec!["atime", "btime", "ab"];
+
+        // Equation has two deterministic patterns Atime, Btime, and then AB
+        let eq = "Atime;Btime;AB";
+
+        // Solve with a small limit to ensure it runs to completion
+        let sols = solve_equation(eq, &wl, 5)
+            .expect("equation should not trigger MaterializationError");
+
+        // We expect at least one solution: A="a", B="b" works
+        assert!(
+            !sols.is_empty(),
+            "expected a solution, got none for equation {eq}"
+        );
     }
 }
