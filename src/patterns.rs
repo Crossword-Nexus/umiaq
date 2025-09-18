@@ -598,7 +598,7 @@ fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint), Box<Parse
     }
 }
 
-/// Enable `for p in &patterns { ... }`.
+/// Enable `for pattern in &patterns { ... }`.
 ///
 /// Why `&Patterns` and not `Patterns`?
 /// - `for x in collection` desugars to `IntoIterator::into_iter(collection)`.
