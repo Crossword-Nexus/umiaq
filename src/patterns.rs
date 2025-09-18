@@ -54,8 +54,54 @@ enum FormKind {
 impl FromStr for FormKind {
     type Err = Box<ParseError>;
 
+    /// Attempt to classify a raw input string into a specific kind of
+    /// constraint or pattern.
+    ///
+    /// This function is the central parser for forms. It tries each
+    /// constraint type in turn, and if none match, falls back to treating
+    /// the input as a `ParsedForm` pattern.
+    ///
+    /// The result is wrapped in a [`FormKind`] enum, which can then be
+    /// dispatched on by `EquationContext::set_var_constraints`.
+    ///
+    /// # Order of checks
+    /// 1. Length constraints, e.g., `|A|=5` or `|B|>3`.
+    /// 2. Inequality constraints, e.g., `!=ABC`.
+    /// 3. Complex constraints (`get_complex_constraint`).
+    /// 4. Joint constraints, e.g., `|AB|=7`.
+    /// 5. Plain parsed forms (patterns).
+    ///
+    /// If none of these succeed, returns a `ParseError::InvalidInput`.
+    ///
+    /// # Errors
+    /// - Returns `ParseError` if the form is invalid or cannot be parsed
+    ///   as any recognized type.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        classify_form(s) // TODO! inline
+        // 1. Check for a simple length comparison constraint: |A|=5
+        // NB: this assumes that any form that matches LEN_CMP_RE is either a LenConstraint or is
+        // malformed (see the "?"s at the end of deriving op and bound)
+        if let Some(cap) = LEN_CMP_RE.captures(s).unwrap() {
+            let var_char = cap[1].chars().next().unwrap();
+            let op = ComparisonOperator::from_str(&cap[2])?;
+            let bound = cap[3].parse::<usize>()?;
+            Ok(FormKind::LenConstraint { var_char, op, bound })
+        // 2. Check for inequality constraints: e.g., !=ABC
+        } else if let Some(cap) = NEQ_RE.captures(s).unwrap() {
+            let var_chars: Vec<_> = cap[1].chars().collect();
+            Ok(FormKind::NeqConstraint { var_chars })
+        // 3. Complex constraints (delegate to helper)
+        } else if let Ok((var_char, vc)) = get_complex_constraint(s) {
+            Ok(FormKind::ComplexConstraint { var_char, vc })
+        // 4. Joint constraints: |AB|=7
+        } else if let Ok(jc) = s.parse::<JointConstraint>() {
+            Ok(FormKind::JointConstraint { jc })
+        // 5. Fallback: try to parse as a pattern
+        } else if let Ok(parsed_form) = s.parse::<ParsedForm>() {
+            Ok(FormKind::Pattern { parsed_form })
+        // Nothing matched → invalid form
+        } else {
+            Err(Box::new(ParseError::InvalidInput { str: s.to_string() }))
+        }
     }
 }
 
@@ -205,59 +251,6 @@ impl Pattern {
             .sum()
     }
 }
-
-/// Attempt to classify a raw input string into a specific kind of
-/// constraint or pattern.
-///
-/// This function is the central parser for forms. It tries each
-/// constraint type in turn, and if none match, falls back to treating
-/// the input as a `ParsedForm` pattern.
-///
-/// The result is wrapped in a [`FormKind`] enum, which can then be
-/// dispatched on by `EquationContext::set_var_constraints`.
-///
-/// # Order of checks
-/// 1. Length constraints, e.g., `|A|=5` or `|B|>3`.
-/// 2. Inequality constraints, e.g., `!=ABC`.
-/// 3. Complex constraints (`get_complex_constraint`).
-/// 4. Joint constraints, e.g., `|AB|=7`.
-/// 5. Plain parsed forms (patterns).
-///
-/// If none of these succeed, returns a `ParseError::InvalidInput`.
-///
-/// # Errors
-/// - Returns `ParseError` if the form is invalid or cannot be parsed
-///   as any recognized type.
-fn classify_form(form: &str) -> Result<FormKind, Box<ParseError>> {
-    // 1. Check for a simple length comparison constraint: |A|=5
-    // NB: this assumes that any form that matches LEN_CMP_RE is either a LenConstraint or is
-    // malformed (see the "?"s at the end of deriving op and bound)
-    if let Some(cap) = LEN_CMP_RE.captures(form).unwrap() {
-        let var_char = cap[1].chars().next().unwrap();
-        let op = ComparisonOperator::from_str(&cap[2])?;
-        let bound = cap[3].parse::<usize>()?;
-        Ok(FormKind::LenConstraint { var_char, op, bound })
-    // 2. Check for inequality constraints: e.g., !=ABC
-    } else if let Some(cap) = NEQ_RE.captures(form).unwrap() {
-        let var_chars: Vec<_> = cap[1].chars().collect();
-        Ok(FormKind::NeqConstraint { var_chars })
-    // 3. Complex constraints (delegate to helper)
-    } else if let Ok((var_char, vc)) = get_complex_constraint(form) {
-        Ok(FormKind::ComplexConstraint { var_char, vc })
-    // 4. Joint constraints: |AB|=7
-    } else if let Ok(jc) = form.parse::<JointConstraint>() {
-        Ok(FormKind::JointConstraint { jc })
-    // 5. Fallback: try to parse as a pattern
-    } else if let Ok(parsed_form) = form.parse::<ParsedForm>() {
-        Ok(FormKind::Pattern { parsed_form })
-    } else {
-        // Nothing matched → invalid form
-        Err(Box::new(ParseError::InvalidInput {
-            str: form.to_string(),
-        }))
-    }
-}
-
 
 
 #[derive(Debug, Default)]
