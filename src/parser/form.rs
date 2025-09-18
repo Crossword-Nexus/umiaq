@@ -23,15 +23,15 @@ pub type PResult<'a, O> = IResult<&'a str, O, Box<ParseError>>;
 /// Represents a single parsed token (component) from a "form" string.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FormPart {
-    Var(char),          // 'A': uppercase A–Z variable reference
-    RevVar(char),       // '~A': reversed variable reference
-    Lit(String),        // 'abc': literal lowercase sequence (lowercase)
-    Dot,                // '.' wildcard: exactly one letter
-    Star,               // '*' wildcard: zero or more letters
-    Vowel,              // '@' wildcard: any vowel (aeiouy)
-    Consonant,          // '#' wildcard: any consonant (bcdf...xz)
+    Var(char),              // 'A': uppercase A–Z variable reference
+    RevVar(char),           // '~A': reversed variable reference
+    Lit(String),            // 'abc': literal lowercase sequence (lowercase)
+    Dot,                    // '.' wildcard: exactly one letter
+    Star,                   // '*' wildcard: zero or more letters
+    Vowel,                  // '@' wildcard: any vowel (aeiouy)
+    Consonant,              // '#' wildcard: any consonant (bcdf...xz)
     Charset(HashSet<char>), // '[abc]': any of the given letters
-    Anagram(Alphagram), // '/abc': any permutation of the given letters
+    Anagram(Alphagram),     // '/abc': any permutation of the given letters
 }
 
 impl FormPart {

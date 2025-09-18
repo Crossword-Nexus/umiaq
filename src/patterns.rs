@@ -276,7 +276,7 @@ pub struct EquationContext {
     pub var_constraints: VarConstraints,
     pub joint_constraints: JointConstraints,
     /// Reordered list of patterns, optimized for solving (most-constrained first)
-    pub ordered_list: Vec<Pattern>,        // solver order
+    pub ordered_list: Vec<Pattern>, // solver order
     /// ordered index -> original index
     pub ordered_to_original: Vec<usize>,
     /// original index -> ordered index
@@ -919,7 +919,7 @@ mod tests {
     fn test_conflicting_complex_constraints_error() {
         assert!(matches!(
             *"A=(1-5:k*);A=(5-6:a*);A".parse::<EquationContext>().unwrap_err(),
-            ParseError::ConflictingConstraint { var_char, older,  newer } if var_char == 'A' && older == "k*" && newer == "a*" )
+            ParseError::ConflictingConstraint { var_char, older, newer } if var_char == 'A' && older == "k*" && newer == "a*" )
         );
     }
 }
