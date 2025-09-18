@@ -149,9 +149,9 @@ impl FromStr for FormKind {
 /// ## Solver metadata (what it is and why it exists)
 /// - `lookup_keys`: `HashSet<char>`
 ///   - **What:** The subset of this form's variables that also appear in forms
-///     that have already been placed earlier in `Patterns::ordered_list`.
-///   - **When it's set:** Assigned by `Patterns::ordered_patterns()` *after* the
-///     forms have been reordered for solving.
+///     that have already been placed earlier in `EquationContext::ordered_list`.
+///   - **When it's set:** Assigned by `EquationContext::get_ordered_patterns()`
+///     *after* the forms have been reordered for solving.
 ///   - **Why it helps:** During the multi-form join, candidate bindings for this
 ///     form can be bucketed by the concrete values of these variables and then
 ///     matched in O(1)/O(log N) time against earlier choices, instead of scanning
@@ -271,7 +271,7 @@ pub struct EquationContext {
     /// List of patterns directly extracted from the input string (not constraints)
     // TODO should we keep Vec<Pattern> for each order or just one (likely ordered_list) and use map
     //      (original_to_ordered) when other is needed?
-    pub p_list: Vec<Pattern>,
+    pub patterns: Vec<Pattern>,
     /// Map of variable names (A-Z) to their associated constraints
     pub var_constraints: VarConstraints,
     pub joint_constraints: JointConstraints,
@@ -285,7 +285,7 @@ pub struct EquationContext {
 
 impl EquationContext {
     fn build_order_maps(&mut self) {
-        let n = self.p_list.len();
+        let n = self.patterns.len();
         self.ordered_to_original = self
             .ordered_list
             .iter()
@@ -379,7 +379,7 @@ impl EquationContext {
                 // --- Regular pattern (not a constraint) ---
                 FormKind::Pattern { parsed_form } => {
                     // Wrap into a Pattern object, reusing the already-parsed form.
-                    self.p_list.push(Pattern::from_parsed(&parsed_form, form, next_form_ix));
+                    self.patterns.push(Pattern::from_parsed(&parsed_form, form, next_form_ix));
                     next_form_ix += 1;
                 }
             }
@@ -399,20 +399,20 @@ impl EquationContext {
     /// 1. Higher `constraint_score` first
     /// 2. Nondeterministic before deterministic
     /// 3. Lower original index first
-    fn ordered_patterns(&self) -> Vec<Pattern> {
-        let mut p_list = self.p_list.clone();
-        let mut ordered = Vec::with_capacity(p_list.len());
+    fn get_ordered_patterns(&self) -> Vec<Pattern> {
+        let mut patterns = self.patterns.clone();
+        let mut ordered_patterns = Vec::with_capacity(patterns.len());
 
-        while !p_list.is_empty() {
+        while !patterns.is_empty() {
             // Vars already "seen" in previously chosen patterns
-            let found_vars = ordered
+            let found_vars = ordered_patterns
                 .iter()
                 .flat_map(|p: &Pattern| p.variables.iter().copied())
                 .collect();
 
             // Unified scoring function
             let get_score = |p: &Pattern| {
-                if ordered.is_empty() {
+                if ordered_patterns.is_empty() {
                     // First pick: more vars is better
                     (
                         p.variables.len(),
@@ -433,23 +433,23 @@ impl EquationContext {
             };
 
             // Select the best candidate
-            let (ix, _) = p_list
+            let (ix, _) = patterns
                 .iter()
                 .enumerate()
                 .max_by_key(|(_, p)| get_score(p))
                 .unwrap();
 
-            let mut chosen = p_list.remove(ix);
+            let mut chosen = patterns.remove(ix);
 
-            if !ordered.is_empty() {
+            if !ordered_patterns.is_empty() {
                 // Assign join keys only after the first pick
                 chosen.lookup_keys = chosen.variables.intersection(&found_vars).copied().collect();
             }
 
-            ordered.push(chosen);
+            ordered_patterns.push(chosen);
         }
 
-        ordered
+        ordered_patterns
     }
 
 
@@ -491,11 +491,11 @@ impl FromStr for EquationContext {
     type Err = Box<ParseError>;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut patterns = EquationContext::default();
-        patterns.set_var_constraints(s)?;
-        patterns.ordered_list = patterns.ordered_patterns();
-        patterns.build_order_maps();
-        Ok(patterns)
+        let mut equation_context = EquationContext::default();
+        equation_context.set_var_constraints(s)?;
+        equation_context.ordered_list = equation_context.get_ordered_patterns();
+        equation_context.build_order_maps();
+        Ok(equation_context)
     }
 }
 
@@ -550,13 +550,13 @@ fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint), Box<Parse
     }
 }
 
-/// Enable `for pattern in &patterns { ... }`.
+/// Enable `for pattern in &equation_context { ... }`.
 ///
-/// Why `&Patterns` and not `Patterns`?
+/// Why `&equation_context` and not `equation_context`?
 /// - `for x in collection` desugars to `IntoIterator::into_iter(collection)`.
-/// - If we implement `IntoIterator` for **`Patterns`**, iteration would *consume* (move) the
-///   whole `Patterns`, which we don't want here.
-/// - Implementing it for **`&Patterns`** lets you iterate **by reference** without moving.
+/// - If we implement `IntoIterator` for **`EquationContext`**, iteration would *consume* (move) the
+///   whole `EquationContext`, which we don't want here.
+/// - Implementing it for **`&EquationContext`** leads to iteration **by reference** without moving.
 impl<'a> IntoIterator for &'a EquationContext {
     type Item = &'a Pattern;
     type IntoIter = std::slice::Iter<'a, Pattern>;
@@ -587,13 +587,13 @@ mod tests {
 
     #[test]
     fn test_basic_pattern_and_constraints() {
-        let patterns = "AB;|A|=3;!=AB;B=(2:b*)".parse::<EquationContext>().unwrap();
+        let equation_context = "AB;|A|=3;!=AB;B=(2:b*)".parse::<EquationContext>().unwrap();
 
         // Test raw pattern list
-        assert_eq!(vec!["AB".to_string()], patterns.p_list.iter().map(|p| p.raw_string.clone()).collect::<Vec<_>>());
+        assert_eq!(vec!["AB".to_string()], equation_context.patterns.iter().map(|p| p.raw_string.clone()).collect::<Vec<_>>());
 
         // Test constraints
-        let a = patterns.var_constraints.get('A').unwrap();
+        let a = equation_context.var_constraints.get('A').unwrap();
 
         let expected_a = VarConstraint {
             bounds: Bounds::of(3, 3),
@@ -603,7 +603,7 @@ mod tests {
         };
         assert_eq!(expected_a, a.clone());
 
-        let b = patterns.var_constraints.get('B').unwrap();
+        let b = equation_context.var_constraints.get('B').unwrap();
         let expected_b = VarConstraint {
             bounds: Bounds::of(2, 2),
             form: Some("b*".to_string()),
@@ -615,82 +615,82 @@ mod tests {
 
     #[test]
     fn test_complex_re_len_only() {
-        let patterns = "A;A=(6)".parse::<EquationContext>().unwrap();
+        let equation_context = "A;A=(6)".parse::<EquationContext>().unwrap();
 
         let expected = VarConstraint {
             bounds: Bounds::of(6, 6),
             form: None,
             ..Default::default()
         };
-        assert_eq!(expected, patterns.var_constraints.get('A').unwrap().clone());
+        assert_eq!(expected, equation_context.var_constraints.get('A').unwrap().clone());
     }
 
     #[test]
     fn test_complex_re_lit_only() {
-        let patterns = "A;A=(g*)".parse::<EquationContext>().unwrap();
+        let equation_context = "A;A=(g*)".parse::<EquationContext>().unwrap();
 
         let expected = VarConstraint {
             bounds: Bounds::of_unbounded(VarConstraint::DEFAULT_MIN),
             form: Some("g*".to_string()),
             ..Default::default()
         };
-        assert_eq!(expected, patterns.var_constraints.get('A').unwrap().clone());
+        assert_eq!(expected, equation_context.var_constraints.get('A').unwrap().clone());
     }
     #[test]
     fn test_complex_re() {
-        let patterns = "A;A=(3-4:x*)".parse::<EquationContext>().unwrap();
+        let equation_context = "A;A=(3-4:x*)".parse::<EquationContext>().unwrap();
 
         let expected = VarConstraint {
             bounds: Bounds::of(3, 4),
             form: Some("x*".to_string()),
             ..Default::default()
         };
-        assert_eq!(expected, patterns.var_constraints.get('A').unwrap().clone());
+        assert_eq!(expected, equation_context.var_constraints.get('A').unwrap().clone());
     }
 
     #[test]
     fn test_complex_re_unbounded_max_len() {
-        let patterns = "A;A=(3-:x*)".parse::<EquationContext>().unwrap();
+        let equation_context = "A;A=(3-:x*)".parse::<EquationContext>().unwrap();
 
         let expected = VarConstraint {
             bounds: Bounds::of_unbounded(3),
             form: Some("x*".to_string()),
             ..Default::default()
         };
-        assert_eq!(expected, patterns.var_constraints.get('A').unwrap().clone());
+        assert_eq!(expected, equation_context.var_constraints.get('A').unwrap().clone());
     }
 
     #[test]
     fn test_complex_re_unbounded_min_len() {
-        let patterns = "A;A=(-4:x*)".parse::<EquationContext>().unwrap();
+        let equation_context = "A;A=(-4:x*)".parse::<EquationContext>().unwrap();
 
         let expected = VarConstraint {
             bounds: Bounds::of(VarConstraint::DEFAULT_MIN, 4),
             form: Some("x*".to_string()),
             ..Default::default()
         };
-        assert_eq!(expected, patterns.var_constraints.get('A').unwrap().clone());
+        assert_eq!(expected, equation_context.var_constraints.get('A').unwrap().clone());
     }
 
     #[test]
     fn test_complex_re_exact_len() {
-        let patterns = "A;A=(6:x*)".parse::<EquationContext>().unwrap();
+        let equation_context = "A;A=(6:x*)".parse::<EquationContext>().unwrap();
 
         let expected = VarConstraint {
             bounds: Bounds::of(6, 6),
             form: Some("x*".to_string()),
             ..Default::default()
         };
-        assert_eq!(expected, patterns.var_constraints.get('A').unwrap().clone());
+        assert_eq!(expected, equation_context.var_constraints.get('A').unwrap().clone());
     }
 
     #[test]
     /// Test that ordering leaves the list unchanged when no reordering is needed.
     fn test_ordered_patterns() {
         let input = "ABC;BC;C";
-        let patterns = input.parse::<EquationContext>().unwrap();
+        let equation_context = input.parse::<EquationContext>().unwrap();
 
-        let actual: Vec<_> = patterns
+        let actual: Vec<_> = equation_context
             .ordered_list
             .iter()
             .map(|p| p.raw_string.clone())
@@ -713,24 +713,24 @@ mod tests {
 
     #[test]
     fn test_len_gt() {
-        let patterns = "|A|>4;A".parse::<EquationContext>().unwrap();
-        let a = patterns.var_constraints.get('A').unwrap();
+        let equation_context = "|A|>4;A".parse::<EquationContext>().unwrap();
+        let a = equation_context.var_constraints.get('A').unwrap();
         assert_eq!(a.bounds.min_len, 5);
         assert_eq!(a.bounds.max_len_opt, None);
     }
 
     #[test]
     fn test_len_ge() {
-        let patterns = "|A|>=4;A".parse::<EquationContext>().unwrap();
-        let a = patterns.var_constraints.get('A').unwrap();
+        let equation_context = "|A|>=4;A".parse::<EquationContext>().unwrap();
+        let a = equation_context.var_constraints.get('A').unwrap();
         assert_eq!(a.bounds.min_len, 4);
         assert_eq!(a.bounds.max_len_opt, None);
     }
 
     #[test]
     fn test_len_lt() {
-        let patterns = "|A|<4;A".parse::<EquationContext>().unwrap();
-        let a = patterns.var_constraints.get('A').unwrap();
+        let equation_context = "|A|<4;A".parse::<EquationContext>().unwrap();
+        let a = equation_context.var_constraints.get('A').unwrap();
         // For <4, max becomes 3; <1 would become None via checked_sub
         assert_eq!(a.bounds.min_len, VarConstraint::DEFAULT_MIN);
         assert_eq!(a.bounds.max_len_opt, Some(3));
@@ -738,8 +738,8 @@ mod tests {
 
     #[test]
     fn test_len_le() {
-        let patterns = "|A|<=4;A".parse::<EquationContext>().unwrap();
-        let a = patterns.var_constraints.get('A').unwrap();
+        let equation_context = "|A|<=4;A".parse::<EquationContext>().unwrap();
+        let a = equation_context.var_constraints.get('A').unwrap();
         assert_eq!(a.bounds.min_len, VarConstraint::DEFAULT_MIN);
         assert_eq!(a.bounds.max_len_opt, Some(4));
     }
@@ -747,8 +747,8 @@ mod tests {
     #[test]
     fn test_len_equality_then_complex_form_only() {
         // Equality first, then a complex constraint that only specifies a form
-        let patterns = "A;|A|=7;A=(x*a)".parse::<EquationContext>().unwrap();
-        let a = patterns.var_constraints.get('A').unwrap().clone();
+        let equation_context = "A;|A|=7;A=(x*a)".parse::<EquationContext>().unwrap();
+        let a = equation_context.var_constraints.get('A').unwrap().clone();
 
         let expected = VarConstraint {
             bounds: Bounds::of(7, 7),
@@ -859,8 +859,8 @@ mod tests {
     /// Verify merging of min/max constraints with a literal form.
     fn test_merge_constraints_len_and_form() {
         // |A|>=5 and A=(3-7:abc) -> min should be 5, max should be 7, form = abc
-        let patterns = "A;|A|>=5;A=(3-7:abc)".parse::<EquationContext>().unwrap();
-        let a = patterns.var_constraints.get('A').unwrap();
+        let equation_context = "A;|A|>=5;A=(3-7:abc)".parse::<EquationContext>().unwrap();
+        let a = equation_context.var_constraints.get('A').unwrap();
         assert_eq!(a.bounds.min_len, 5);
         assert_eq!(a.bounds.max_len_opt, Some(7));
         assert_eq!(a.form.as_deref(), Some("abc"));
@@ -869,10 +869,10 @@ mod tests {
     #[test]
     /// Check that !=ABC constraint gives correct `not_equal` sets for each variable.
     fn test_not_equal_constraint_three_vars() {
-        let patterns = "ABC;!=ABC".parse::<EquationContext>().unwrap();
-        let a = patterns.var_constraints.get('A').unwrap();
-        let b = patterns.var_constraints.get('B').unwrap();
-        let c = patterns.var_constraints.get('C').unwrap();
+        let equation_context = "ABC;!=ABC".parse::<EquationContext>().unwrap();
+        let a = equation_context.var_constraints.get('A').unwrap();
+        let b = equation_context.var_constraints.get('B').unwrap();
+        let c = equation_context.var_constraints.get('C').unwrap();
 
         assert_eq!(a.not_equal, HashSet::from_iter(['B','C']));
         assert_eq!(b.not_equal, HashSet::from_iter(['A','C']));
@@ -883,33 +883,33 @@ mod tests {
     /// Test ordering tiebreakers: `constraint_score`.
     fn test_ordered_patterns_tiebreak_constraint_score() {
         // "Xz" has var + literal (score 3), "X" just var
-        let patterns = "Xz;X".parse::<EquationContext>().unwrap();
-        assert_eq!(patterns.ordered_list.iter().map(|p| p.raw_string.clone()).collect::<Vec<_>>(), vec!["Xz", "X"]);
+        let equation_context = "Xz;X".parse::<EquationContext>().unwrap();
+        assert_eq!(equation_context.ordered_list.iter().map(|p| p.raw_string.clone()).collect::<Vec<_>>(), vec!["Xz", "X"]);
     }
 
     #[test]
     /// Test ordering tiebreakers: deterministic flag.
     fn test_ordered_patterns_tiebreak_deterministic() {
         // deterministic vs. nondeterministic: "AB" (det.) vs "A.B" (nondet.)
-        let patterns = "A.B;AB".parse::<EquationContext>().unwrap();
-        assert_eq!(patterns.ordered_list.iter().map(|p| p.raw_string.clone()).collect::<Vec<_>>(), vec!["A.B", "AB"]);
+        let equation_context = "A.B;AB".parse::<EquationContext>().unwrap();
+        assert_eq!(equation_context.ordered_list.iter().map(|p| p.raw_string.clone()).collect::<Vec<_>>(), vec!["A.B", "AB"]);
     }
 
     #[test]
     /// Confirm that `IntoIterator` yields `ordered_list` without consuming `Patterns`.
     fn test_into_iterator_yields_ordered_list() {
-        let patterns = "AB;BC".parse::<EquationContext>().unwrap();
-        let from_iter: Vec<_> = (&patterns).into_iter().map(|p| p.raw_string.clone()).collect();
-        let ordered: Vec<_> = patterns.ordered_list.iter().map(|p| p.raw_string.clone()).collect();
+        let equation_context = "AB;BC".parse::<EquationContext>().unwrap();
+        let from_iter: Vec<_> = (&equation_context).into_iter().map(|p| p.raw_string.clone()).collect();
+        let ordered: Vec<_> = equation_context.ordered_list.iter().map(|p| p.raw_string.clone()).collect();
         assert_eq!(from_iter, ordered);
     }
 
     #[test]
     /// Verify that `build_order_maps` produces true inverses.
     fn test_build_order_maps_inverse() {
-        let patterns = "AB;BC;C".parse::<EquationContext>().unwrap();
-        for (ordered_ix, &orig_ix) in patterns.ordered_to_original.iter().enumerate() {
-            let roundtrip = patterns.original_to_ordered[orig_ix];
+        let equation_context = "AB;BC;C".parse::<EquationContext>().unwrap();
+        for (ordered_ix, &orig_ix) in equation_context.ordered_to_original.iter().enumerate() {
+            let roundtrip = equation_context.original_to_ordered[orig_ix];
             assert_eq!(ordered_ix, roundtrip);
         }
     }
