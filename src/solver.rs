@@ -1,7 +1,6 @@
 use crate::bindings::{Bindings, WORD_SENTINEL};
 use crate::errors::{MaterializationError, ParseError};
-use crate::joint_constraints::{propagate_joint_to_var_bounds, JointConstraints};
-use crate::parser::prefilter::build_prefilter_regex;
+use crate::joint_constraints::JointConstraints;
 use crate::parser::{match_equation_all, ParsedForm};
 use crate::patterns::{Pattern, EquationContext};
 use crate::scan_hints::{form_len_hints_pf, PatternLenHints};
@@ -263,7 +262,16 @@ fn recursive_join(
         let p = &rjp_cur.patterns_ordered_list;
         if p.is_deterministic && p.all_vars_in_lookup_keys() {
             // The word is fully determined by literals + already-bound vars in `env`.
-            let Some(expected) = rjp_cur.parsed_form.materialize_deterministic_with_env(env) else { return Err(MaterializationError) };
+            let Some(expected) =
+                rjp_cur.parsed_form.materialize_deterministic_with_env(env)
+            else {
+                eprintln!(
+                    "MaterializationError: failed to materialize pattern {:?} with env {:?}",
+                    rjp_cur.parsed_form, // or p.raw_string if you want the original string
+                    env
+                );
+                return Err(MaterializationError);
+            };
 
             if !word_list_as_set.contains(expected.as_str()) {
                 // This branch cannot succeed — prune immediately.
@@ -383,63 +391,41 @@ fn recursive_join(
 /// Will return a `ParseError` if a form cannot be parsed.
 // TODO? add more detail in Errors section
 pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: usize) -> Result<Vec<Vec<Bindings>>, Box<ParseError>> {
-    // 0. Make a hash set version of our word list
+    // 1. Make a hash set version of our word list
     let word_list_as_set = word_list.iter().copied().collect();
 
-    // 1. Parse the input equation string into our `Patterns` struct.
+    // 2. Parse the input equation string into our `EquationContext` struct.
     //    This holds each pattern string, its parsed form, and its `lookup_keys` (shared vars).
-    let patterns = input.parse::<EquationContext>()?;
+    let eq_context = input.parse::<EquationContext>()?;
 
-    // 2. Build per-pattern lookup key specs (shared vars) for the join
+    // 3. Build per-pattern lookup key specs (shared vars) for the join
     let lookup_keys: Vec<_> =
-        patterns.iter().map(|p| p.lookup_keys.clone()).collect();
+        eq_context.iter().map(|p| p.lookup_keys.clone()).collect();
+
+    println!("{:?}", lookup_keys);
 
     // 3. Prepare storage for candidate buckets, one per pattern.
     //    `CandidateBuckets` tracks (a) the bindings bucketed by shared variable values, and
     //    (b) a count so we can stop early if a pattern gets too many matches.
     // Mutable because we fill buckets/counts during the scan phase.
-    let mut words: Vec<CandidateBuckets> = Vec::with_capacity(patterns.len());
-    for _ in &patterns {
+    let mut words: Vec<CandidateBuckets> = Vec::with_capacity(eq_context.len());
+    for _ in &eq_context {
         words.push(CandidateBuckets::default());
     }
 
-    // 4. Parse each pattern's string form once into a `ParsedForm` (essentially a vector of
-    //    `FormPart`s). These are index-aligned with `patterns`.
-    let mut parsed_forms: Vec<_> = patterns
-        .iter()
-        .map(|p| {
-            let raw_form = &p.raw_string;
-            raw_form.parse::<ParsedForm>()
-        })
-        .collect::<Result<_, _>>()?;
+    // 4. Pull out the parsed_forms, var_constraints, joint_constraints
+    let parsed_forms = eq_context.parsed_forms.clone();
+    let var_constraints = eq_context.var_constraints.clone();
+    let joint_constraints = eq_context.joint_constraints.clone();
 
-    // 5. Pull out the per-variable constraints collected from the equation.
-    let mut var_constraints = patterns.var_constraints.clone();
-
-    // 6. Upgrade prefilters once per form (only if it helps)
-    // Specifically, if a variable has a "form" (like `g*`), we upgrade its prefilter
-    // from `.+` to `g.*`
-    // TODO: why not do this when constructing Patterns?
-    for pf in &mut parsed_forms {
-        let upgraded = build_prefilter_regex(pf, &var_constraints)?;
-        pf.prefilter = upgraded;
-    }
-
-    // 7. Get the joint constraints and use them to tighten per-variable constraints
-    // This gets length bounds on variables (from the joint constraints)
-    // TODO: pull this from EquationContext
-    let joint_constraints = JointConstraints::parse_equation(input);
-
-    propagate_joint_to_var_bounds(&mut var_constraints, &joint_constraints);
-
-    // 8. Build cheap, per-form length hints once (index-aligned with patterns/parsed_forms)
+    // 5. Build cheap, per-form length hints once (index-aligned with patterns/parsed_forms)
     // The hints are length bounds for each form
     let scan_hints: Vec<_> = parsed_forms
         .iter()
-        .map(|pf| form_len_hints_pf(pf, &patterns.var_constraints, &joint_constraints.clone()))
+        .map(|pf| form_len_hints_pf(pf, &eq_context.var_constraints, &joint_constraints.clone()))
         .collect();
 
-    // 9. Iterate through every candidate word.
+    // 6. Iterate through every candidate word.
     let budget = TimeBudget::new(Duration::from_secs(TIME_BUDGET));
 
     let mut results: Vec<Vec<Bindings>> = vec![];
@@ -471,7 +457,7 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
             word_list,
             scan_pos,
             batch_size,
-            &patterns,
+            &eq_context,
             &parsed_forms,
             &scan_hints,
             &var_constraints,
@@ -487,7 +473,7 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
         // 2. Attempt to build full solutions from the candidates accumulated so far.
         // This may rediscover old partials, so we use `seen` at the base case
         // to ensure only truly new solutions are added to `results`.
-        let rjp = words.iter().zip(lookup_keys.iter()).zip(patterns.ordered_list.iter()).zip(parsed_forms.iter())
+        let rjp = words.iter().zip(lookup_keys.iter()).zip(eq_context.ordered_list.iter()).zip(parsed_forms.iter())
             .map(|(((candidate_buckets, lookup_keys), p), parsed_form)| {
                 RecursiveJoinParameters {
                     candidate_buckets: candidate_buckets.clone(),
@@ -529,7 +515,7 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
     // ---- Reorder solutions back to original form order ----
     let reordered = results.iter().map(|solution| {
         (0..solution.len()).map(|original_i| {
-            solution.clone()[patterns.original_to_ordered[original_i]].clone()
+            solution.clone()[eq_context.original_to_ordered[original_i]].clone()
         }).collect::<Vec<_>>()
     }).collect::<Vec<_>>();
 

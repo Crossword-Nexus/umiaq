@@ -8,7 +8,8 @@ use std::cmp::Reverse;
 use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::LazyLock;
-use crate::joint_constraints::{JointConstraint, JointConstraints};
+use crate::joint_constraints::{propagate_joint_to_var_bounds, JointConstraint, JointConstraints};
+use crate::parser::prefilter::build_prefilter_regex;
 
 /// The character that separates forms, in an equation
 pub const FORM_SEPARATOR: char = ';';
@@ -138,26 +139,10 @@ impl Pattern {
     /// Constructs a new `Pattern` from any type that can be converted into a `String`.
     /// The resulting `lookup_keys` is initialized to `None`.
     /// `original_index` is the index for this `Pattern`'s position in the original equation.
-    fn create(string: impl Into<String>, original_index: usize) -> Self {
-        let raw_string = string.into();
-        // Determine if the pattern is deterministic
-        let deterministic = &raw_string.parse::<ParsedForm>()
-            .map(|parts| { parts.iter().all(|p| { p.is_deterministic() }) })
-            .unwrap_or(false);
-
-        // Get the variables involved
-        let vars = raw_string
-            .chars()
-            .filter(char::is_variable)
-            .collect();
-
-        Self {
-            raw_string,
-            lookup_keys: HashSet::default(),
-            original_index,
-            is_deterministic: *deterministic,
-            variables: vars,
-        }
+    #[cfg(test)]
+    pub fn create(s: &str, index: usize) -> Self {
+        let parsed = s.parse::<ParsedForm>().unwrap();
+        Self::from_parsed(parsed, s, index)
     }
 
     /// Construct a `Pattern` from an already-parsed `ParsedForm`.
@@ -303,6 +288,7 @@ pub struct EquationContext {
     // TODO should we keep Vec<Pattern> for each order or just one (likely ordered_list) and use map
     //      (original_to_ordered) when other is needed?
     pub p_list: Vec<Pattern>,
+    pub parsed_forms: Vec<ParsedForm>,
     /// Map of variable names (A-Z) to their associated constraints
     pub var_constraints: VarConstraints,
     pub joint_constraints: JointConstraints,
@@ -522,14 +508,59 @@ impl EquationContext {
 impl FromStr for EquationContext {
     type Err = Box<ParseError>;
 
+    /// Build a fully-initialized `EquationContext` from a raw equation string.
+    ///
+    /// This constructor wraps all the setup work that used to live in
+    /// `solve_equation` (steps 4–7):
+    ///
+    /// - Calls [`EquationContext::set_var_constraints`] to populate
+    ///   patterns (`p_list`), per-variable constraints, and joint constraints.
+    /// - Parses each pattern string once into a `ParsedForm` and stores
+    ///   them in `parsed_forms`.
+    /// - Upgrades each `ParsedForm`'s regex prefilter to respect any
+    ///   variable constraints (e.g. turn `.+` into `g.*`).
+    /// - Propagates joint constraints into the per-variable constraints
+    ///   to tighten variable length bounds.
+    /// - Builds the solver ordering and index maps.
+    ///
+    /// After this returns, the `EquationContext` is ready for solving:
+    /// all constraints and forms are parsed and upgraded, and ordering is set.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut patterns = EquationContext::default();
-        patterns.set_var_constraints(s)?;
-        patterns.ordered_list = patterns.ordered_patterns();
-        patterns.build_order_maps();
-        Ok(patterns)
+        let mut ctx = EquationContext::default();
+
+        // Step 1: Parse the input string into patterns + constraints.
+        // This fills in `p_list`, `var_constraints`, and `joint_constraints`.
+        ctx.set_var_constraints(s)?;
+
+        // Step 2: Parse each raw pattern string into a `ParsedForm`.
+        // These are kept parallel to `p_list` in `parsed_forms`.
+        ctx.parsed_forms = ctx
+            .p_list
+            .iter()
+            .map(|p| p.raw_string.parse::<ParsedForm>())
+            .collect::<Result<_, _>>()?;
+
+        // Step 3: Upgrade prefilters for each parsed form using variable constraints.
+        // For example, if |A| has form `g*`, prefilter `.+` can be tightened to `g.*`.
+        for pf in &mut ctx.parsed_forms {
+            let upgraded = build_prefilter_regex(pf, &ctx.var_constraints)?;
+            pf.prefilter = upgraded;
+        }
+
+        // Step 4: Apply joint constraints to tighten per-variable bounds.
+        // E.g. from |AB|=7 we infer additional length limits for |A| and |B|.
+        if !ctx.joint_constraints.is_empty() {
+            propagate_joint_to_var_bounds(&mut ctx.var_constraints, &ctx.joint_constraints);
+        }
+
+        // Step 5: Establish solving order and index maps.
+        ctx.ordered_list = ctx.ordered_patterns();
+        ctx.build_order_maps();
+
+        Ok(ctx)
     }
 }
+
 
 // TODO? do this via regex?
 // e.g., A=(3-:x*)

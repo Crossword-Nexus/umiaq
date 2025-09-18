@@ -2,13 +2,15 @@ use crate::bindings::Bindings;
 use crate::comparison_operator::ComparisonOperator;
 use crate::constraints::{Bounds, VarConstraint, VarConstraints};
 use crate::errors::ParseError;
-use crate::patterns::FORM_SEPARATOR;
 use fancy_regex::Regex;
 use std::cmp::Ordering;
 #[cfg(test)]
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::LazyLock;
+
+#[cfg(test)]
+use crate::patterns::FORM_SEPARATOR;
 
 /// Compact representation of the relation between (sum) and (target).
 ///
@@ -199,6 +201,8 @@ impl IntoIterator for JointConstraints {
 impl JointConstraints {
     /// Parse all joint constraints from an equation string by splitting on your
     /// `FORM_SEPARATOR` (i.e., ';'), feeding each part through `parse_joint_len`.
+    #[cfg(test)]
+
     pub(crate) fn parse_equation(equation: &str) -> JointConstraints {
         let jc_vec = equation.split(FORM_SEPARATOR).filter_map(|part| {
             parse_joint_len(part.trim())
