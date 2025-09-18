@@ -3,7 +3,7 @@ use crate::errors::{MaterializationError, ParseError};
 use crate::joint_constraints::{propagate_joint_to_var_bounds, JointConstraints};
 use crate::parser::prefilter::build_prefilter_regex;
 use crate::parser::{match_equation_all, ParsedForm};
-use crate::patterns::{Pattern, Patterns};
+use crate::patterns::{Pattern, EquationContext};
 use crate::scan_hints::{form_len_hints_pf, PatternLenHints};
 
 use crate::constraints::VarConstraints;
@@ -160,7 +160,7 @@ fn scan_batch(
     word_list: &[&str],
     start_idx: usize,
     batch_size: usize,
-    patterns: &Patterns,
+    patterns: &EquationContext,
     parsed_forms: &[ParsedForm],
     scan_hints: &[PatternLenHints],
     var_constraints: &VarConstraints,
@@ -388,7 +388,7 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
 
     // 1. Parse the input equation string into our `Patterns` struct.
     //    This holds each pattern string, its parsed form, and its `lookup_keys` (shared vars).
-    let patterns = input.parse::<Patterns>()?;
+    let patterns = input.parse::<EquationContext>()?;
 
     // 2. Build per-pattern lookup key specs (shared vars) for the join
     let lookup_keys: Vec<_> =

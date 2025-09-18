@@ -76,6 +76,18 @@ pub struct JointConstraint {
     pub rel: RelMask,      // operator as data
 }
 
+impl FromStr for JointConstraint {
+    type Err = ParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        parse_joint_len(s).ok_or_else(|| {
+            ParseError::InvalidInput {
+                str: s.to_string(),
+            }
+        })
+    }
+}
+
 impl JointConstraint {
     /// Check satisfaction against current `bindings`.
     ///
@@ -182,6 +194,10 @@ impl JointConstraints {
         }).collect();
 
         JointConstraints { as_vec: jc_vec }
+    }
+
+    pub(crate) fn add(&mut self, jc: JointConstraint) {
+        self.as_vec.push(jc);
     }
 
     pub(crate) fn is_empty(&self) -> bool {
