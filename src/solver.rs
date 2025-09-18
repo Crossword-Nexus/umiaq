@@ -427,6 +427,7 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
 
     // 7. Get the joint constraints and use them to tighten per-variable constraints
     // This gets length bounds on variables (from the joint constraints)
+    // TODO: pull this from EquationContext
     let joint_constraints = JointConstraints::parse_equation(input);
 
     propagate_joint_to_var_bounds(&mut var_constraints, &joint_constraints);
