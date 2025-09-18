@@ -326,7 +326,7 @@ impl EquationContext {
                     let vc = self.var_constraints.ensure(var_char);
                     match op {
                         ComparisonOperator::EQ => vc.set_exact_len(bound),
-                        ComparisonOperator::NE => {} // handled separately as NeqConstraint // TODO! throw an exception, right?
+                        ComparisonOperator::NE => return Err(Box::new(ParseError::ParseFailure { s: "not-equals length constraints are not supported".to_string() })), // should never occur, since LenConstraint should never have op == NE (LEN_RE doesn't allow it)
                         ComparisonOperator::LE => vc.bounds.max_len_opt = Some(bound),
                         ComparisonOperator::GE => vc.bounds.min_len = bound,
                         ComparisonOperator::LT => vc.bounds.max_len_opt = bound.checked_sub(1),
