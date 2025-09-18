@@ -51,23 +51,19 @@ fn is_valid_binding(
     }
 
     // 2. Apply nested-form constraint if present (use cached parse)
-    if let Some(parsed) = constraints.get_parsed_form()? {
-        if !match_equation_exists(
-            var_val,
-            parsed,
-            &VarConstraints::default(),
-            JointConstraints::default(),
-        ) {
-            return Ok(false);
-        }
+    if let Some(parsed) = constraints.get_parsed_form()? && !match_equation_exists(
+        var_val,
+        parsed,
+        &VarConstraints::default(),
+        JointConstraints::default(),
+    ) {
+        return Ok(false);
     }
 
     // 3. Check "not equal" constraints
     for &other in &constraints.not_equal {
-        if let Some(existing) = bindings.get(other) {
-            if existing == var_val {
-                return Ok(false);
-            }
+        if let Some(existing) = bindings.get(other) && existing == var_val {
+            return Ok(false)
         }
     }
 
@@ -245,7 +241,7 @@ impl HelperParams<'_> {
                             };
 
                             // Apply variable-specific constraints
-                            // TODO: we should really bubble up errors here
+                            // TODO! we should really bubble up errors here
                             let valid = self
                                 .constraints
                                 .get(*var_name)

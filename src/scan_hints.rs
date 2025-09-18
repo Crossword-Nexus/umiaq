@@ -321,8 +321,8 @@ pub(crate) fn form_len_hints_pf(
     let mut has_star = false;
     let mut var_frequency = HashMap::new();
 
-    for p in parts {
-        match p {
+    for part in parts {
+        match part {
             FormPart::Star => has_star = true,
             FormPart::Dot | FormPart::Vowel | FormPart::Consonant | FormPart::Charset(_) => fixed_base += 1,
             FormPart::Lit(s) => fixed_base += s.len(),
