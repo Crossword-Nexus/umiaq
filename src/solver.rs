@@ -3,9 +3,6 @@ use crate::errors::{MaterializationError, ParseError};
 use crate::joint_constraints::JointConstraints;
 use crate::parser::{match_equation_all, ParsedForm};
 use crate::patterns::{Pattern, EquationContext};
-use crate::scan_hints::PatternLenHints;
-
-use crate::constraints::VarConstraints;
 use crate::errors::ParseError::ParseFailure;
 use instant::Instant;
 use std::collections::hash_map::DefaultHasher;
@@ -160,13 +157,16 @@ fn scan_batch(
     start_idx: usize,
     batch_size: usize,
     equation_context: &EquationContext,
-    parsed_forms: &[ParsedForm],
-    scan_hints: &[PatternLenHints],
-    var_constraints: &VarConstraints,
-    joint_constraints: &JointConstraints,
     words: &mut [CandidateBuckets],
     budget: &TimeBudget,
 ) -> (usize, bool) {
+
+    // pull what we need from the context
+    let parsed_forms = &equation_context.parsed_forms;
+    let scan_hints   = &equation_context.scan_hints;
+    let var_constraints = &equation_context.var_constraints;
+    let joint_constraints = &equation_context.joint_constraints;
+
     let mut i_word = start_idx;
     let end = start_idx.saturating_add(batch_size).min(word_list.len());
 
@@ -401,9 +401,7 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
     // 3. Pull out some data from equation_context
     let lookup_keys = &equation_context.lookup_keys;
     let parsed_forms = &equation_context.parsed_forms;
-    let var_constraints = equation_context.var_constraints.clone();
     let joint_constraints = equation_context.joint_constraints.clone();
-    let scan_hints = &equation_context.scan_hints;
 
     // 5. Iterate through every candidate word.
     let budget = TimeBudget::new(Duration::from_secs(TIME_BUDGET));
@@ -438,10 +436,6 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
             scan_pos,
             batch_size,
             &equation_context,
-            parsed_forms,
-            scan_hints,
-            &var_constraints,
-            &joint_constraints,
             &mut words,
             &budget,
         );
