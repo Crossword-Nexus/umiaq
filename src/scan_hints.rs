@@ -271,8 +271,8 @@ fn weighted_extreme_for_t(
     // iff r.max_len_opt is None.
     let mut order: Vec<_> = rows.iter().collect();
     match extreme {
-        Extreme::Min => order.sort_unstable_by_key(|r| r.w),              // cheapest first
-        Extreme::Max => order.sort_unstable_by_key(|r| std::cmp::Reverse(r.w)),     // priciest first
+        Extreme::Min => order.sort_unstable_by_key(|r| r.w),                    // cheapest first
+        Extreme::Max => order.sort_unstable_by_key(|r| std::cmp::Reverse(r.w)), // priciest first
     }
 
     let mut extra = 0usize;

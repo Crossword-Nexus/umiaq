@@ -14,7 +14,7 @@ pub enum ParseError {
     RegexError(#[from] fancy_regex::Error),
     #[error("Empty form string")]
     EmptyForm,
-    #[error("Invalid length range \"{input}\"")]
+    #[error("Invalid length range: \"{input}\"")]
     InvalidLengthRange { input: String },
     #[error("{str}")]
     InvalidComplexConstraint { str: String },
@@ -25,7 +25,7 @@ pub enum ParseError {
     #[error("int-parsing error: {0}")]
     ParseIntError(#[from] ParseIntError),
 
-    #[error("Invalid range {0}-{1} in charset")]
+    #[error("Invalid range in charset: {0}-{1}")]
     InvalidCharsetRange(char, char),
     #[error("Dangling '-' at end of charset")]
     DanglingCharsetDash,

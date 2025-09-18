@@ -120,7 +120,7 @@ impl WordList {
         entries.sort_by(|a, b| {
             match a.len().cmp(&b.len()) {
                 std::cmp::Ordering::Equal => a.cmp(b), // same length → alphabetical order
-                other => other,     // otherwise sort by length
+                other => other,               // otherwise sort by length
             }
         });
 

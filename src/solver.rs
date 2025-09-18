@@ -160,7 +160,7 @@ fn scan_batch(
     word_list: &[&str],
     start_idx: usize,
     batch_size: usize,
-    patterns: &EquationContext,
+    equation_context: &EquationContext,
     parsed_forms: &[ParsedForm],
     scan_hints: &[PatternLenHints],
     var_constraints: &VarConstraints,
@@ -179,7 +179,7 @@ fn scan_batch(
 
         let word = word_list[i_word];
 
-        for (i, p) in patterns.iter().enumerate() {
+        for (i, p) in equation_context.iter().enumerate() {
             // No per-pattern cap anymore
 
             // Skip deterministic fully keyed forms
@@ -221,7 +221,7 @@ fn scan_batch(
 struct RecursiveJoinParameters {
     candidate_buckets: CandidateBuckets,
     lookup_keys: HashSet<char>,
-    patterns_ordered_list: Pattern,
+    pattern: Pattern,
     parsed_form: ParsedForm,
 }
 
@@ -260,7 +260,7 @@ fn recursive_join(
 
     if let Some(rjp_cur) = rjp.first() {
         // ---- FAST PATH: deterministic + fully keyed ----------------------------
-        let p = &rjp_cur.patterns_ordered_list;
+        let p = &rjp_cur.pattern;
         if p.is_deterministic && p.all_vars_in_lookup_keys() {
             // The word is fully determined by literals + already-bound vars in `env`.
             let Some(expected) = rjp_cur.parsed_form.materialize_deterministic_with_env(env) else { return Err(MaterializationError) };
@@ -388,24 +388,24 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
 
     // 1. Parse the input equation string into our `Patterns` struct.
     //    This holds each pattern string, its parsed form, and its `lookup_keys` (shared vars).
-    let patterns = input.parse::<EquationContext>()?;
+    let equation_context = input.parse::<EquationContext>()?;
 
     // 2. Build per-pattern lookup key specs (shared vars) for the join
     let lookup_keys: Vec<_> =
-        patterns.iter().map(|p| p.lookup_keys.clone()).collect();
+        equation_context.iter().map(|p| p.lookup_keys.clone()).collect();
 
     // 3. Prepare storage for candidate buckets, one per pattern.
     //    `CandidateBuckets` tracks (a) the bindings bucketed by shared variable values, and
     //    (b) a count so we can stop early if a pattern gets too many matches.
     // Mutable because we fill buckets/counts during the scan phase.
-    let mut words: Vec<CandidateBuckets> = Vec::with_capacity(patterns.len());
-    for _ in &patterns {
+    let mut words: Vec<CandidateBuckets> = Vec::with_capacity(equation_context.len());
+    for _ in &equation_context {
         words.push(CandidateBuckets::default());
     }
 
-    // 4. Parse each pattern's string form once into a `ParsedForm` (essentially a vector of
-    //    `FormPart`s). These are index-aligned with `patterns`.
-    let mut parsed_forms: Vec<_> = patterns
+    // 4. Parse each pattern's string form once into a `ParsedForm` (essentially a `Vec` of
+    //    `FormPart`s). These are index-aligned with `equation_context`.
+    let mut parsed_forms: Vec<_> = equation_context
         .iter()
         .map(|p| {
             let raw_form = &p.raw_string;
@@ -414,7 +414,7 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
         .collect::<Result<_, _>>()?;
 
     // 5. Pull out the per-variable constraints collected from the equation.
-    let mut var_constraints = patterns.var_constraints.clone();
+    let mut var_constraints = equation_context.var_constraints.clone();
 
     // 6. Upgrade prefilters once per form (only if it helps)
     // Specifically, if a variable has a "form" (like `g*`), we upgrade its prefilter
@@ -432,11 +432,11 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
 
     propagate_joint_to_var_bounds(&mut var_constraints, &joint_constraints);
 
-    // 8. Build cheap, per-form length hints once (index-aligned with patterns/parsed_forms)
+    // 8. Build cheap, per-form length hints once (index-aligned with equation_context/parsed_forms)
     // The hints are length bounds for each form
     let scan_hints: Vec<_> = parsed_forms
         .iter()
-        .map(|pf| form_len_hints_pf(pf, &patterns.var_constraints, &joint_constraints.clone()))
+        .map(|pf| form_len_hints_pf(pf, &equation_context.var_constraints, &joint_constraints.clone()))
         .collect();
 
     // 9. Iterate through every candidate word.
@@ -471,7 +471,7 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
             word_list,
             scan_pos,
             batch_size,
-            &patterns,
+            &equation_context,
             &parsed_forms,
             &scan_hints,
             &var_constraints,
@@ -487,12 +487,12 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
         // 2. Attempt to build full solutions from the candidates accumulated so far.
         // This may rediscover old partials, so we use `seen` at the base case
         // to ensure only truly new solutions are added to `results`.
-        let rjp = words.iter().zip(lookup_keys.iter()).zip(patterns.ordered_list.iter()).zip(parsed_forms.iter())
+        let rjp = words.iter().zip(lookup_keys.iter()).zip(equation_context.ordered_list.iter()).zip(parsed_forms.iter())
             .map(|(((candidate_buckets, lookup_keys), p), parsed_form)| {
                 RecursiveJoinParameters {
                     candidate_buckets: candidate_buckets.clone(),
                     lookup_keys: lookup_keys.clone(),
-                    patterns_ordered_list: p.clone(),
+                    pattern: p.clone(),
                     parsed_form: parsed_form.clone(),
                 }
             }).collect::<Vec<_>>();
@@ -529,7 +529,7 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
     // ---- Reorder solutions back to original form order ----
     let reordered = results.iter().map(|solution| {
         (0..solution.len()).map(|original_i| {
-            solution.clone()[patterns.original_to_ordered[original_i]].clone()
+            solution.clone()[equation_context.original_to_ordered[original_i]].clone()
         }).collect::<Vec<_>>()
     }).collect::<Vec<_>>();
 
