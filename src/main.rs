@@ -1,3 +1,4 @@
+use std::process::ExitCode;
 use clap::Parser;
 use std::time::Instant;
 
@@ -32,12 +33,14 @@ struct Cli {
 ///
 /// Delegates to [`try_main`], catching any errors and printing them
 /// in a user-friendly way before exiting with code 1.
-fn main() {
+fn main() -> ExitCode {
     if let Err(e) = try_main() {
         // Print the error message to stderr
         eprintln!("Error: {e}");
         // Exit explicitly with a nonzero code so scripts can detect failure
-        std::process::exit(1);
+        ExitCode::FAILURE
+    } else {
+        ExitCode::SUCCESS
     }
 }
 
