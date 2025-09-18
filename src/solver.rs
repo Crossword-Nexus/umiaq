@@ -638,7 +638,6 @@ mod tests {
 
     #[test]
     fn test_fully_bound() {
-
         // Toy word list: short, predictable words
         let wl = vec!["atime", "btime", "ab"];
 
@@ -649,10 +648,33 @@ mod tests {
         let sols = solve_equation(eq, &wl, 5)
             .expect("equation should not trigger MaterializationError");
 
-        // We expect at least one solution: A="a", B="b" works
-        assert!(
-            !sols.is_empty(),
-            "expected a solution, got none for equation {eq}"
-        );
+        let mut expected_atime_bindings = Bindings::default();
+        expected_atime_bindings.set('A', "a".to_string());
+        expected_atime_bindings.set_word("atime".to_string().as_ref());
+
+        let mut expected_btime_bindings = Bindings::default();
+        expected_btime_bindings.set('B', "b".to_string());
+        expected_btime_bindings.set_word("btime".to_string().as_ref());
+
+        let mut expected_ab_bindings = Bindings::default();
+        expected_ab_bindings.set('A', "a".to_string());
+        expected_ab_bindings.set('B', "b".to_string());
+        expected_ab_bindings.set_word("ab".to_string().as_ref());
+
+        let expected_bindings_list = vec![expected_atime_bindings, expected_btime_bindings, expected_ab_bindings];
+
+        assert_eq!(1, sols.len());
+        let sol = sols.get(0).unwrap();
+
+        // we don't care about order, so we allow the actual result to be a list in a different
+        // order than the expected list
+        // we avoid using HashSet or BTree since Bindings has neither Hash nor Ord trait
+        // NB: uses that the 3 expected objects are distinct (for example, the following code could
+        // match [x,x,y] to [x,y,y] (e.g.))
+        // (n^2... but for n=3 (and it's a test))
+        assert_eq!(3, sol.len());
+        expected_bindings_list.iter().for_each(|bindings| {
+            assert!(sol.contains(bindings))
+        });
     }
 }
