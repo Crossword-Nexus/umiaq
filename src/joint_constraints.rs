@@ -79,7 +79,18 @@ pub struct JointConstraint {
 impl FromStr for JointConstraint {
     type Err = ParseError;
 
+    /// Attempt to parse a `JointConstraint` from a string.
+    ///
+    /// This uses the existing `parse_joint_len` helper, which recognizes
+    /// joint length expressions such as `|AB|=7`.
+    ///
+    /// - On success, returns the parsed `JointConstraint`.
+    /// - On failure (`parse_joint_len` returns `None`), produces a
+    ///   `ParseError::InvalidInput` with the offending string.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // Delegate to the existing parser.
+        // `parse_joint_len` returns `Option<JointConstraint>`,
+        // so map `None` into a `ParseError`.
         parse_joint_len(s).ok_or_else(|| {
             ParseError::InvalidInput {
                 str: s.to_string(),
@@ -196,9 +207,17 @@ impl JointConstraints {
         JointConstraints { as_vec: jc_vec }
     }
 
+    /// Insert a new `JointConstraint` into this collection.
+    ///
+    /// This is a thin wrapper around `Vec::push` on the internal
+    /// storage. Keeping the push logic behind a method preserves
+    /// encapsulation: callers don’t need to know or rely on the fact
+    /// that `JointConstraints` is backed by a `Vec`
     pub(crate) fn add(&mut self, jc: JointConstraint) {
+        // Delegate to the underlying Vec implementation.
         self.as_vec.push(jc);
     }
+
 
     pub(crate) fn is_empty(&self) -> bool {
         self.as_vec.is_empty()
