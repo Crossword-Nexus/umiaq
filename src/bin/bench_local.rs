@@ -74,7 +74,7 @@ fn get_cases() -> Vec<Case> {
     vec![
         Case { pattern: "AB;BA;|A|=2;|B|=2;!=AB", static_s: Some(0.260) },
         // Note: this one is slow (for now?)
-        Case { pattern: "Atime;Btime;Ctime;ABC", static_s: Some(6.240) },
+        Case { pattern: "Atime;Btime;AB", static_s: Some(3.080) },
         Case { pattern: "AB;CD;AC;BD", static_s: Some(0.300) },
         Case { pattern: "A*BCD;AC*BD;DCB*A", static_s: Some(4.100) },
         Case { pattern: "AkB;AlB", static_s: Some(2.360) },

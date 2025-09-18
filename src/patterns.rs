@@ -8,7 +8,9 @@ use std::cmp::Reverse;
 use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::LazyLock;
-use crate::joint_constraints::{JointConstraint, JointConstraints};
+use crate::joint_constraints::{propagate_joint_to_var_bounds, JointConstraint, JointConstraints};
+use crate::parser::prefilter::build_prefilter_regex;
+use crate::scan_hints::{form_len_hints_pf, PatternLenHints};
 
 /// The character that separates forms, in an equation
 pub const FORM_SEPARATOR: char = ';';
@@ -281,6 +283,12 @@ pub struct EquationContext {
     pub ordered_to_original: Vec<usize>,
     /// original index -> ordered index
     pub original_to_ordered: Vec<usize>,
+    /// Precomputed lookup keys (shared variables) for each pattern.
+    pub lookup_keys: Vec<HashSet<char>>,
+    /// Parsed `FormPart`s for each pattern string (index-aligned with `ordered_list`).
+    pub parsed_forms: Vec<ParsedForm>,
+    /// Cheap, per-form length hints
+    pub scan_hints: Vec<PatternLenHints>,
 }
 
 impl EquationContext {
@@ -490,11 +498,81 @@ impl EquationContext {
 impl FromStr for EquationContext {
     type Err = Box<ParseError>;
 
+    /// Parse a semicolon-separated equation string into an `EquationContext`.
+    ///
+    /// This implementation provides a convenient way to go from a raw string
+    /// like `"AB;C;|AB|=3"` into a fully prepared context object that the solver
+    /// can consume. Specifically, it:
+    ///
+    /// 1. Creates a default `EquationContext`.
+    /// 2. Calls [`EquationContext::set_var_constraints`] to:
+    ///    - Parse each clause in the input string.
+    ///    - Populate `raw_list` with `Pattern`s.
+    ///    - Collect variable and joint constraints.
+    /// 3. Derives the solver-friendly `ordered_list` of patterns using
+    ///    [`EquationContext::get_ordered_patterns`].
+    /// 4. Builds index maps between the original raw order and the reordered list
+    ///    with [`EquationContext::build_order_maps`].
+    /// 5. Returns the populated `EquationContext`.
+    ///
+    /// This is the entry point used when calling
+    /// `let eq_ctx: EquationContext = input.parse()?;`.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // Start with an empty context.
         let mut equation_context = EquationContext::default();
+
+        // Step 1: Parse constraints and patterns from the raw input string.
         equation_context.set_var_constraints(s)?;
+
+        // Step 2: Reorder the patterns into a solver-friendly sequence.
         equation_context.ordered_list = equation_context.get_ordered_patterns();
+
+        // Step 3: Build lookup maps between raw and ordered indices.
         equation_context.build_order_maps();
+
+        // Step 4: Build lookup keys (per-pattern shared variables).
+        equation_context.lookup_keys = equation_context
+            .iter()
+            .map(|p| p.lookup_keys.clone())
+            .collect();
+
+        // Step 5: Parse each pattern's string form once into a `ParsedForm`
+        // (essentially a `Vec` of `FormPart`s).
+        // These are index-aligned with `equation_context`.
+        let mut parsed_forms: Vec<ParsedForm> = equation_context
+            .iter()
+            .map(|p| p.raw_string.parse::<ParsedForm>())
+            .collect::<Result<_, _>>()?;
+
+        // Step 6: Upgrade prefilters once per form.
+        for pf in &mut parsed_forms {
+            let upgraded = build_prefilter_regex(pf, &equation_context.var_constraints)?;
+            pf.prefilter = upgraded;
+        }
+
+        // Step 6.5: Add these finalized parsed_forms to the context
+        equation_context.parsed_forms = parsed_forms;
+
+        // Step 7: Get the joint constraints and use them to tighten per-variable constraints
+        // This gets length bounds on variables (from the joint constraints)
+        propagate_joint_to_var_bounds(
+            &mut equation_context.var_constraints,
+            &equation_context.joint_constraints,
+        );
+
+        // Step 8: Build cheap, per-form length hints (index-aligned with equation_context/parsed_forms)
+        // The hints are length bounds for each form
+        equation_context.scan_hints = equation_context
+            .parsed_forms
+            .iter()
+            .map(|pf| form_len_hints_pf(
+                pf,
+                &equation_context.var_constraints,
+                &equation_context.joint_constraints,
+            ))
+            .collect();
+
+        // Return the completed context.
         Ok(equation_context)
     }
 }
