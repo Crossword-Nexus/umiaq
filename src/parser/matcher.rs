@@ -1,5 +1,6 @@
 use crate::bindings::Bindings;
 use crate::constraints::{VarConstraint, VarConstraints};
+use crate::errors::ParseError;
 use crate::joint_constraints::JointConstraints;
 use crate::umiaq_char::UmiaqChar;
 
@@ -37,29 +38,40 @@ fn get_reversed_or_not(first: &FormPart, var_val: &str) -> String {
 /// 1. If length constraints are present, enforce them
 /// 2. If `form` is present, the value must itself match that form.
 /// 3. The value must not equal any variable listed in `not_equal` that is already bound.
-fn is_valid_binding(var_val: &str, constraints: &VarConstraint, bindings: &Bindings) -> bool {
+fn is_valid_binding(
+    var_val: &str,
+    constraints: &VarConstraint,
+    bindings: &Bindings,
+) -> Result<bool, Box<ParseError>> {
     // 1. Length checks (if configured)
     if var_val.len() < constraints.bounds.min_len
         || constraints.bounds.max_len_opt.is_some_and(|max_len| var_val.len() > max_len)
     {
-        return false;
+        return Ok(false);
     }
 
     // 2. Apply nested-form constraint if present (use cached parse)
-    if let Some(parsed) = constraints.get_parsed_form()
-        && !match_equation_exists(var_val, parsed, &VarConstraints::default(), JointConstraints::default())
-    {
-        return false;
+    if let Some(parsed) = constraints.get_parsed_form()? {
+        if !match_equation_exists(
+            var_val,
+            parsed,
+            &VarConstraints::default(),
+            JointConstraints::default(),
+        ) {
+            return Ok(false);
+        }
     }
 
     // 3. Check "not equal" constraints
     for &other in &constraints.not_equal {
-        if let Some(existing) = bindings.get(other) && existing == var_val {
-            return false;
+        if let Some(existing) = bindings.get(other) {
+            if existing == var_val {
+                return Ok(false);
+            }
         }
     }
 
-    true
+    Ok(true)
 }
 
 /// Return `true` if at least one binding satisfies the equation.
@@ -233,10 +245,11 @@ impl HelperParams<'_> {
                             };
 
                             // Apply variable-specific constraints
+                            // TODO: we should really bubble up errors here
                             let valid = self
                                 .constraints
                                 .get(*var_name)
-                                .is_none_or(|c| is_valid_binding(&var_val, c, self.bindings));
+                                .is_none_or(|c| is_valid_binding(&var_val, c, self.bindings).unwrap_or(false));
 
                             if valid {
                                 self.bindings.set(*var_name, var_val);

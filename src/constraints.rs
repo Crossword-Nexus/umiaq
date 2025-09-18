@@ -1,9 +1,10 @@
 // constraints.rs
 use crate::parser::ParsedForm;
-use std::cell::OnceCell;
+use once_cell::sync::OnceCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fmt::Display;
+use crate::errors::ParseError;
 
 /// A collection of constraints for variables in a pattern-matching equation.
 ///
@@ -144,8 +145,13 @@ impl VarConstraint {
         self.bounds = Bounds::of(len, len);
     }
     /// Get the parsed form
-    pub(crate) fn get_parsed_form(&self) -> Option<&ParsedForm> {
-        self.form.as_deref().map(|f| self.parsed_form.get_or_init(|| f.parse::<ParsedForm>().unwrap()))
+    pub(crate) fn get_parsed_form(&self) -> Result<Option<&ParsedForm>, Box<ParseError>> {
+        if let Some(f) = &self.form {
+            let parsed = self.parsed_form.get_or_try_init(|| f.parse::<ParsedForm>())?;
+            Ok(Some(parsed))
+        } else {
+            Ok(None)
+        }
     }
 
     pub(crate) fn constrain_by(&mut self, other: &VarConstraint) {
