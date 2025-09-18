@@ -20,6 +20,8 @@
   <!-- Styles -->
   <link rel="stylesheet" href="./skeleton.min.css" />
   <link rel="stylesheet" href="./umiaq.css" />
+  <!-- Render README -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <!-- monospace font -->
   <link href="https://fonts.googleapis.com/css2?family=Space+Mono&display=swap" rel="stylesheet">
 </head>
@@ -42,7 +44,7 @@
         <option value="500">500</option>
         <option value="1000">1000</option>
       </select>
-      
+
       <br />
 
       <button class="button-primary" type="submit">Search</button>
@@ -54,6 +56,20 @@
     <div id="results-meta" style="margin-top:0.5em; font-style:italic; color:#bbb;"></div>
 
     <div id="examples-container"></div>
+
+    <!-- Readme -->
+    <details style="margin-top:2em;">
+      <summary>Show README</summary>
+      <div id="readme"></div>
+    </details>
+
+    <script>
+    fetch('./README.md')
+      .then(r => r.text())
+      .then(md => {
+        document.getElementById('readme').innerHTML = marked.parse(md);
+      });
+    </script>
 
   </div>
 
