@@ -1,7 +1,6 @@
 use crate::bindings::{Bindings, WORD_SENTINEL};
 use crate::errors::{MaterializationError, ParseError};
-use crate::joint_constraints::{propagate_joint_to_var_bounds, JointConstraints};
-use crate::parser::prefilter::build_prefilter_regex;
+use crate::joint_constraints::JointConstraints;
 use crate::parser::{match_equation_all, ParsedForm};
 use crate::patterns::{Pattern, EquationContext};
 use crate::scan_hints::{form_len_hints_pf, PatternLenHints};
@@ -406,32 +405,12 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
 
     // 4. Parse each pattern's string form once into a `ParsedForm` (essentially a `Vec` of
     //    `FormPart`s). These are index-aligned with `equation_context`.
+    let parsed_forms = &equation_context.parsed_forms;
 
-    let mut parsed_forms: Vec<_> = equation_context
-        .iter()
-        .map(|p| {
-            let raw_form = &p.raw_string;
-            raw_form.parse::<ParsedForm>()
-        })
-        .collect::<Result<_, _>>()?;
-
-    // 5. Pull out the per-variable constraints collected from the equation.
-    let mut var_constraints = equation_context.var_constraints.clone();
-
-    // 6. Upgrade prefilters once per form (only if it helps)
-    // Specifically, if a variable has a "form" (like `g*`), we upgrade its prefilter
-    // from `.+` to `g.*`
-    // TODO: why not do this when constructing EquationContext?
-    for pf in &mut parsed_forms {
-        let upgraded = build_prefilter_regex(pf, &var_constraints)?;
-        pf.prefilter = upgraded;
-    }
-
-    // 7. Get the joint constraints and use them to tighten per-variable constraints
-    // This gets length bounds on variables (from the joint constraints)
+    // 5. Pull out the per-variable and joint constraints.
+    let var_constraints = equation_context.var_constraints.clone();
     let joint_constraints = equation_context.joint_constraints.clone();
-    propagate_joint_to_var_bounds(&mut var_constraints, &joint_constraints);
-
+    
     // 8. Build cheap, per-form length hints once (index-aligned with equation_context/parsed_forms)
     // The hints are length bounds for each form
     let scan_hints: Vec<_> = parsed_forms

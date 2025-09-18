@@ -8,7 +8,8 @@ use std::cmp::Reverse;
 use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::LazyLock;
-use crate::joint_constraints::{JointConstraint, JointConstraints};
+use crate::joint_constraints::{propagate_joint_to_var_bounds, JointConstraint, JointConstraints};
+use crate::parser::prefilter::build_prefilter_regex;
 
 /// The character that separates forms, in an equation
 pub const FORM_SEPARATOR: char = ';';
@@ -283,6 +284,8 @@ pub struct EquationContext {
     pub original_to_ordered: Vec<usize>,
     /// Precomputed lookup keys (shared variables) for each pattern.
     pub lookup_keys: Vec<HashSet<char>>,
+    /// Parsed `FormPart`s for each pattern string (index-aligned with `ordered_list`).
+    pub parsed_forms: Vec<ParsedForm>,
 }
 
 impl EquationContext {
@@ -529,6 +532,31 @@ impl FromStr for EquationContext {
             .iter()
             .map(|p| p.lookup_keys.clone())
             .collect();
+
+        // Step 5: Parse each pattern's string form once into a `ParsedForm`
+        // (essentially a `Vec` of `FormPart`s).
+        // These are index-aligned with `equation_context`.
+        let mut parsed_forms: Vec<ParsedForm> = equation_context
+            .iter()
+            .map(|p| p.raw_string.parse::<ParsedForm>())
+            .collect::<Result<_, _>>()?;
+
+        // Step 6: Upgrade prefilters once per form.
+        for pf in &mut parsed_forms {
+            let upgraded = build_prefilter_regex(pf, &equation_context.var_constraints)?;
+            pf.prefilter = upgraded;
+        }
+
+        // Step 6.5: Add these finalized parsed_forms to the context
+        equation_context.parsed_forms = parsed_forms;
+
+        // Step 7: Get the joint constraints and use them to tighten per-variable constraints
+        // This gets length bounds on variables (from the joint constraints)
+        propagate_joint_to_var_bounds(
+            &mut equation_context.var_constraints,
+            &equation_context.joint_constraints,
+        );
+
 
         // Return the completed context.
         Ok(equation_context)
