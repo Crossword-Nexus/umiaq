@@ -3,7 +3,7 @@ use crate::errors::{MaterializationError, ParseError};
 use crate::joint_constraints::JointConstraints;
 use crate::parser::{match_equation_all, ParsedForm};
 use crate::patterns::{Pattern, EquationContext};
-use crate::scan_hints::{form_len_hints_pf, PatternLenHints};
+use crate::scan_hints::PatternLenHints;
 
 use crate::constraints::VarConstraints;
 use crate::errors::ParseError::ParseFailure;
@@ -389,10 +389,7 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
     //    This holds each pattern string, its parsed form, and its `lookup_keys` (shared vars).
     let equation_context = input.parse::<EquationContext>()?;
 
-    // 2. Build per-pattern lookup key specs (shared vars) for the join
-    let lookup_keys = &equation_context.lookup_keys;
-
-    // 3. Prepare storage for candidate buckets, one per pattern.
+    // 2. Prepare storage for candidate buckets, one per pattern.
     //    `CandidateBuckets` tracks (a) the bindings bucketed by shared variable values, and
     //    (b) a count so we can stop early if a pattern gets too many matches.
     // Mutable because we fill buckets/counts during the scan phase.
@@ -401,24 +398,14 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
         words.push(CandidateBuckets::default());
     }
 
-    // TODO: move a bunch of the next few steps into EquationContext creation
-
-    // 4. Parse each pattern's string form once into a `ParsedForm` (essentially a `Vec` of
-    //    `FormPart`s). These are index-aligned with `equation_context`.
+    // 3. Pull out some data from equation_context
+    let lookup_keys = &equation_context.lookup_keys;
     let parsed_forms = &equation_context.parsed_forms;
-
-    // 5. Pull out the per-variable and joint constraints.
     let var_constraints = equation_context.var_constraints.clone();
     let joint_constraints = equation_context.joint_constraints.clone();
-    
-    // 8. Build cheap, per-form length hints once (index-aligned with equation_context/parsed_forms)
-    // The hints are length bounds for each form
-    let scan_hints: Vec<_> = parsed_forms
-        .iter()
-        .map(|pf| form_len_hints_pf(pf, &equation_context.var_constraints, &joint_constraints.clone()))
-        .collect();
+    let scan_hints = &equation_context.scan_hints;
 
-    // 9. Iterate through every candidate word.
+    // 5. Iterate through every candidate word.
     let budget = TimeBudget::new(Duration::from_secs(TIME_BUDGET));
 
     let mut results: Vec<Vec<Bindings>> = vec![];

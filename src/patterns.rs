@@ -10,6 +10,7 @@ use std::str::FromStr;
 use std::sync::LazyLock;
 use crate::joint_constraints::{propagate_joint_to_var_bounds, JointConstraint, JointConstraints};
 use crate::parser::prefilter::build_prefilter_regex;
+use crate::scan_hints::{form_len_hints_pf, PatternLenHints};
 
 /// The character that separates forms, in an equation
 pub const FORM_SEPARATOR: char = ';';
@@ -286,6 +287,8 @@ pub struct EquationContext {
     pub lookup_keys: Vec<HashSet<char>>,
     /// Parsed `FormPart`s for each pattern string (index-aligned with `ordered_list`).
     pub parsed_forms: Vec<ParsedForm>,
+    /// Cheap, per-form length hints
+    pub scan_hints: Vec<PatternLenHints>,
 }
 
 impl EquationContext {
@@ -557,6 +560,17 @@ impl FromStr for EquationContext {
             &equation_context.joint_constraints,
         );
 
+        // Step 8: Build cheap, per-form length hints (index-aligned with equation_context/parsed_forms)
+        // The hints are length bounds for each form
+        equation_context.scan_hints = equation_context
+            .parsed_forms
+            .iter()
+            .map(|pf| form_len_hints_pf(
+                pf,
+                &equation_context.var_constraints,
+                &equation_context.joint_constraints,
+            ))
+            .collect();
 
         // Return the completed context.
         Ok(equation_context)
