@@ -235,7 +235,7 @@ fn pluralizer(count: usize, singular: String, plural: Option<String>) -> String 
     if count == 1 {
         singular
     } else {
-        plural.unwrap_or(singular + "s")
+        plural.unwrap_or_else(|| singular + "s")
     }
 }
 
