@@ -386,13 +386,12 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
     // 0. Make a hash set version of our word list
     let word_list_as_set = word_list.iter().copied().collect();
 
-    // 1. Parse the input equation string into our `Patterns` struct.
+    // 1. Parse the input equation string into our `EquationContext` struct.
     //    This holds each pattern string, its parsed form, and its `lookup_keys` (shared vars).
     let equation_context = input.parse::<EquationContext>()?;
 
     // 2. Build per-pattern lookup key specs (shared vars) for the join
-    let lookup_keys: Vec<_> =
-        equation_context.iter().map(|p| p.lookup_keys.clone()).collect();
+    let lookup_keys = &equation_context.lookup_keys;
 
     // 3. Prepare storage for candidate buckets, one per pattern.
     //    `CandidateBuckets` tracks (a) the bindings bucketed by shared variable values, and
@@ -422,7 +421,7 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
     // 6. Upgrade prefilters once per form (only if it helps)
     // Specifically, if a variable has a "form" (like `g*`), we upgrade its prefilter
     // from `.+` to `g.*`
-    // TODO: why not do this when constructing Patterns?
+    // TODO: why not do this when constructing EquationContext?
     for pf in &mut parsed_forms {
         let upgraded = build_prefilter_regex(pf, &var_constraints)?;
         pf.prefilter = upgraded;
