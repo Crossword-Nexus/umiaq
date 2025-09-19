@@ -474,14 +474,14 @@ fn recursive_join(
 /// and the error is bubbled up to the caller, so the end user sees an explicit
 /// failure rather than a silently truncated result set.
 pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: usize) -> Result<Vec<Vec<Bindings>>, SolverError> {
-    // 0. Make a hash set version of our word list
+    // 1. Make a hash set version of our word list
     let word_list_as_set = word_list.iter().copied().collect();
 
-    // 1. Parse the input equation string into our `EquationContext` struct.
+    // 2. Parse the input equation string into our `EquationContext` struct.
     //    This holds each pattern string, its parsed form, and its `lookup_keys` (shared vars).
     let equation_context = input.parse::<EquationContext>()?;
 
-    // 2. Prepare storage for candidate buckets, one per pattern.
+    // 3. Prepare storage for candidate buckets, one per pattern.
     //    `CandidateBuckets` tracks (a) the bindings bucketed by shared variable values, and
     //    (b) a count so we can stop early if a pattern gets too many matches.
     // Mutable because we fill buckets/counts during the scan phase.
@@ -490,7 +490,7 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
         words.push(CandidateBuckets::default());
     }
 
-    // 3. Pull out some data from equation_context
+    // 4. Pull out some data from equation_context
     let lookup_keys = &equation_context.lookup_keys;
     let parsed_forms = &equation_context.parsed_forms;
     let joint_constraints = equation_context.joint_constraints.clone();
