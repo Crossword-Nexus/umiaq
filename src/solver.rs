@@ -309,6 +309,9 @@ struct RecursiveJoinParameters {
 /// Return:
 /// - This function mutates `results` and stops early once `results` contains
 ///   `num_results_requested` values.
+/// # Errors
+/// Returns `Err(SolverError::Timeout)` if the time budget expires during the join.
+/// In that case, partial solutions already found remain in `results`.
 fn recursive_join(
     selected: &mut Vec<Bindings>,
     env: &mut HashMap<char, String>,
