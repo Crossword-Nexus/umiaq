@@ -48,7 +48,7 @@ pub enum SolverError {
 
 
 
-/// Simple TimeoutError struct
+/// Simple `TimeoutError` struct
 #[derive(Debug)]
 pub struct TimeoutError {
     pub elapsed: Duration,
@@ -163,6 +163,14 @@ impl TimeBudget {
         self.start.elapsed() >= self.limit
     }
 
+    pub fn check(&self) -> Result<(), SolverError> {
+        if self.expired() {
+            Err(SolverError::Timeout(TimeoutError { elapsed: self.elapsed() }))
+        } else {
+            Ok(())
+        }
+    }
+
     // Returns the remaining time before expiration, or zero if the budget is already used up.
     // Unused for now but it may be useful later
     // fn remaining(&self) -> Duration {self.limit.saturating_sub(self.start.elapsed())}
@@ -225,7 +233,7 @@ fn scan_batch(
     equation_context: &EquationContext,
     words: &mut [CandidateBuckets],
     budget: &TimeBudget,
-) -> Result<usize, TimeoutError> {
+) -> Result<usize, SolverError> {
 
     // pull what we need from the context
     let parsed_forms = &equation_context.parsed_forms;
@@ -237,10 +245,7 @@ fn scan_batch(
     let end = start_idx.saturating_add(batch_size).min(word_list.len());
 
     while i_word < end {
-        // TODO: have this timeout bubble all the way up
-        if budget.expired() {
-            return Err(TimeoutError { elapsed: budget.elapsed() });
-        }
+        budget.check()?;
 
         let word = word_list[i_word];
 
@@ -324,9 +329,7 @@ fn recursive_join(
         return Ok(());
     }
 
-    if budget.expired() {
-        return Err(SolverError::Timeout(TimeoutError { elapsed: budget.elapsed() }));
-    }
+    budget.check()?;
 
     if let Some(rjp_cur) = rjp.first() {
         // ---- FAST PATH: deterministic + fully keyed ----------------------------
@@ -397,9 +400,7 @@ fn recursive_join(
         // Try each candidate binding for this pattern.
         for cand in bucket_candidates {
 
-            if budget.expired() {
-                return Err(SolverError::Timeout(TimeoutError { elapsed: budget.elapsed() }));
-            }
+            budget.check()?;
 
             if results.len() >= num_results_requested {
                 break; // stop early if we've already met the quota
@@ -472,7 +473,6 @@ fn recursive_join(
 /// On timeout, any partial solutions discovered before expiration are discarded
 /// and the error is bubbled up to the caller, so the end user sees an explicit
 /// failure rather than a silently truncated result set.
-
 pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: usize) -> Result<Vec<Vec<Bindings>>, SolverError> {
     // 0. Make a hash set version of our word list
     let word_list_as_set = word_list.iter().copied().collect();
@@ -534,11 +534,7 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
         scan_pos = new_pos;
 
         // Respect the TimeBudget
-        if budget.expired() {
-            return Err(SolverError::Timeout(TimeoutError {
-                elapsed: budget.elapsed(),
-            }));
-        }
+        budget.check()?;
 
         // 2. Attempt to build full solutions from the candidates accumulated so far.
         // This may rediscover old partials, so we use `seen` at the base case
@@ -574,11 +570,7 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
             break;
         }
 
-        if budget.expired() {
-            return Err(SolverError::Timeout(TimeoutError {
-                elapsed: budget.elapsed(),
-            }));
-        }
+        budget.check()?;
 
         // Grow the batch size for the next round
         // TODO: magic number, maybe adaptive resizing?
