@@ -208,13 +208,14 @@ fn push_binding(words: &mut [CandidateBuckets], i: usize, key: LookupKey, bindin
     words[i].count += 1;
 }
 
-/// Execute a batch of the backtracking search for candidate solutions.
+/// Scan a batch of candidate words against all patterns in the equation context,
+/// materializing bindings into per-pattern buckets and invoking the join phase
+/// to extend partial solutions.
 ///
 /// - Extends the given `results` vector in place with any new solutions found.
 /// - Returns the number of solutions added on success.
-/// - Aborts early with a [`TimeoutError`] if the [`TimeBudget`] has expired,
-///   allowing callers to bubble the error up to the end user rather than
-///   silently truncating results.
+/// - Aborts early if the [`TimeBudget`] expires, so that callers can surface
+///   a timeout error to the end user rather than silently truncating results.
 ///
 /// Arguments:
 /// - `ctx`: equation context holding parsed forms and constraints
@@ -223,9 +224,9 @@ fn push_binding(words: &mut [CandidateBuckets], i: usize, key: LookupKey, bindin
 /// - `results`: mutable accumulator for discovered solutions
 ///
 /// # Errors
-/// Returns `Err(TimeoutError)` if the time budget is exceeded before the batch
-/// completes. Partial solutions discovered before timeout will still be present
-/// in `results` when the error is returned.
+/// Returns `Err(SolverError::Timeout)` if the time budget is exceeded before
+/// the batch completes. Partial solutions discovered before timeout remain in
+/// `results` when the error is returned.
 fn scan_batch(
     word_list: &[&str],
     start_idx: usize,
