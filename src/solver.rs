@@ -236,12 +236,6 @@ fn scan_batch(
     budget: &TimeBudget,
 ) -> Result<usize, SolverError> {
 
-    // pull what we need from the context
-    let parsed_forms = &equation_context.parsed_forms;
-    let scan_hints   = &equation_context.scan_hints;
-    let var_constraints = &equation_context.var_constraints;
-    let joint_constraints = &equation_context.joint_constraints;
-
     let mut i_word = start_idx;
     let end = start_idx.saturating_add(batch_size).min(word_list.len());
 
@@ -258,15 +252,15 @@ fn scan_batch(
                 continue;
             }
             // Cheap length prefilter
-            if !scan_hints[i].is_word_len_possible(word.len()) {
+            if !&equation_context.scan_hints[i].is_word_len_possible(word.len()) {
                 continue;
             }
 
             let matches = match_equation_all(
                 word,
-                &parsed_forms[i],
-                var_constraints,
-                joint_constraints.clone(),
+                &equation_context.parsed_forms[i],
+                &equation_context.var_constraints,
+                equation_context.joint_constraints.clone(),
             );
 
             for binding in matches {
