@@ -151,7 +151,6 @@ fn push_binding(words: &mut [CandidateBuckets], i: usize, key: LookupKey, bindin
 
 /// Scan a slice of the word list and incrementally fill candidate buckets.
 /// Returns a pair containing (in order) the new scan position and a boolean stating if time is up.
-// TODO reword last sentence to be umm better
 fn scan_batch(
     word_list: &[&str],
     start_idx: usize,
