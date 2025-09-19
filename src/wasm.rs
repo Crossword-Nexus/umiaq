@@ -36,9 +36,10 @@ pub fn solve_equation_wasm(
     // Borrow as &[&str] for the solver
     let refs: Vec<&str> = words.iter().map(|s| s.as_str()).collect();
 
-    let raw = solve_equation(input, &refs, num_results_requested)?; // Vec<Vec<Bindings>>
+    let raw = solve_equation(input, &refs, num_results_requested)
+        .map_err(|e| JsValue::from_str(&format!("solver error: {e}")))?;
 
-    // Keep only the "*" word from each Bindings
+    // Keep only the "*" word from each `Bindings`
     let js_ready: Vec<Vec<String>> = raw
         .into_iter()
         .map(|row| row.into_iter().filter_map(|b| binding_to_word(&b)).collect())
