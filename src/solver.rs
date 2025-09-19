@@ -269,6 +269,7 @@ fn scan_batch(
             );
 
             for binding in matches {
+                budget.check()?;
                 let key = lookup_key_for_binding(&binding, p.lookup_keys.clone());
 
                 // If a required key is missing, skip
@@ -379,6 +380,7 @@ fn recursive_join(
             // so the final key is stable/deterministic.
             let mut pairs: Vec<(char, String)> = Vec::with_capacity(rjp_cur.lookup_keys.len());
             for &var_char in &rjp_cur.lookup_keys {
+                budget.check()?;
                 if let Some(var_val) = env.get(&var_char) {
                     pairs.push((var_char, var_val.clone()));
                 } else {
