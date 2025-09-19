@@ -362,7 +362,7 @@ fn recursive_join(
 ///
 /// - `input`: equation in our pattern syntax (e.g., `"AB;BA;|A|=2;..."`)
 /// - `word_list`: list of candidate words to test.
-///   Note that we require (but do not enforce!) that all words are lowercase.
+///   Note that we require (but do not enforce!) that all words be lowercase.
 ///   TODO: should we enforce this?
 /// - `num_results_requested`: maximum number of *final* results to return
 ///
