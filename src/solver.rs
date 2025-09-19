@@ -17,6 +17,52 @@ const DEFAULT_BATCH_SIZE: usize = 10_000;
 // A constant to split up items in our hashes
 const HASH_SPLIT: u16 = 0xFFFFu16;
 
+/// Unified error type for the solver pipeline.
+///
+/// This consolidates the different error sources we encounter when parsing
+/// equations, materializing solutions, or respecting time budgets, so that
+/// callers only need to handle a single `Result<_, SolverError>`.
+#[derive(Debug, thiserror::Error)]
+pub enum SolverError {
+    /// Failure during parsing of the equation string into an `EquationContext`.
+    ///
+    /// These originate from the parser (`ParseError`), which we box to keep the
+    /// error type size stable.
+    #[error("parse failure: {0}")]
+    ParseFailure(#[from] Box<ParseError>),
+
+    /// Failure while materializing a candidate binding into a concrete solution.
+    ///
+    /// This generally indicates that an internal constraint check failed during
+    /// `recursive_join` or related routines.
+    #[error("materialization error: {0}")]
+    MaterializationError(String),
+
+    /// The solver exceeded its configured wall-clock time budget and aborted.
+    ///
+    /// The attached `TimeoutError` includes information about how long it ran
+    /// (and possibly the configured limit).
+    #[error("{0}")]
+    Timeout(#[from] TimeoutError),
+}
+
+
+
+/// Simple TimeoutError struct
+#[derive(Debug)]
+pub struct TimeoutError {
+    pub elapsed: Duration,
+}
+
+impl std::fmt::Display for TimeoutError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "solver timed out after {:.3}s", self.elapsed.as_secs_f64())
+    }
+}
+
+impl std::error::Error for TimeoutError {}
+
+
 /// Bucket key for indexing candidates by the subset of variables that must agree.
 /// - `None` means "no lookup constraints for this pattern" (Python's `words[i][None]`).
 /// - When present, we store a *sorted* `(var_char, var_val)` list so the key is deterministic
@@ -107,6 +153,11 @@ impl TimeBudget {
         Self { start: Instant::now(), limit }
     }
 
+    /// How long this budget has been running.
+    fn elapsed(&self) -> Duration {
+        self.start.elapsed()
+    }
+
     /// Returns true if the allowed time has fully elapsed.
     fn expired(&self) -> bool {
         self.start.elapsed() >= self.limit
@@ -149,8 +200,24 @@ fn push_binding(words: &mut [CandidateBuckets], i: usize, key: LookupKey, bindin
     words[i].count += 1;
 }
 
-/// Scan a slice of the word list and incrementally fill candidate buckets.
-/// Returns a pair containing (in order) the new scan position and a boolean stating if time is up.
+/// Execute a batch of the backtracking search for candidate solutions.
+///
+/// - Extends the given `results` vector in place with any new solutions found.
+/// - Returns the number of solutions added on success.
+/// - Aborts early with a [`TimeoutError`] if the [`TimeBudget`] has expired,
+///   allowing callers to bubble the error up to the end user rather than
+///   silently truncating results.
+///
+/// Arguments:
+/// - `ctx`: equation context holding parsed forms and constraints
+/// - `budget`: wall-clock time budget to respect
+/// - `batch_size`: maximum number of candidate words to scan in this batch
+/// - `results`: mutable accumulator for discovered solutions
+///
+/// # Errors
+/// Returns `Err(TimeoutError)` if the time budget is exceeded before the batch
+/// completes. Partial solutions discovered before timeout will still be present
+/// in `results` when the error is returned.
 fn scan_batch(
     word_list: &[&str],
     start_idx: usize,
@@ -158,7 +225,13 @@ fn scan_batch(
     equation_context: &EquationContext,
     words: &mut [CandidateBuckets],
     budget: &TimeBudget,
-) -> (usize, bool) {
+) -> Result<usize, TimeoutError> {
+
+    // pull what we need from the context
+    let parsed_forms = &equation_context.parsed_forms;
+    let scan_hints   = &equation_context.scan_hints;
+    let var_constraints = &equation_context.var_constraints;
+    let joint_constraints = &equation_context.joint_constraints;
 
     let mut i_word = start_idx;
     let end = start_idx.saturating_add(batch_size).min(word_list.len());
@@ -166,7 +239,7 @@ fn scan_batch(
     while i_word < end {
         // TODO: have this timeout bubble all the way up
         if budget.expired() {
-            return (i_word, true);
+            return Err(TimeoutError { elapsed: budget.elapsed() });
         }
 
         let word = word_list[i_word];
@@ -179,15 +252,15 @@ fn scan_batch(
                 continue;
             }
             // Cheap length prefilter
-            if !&equation_context.scan_hints[i].is_word_len_possible(word.len()) {
+            if !scan_hints[i].is_word_len_possible(word.len()) {
                 continue;
             }
 
             let matches = match_equation_all(
                 word,
-                &equation_context.parsed_forms[i],
-                &equation_context.var_constraints,
-                equation_context.joint_constraints.clone(),
+                &parsed_forms[i],
+                var_constraints,
+                joint_constraints.clone(),
             );
 
             for binding in matches {
@@ -205,7 +278,7 @@ fn scan_batch(
         i_word += 1;
     }
 
-    (i_word, false)
+    Ok(i_word)
 }
 
 
@@ -374,15 +447,15 @@ fn recursive_join(
 ///
 /// Will return a `ParseError` if a form cannot be parsed.
 // TODO? add more detail in Errors section
-pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: usize) -> Result<Vec<Vec<Bindings>>, Box<ParseError>> {
-    // 1. Make a hash set version of our word list
+pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: usize) -> Result<Vec<Vec<Bindings>>, SolverError> {
+    // 0. Make a hash set version of our word list
     let word_list_as_set = word_list.iter().copied().collect();
 
-    // 2. Parse the input equation string into our `EquationContext` struct.
+    // 1. Parse the input equation string into our `EquationContext` struct.
     //    This holds each pattern string, its parsed form, and its `lookup_keys` (shared vars).
     let equation_context = input.parse::<EquationContext>()?;
 
-    // 3. Prepare storage for candidate buckets, one per pattern.
+    // 2. Prepare storage for candidate buckets, one per pattern.
     //    `CandidateBuckets` tracks (a) the bindings bucketed by shared variable values, and
     //    (b) a count so we can stop early if a pattern gets too many matches.
     // Mutable because we fill buckets/counts during the scan phase.
@@ -391,7 +464,7 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
         words.push(CandidateBuckets::default());
     }
 
-    // 4. Pull out some data from equation_context
+    // 3. Pull out some data from equation_context
     let lookup_keys = &equation_context.lookup_keys;
     let parsed_forms = &equation_context.parsed_forms;
     let joint_constraints = equation_context.joint_constraints.clone();
@@ -424,18 +497,22 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
     {
         // 1. Scan the next batch_size words into candidate buckets.
         // Each candidate binding is grouped by its lookup key so later joins are fast.
-        let (new_pos, _is_time_up) = scan_batch(
+        let new_pos = scan_batch(
             word_list,
             scan_pos,
             batch_size,
             &equation_context,
             &mut words,
             &budget,
-        );
+        )?;
         scan_pos = new_pos;
 
         // Respect the TimeBudget
-        if budget.expired() { break; }
+        if budget.expired() {
+            return Err(SolverError::Timeout(TimeoutError {
+                elapsed: budget.elapsed(),
+            }));
+        }
 
         // 2. Attempt to build full solutions from the candidates accumulated so far.
         // This may rediscover old partials, so we use `seen` at the base case
@@ -461,7 +538,7 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
         );
         if let Err(e) = rj_result {
             // e is a `MaterializationError` // TODO check/enforce this?
-            return Err(Box::new(ParseFailure { s: e.to_string() }))
+            return Err(SolverError::MaterializationError(e.to_string()));
         }
 
         // We exit early in three cases
@@ -628,5 +705,20 @@ mod tests {
         expected_bindings_list.iter().for_each(|bindings| {
             assert!(sol.contains(bindings))
         });
+    }
+
+    #[test]
+    fn test_malformed_pattern_returns_error() {
+        let words = vec!["TEST"];
+        let result = solve_equation("BAD(PATTERN", &words, 10);
+        assert!(result.is_err(), "Expected parse failure but got success");
+    }
+
+    #[test]
+    fn test_materialization_error() {
+        let words = vec!["a", "b"];
+        // Form forces an impossible variable overlap
+        let result = solve_equation("AB;A;B;???", &words, 10);
+        assert!(result.is_err(), "Expected error but got success");
     }
 }
