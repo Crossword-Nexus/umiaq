@@ -45,6 +45,9 @@ jobs:
           mkdir -p web/data
           cp -f data/spreadthewordlist.dict web/data/
 
+      - name: Copy README into web
+        run: |
+          cp README.md web/README.md
 
       - name: Ensure .nojekyll
         # Make sure Jekyll doesn't interfere with pkg/ folder on Pages
