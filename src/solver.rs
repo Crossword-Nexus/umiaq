@@ -111,7 +111,7 @@ fn solution_key(solution: &[Bindings]) -> u64 {
             w.hash(&mut hasher);
         } else {
             // this should never happen
-            // TODO: throw an error if it does
+            panic!("solution_key: no '*' binding found in solution: {solution:?}");
             /*
             // Fall back: hash all (var_char, var_val) pairs sorted by var
             let mut pairs: Vec<(char, String)> =
@@ -175,30 +175,31 @@ impl TimeBudget {
     // fn remaining(&self) -> Duration {self.limit.saturating_sub(self.start.elapsed())}
 }
 
-
 /// Build the deterministic lookup key for a binding given the pattern's lookup vars.
-/// Returns:
-///   - None: pattern has no lookup constraints (unkeyed bucket)
-///   - Some(vec): concrete key (sorted by `var_char`)
-///   - Some(empty vec): sentinel meaning "required key missing" → caller should skip
+///
+/// Returns a `LookupKey` (alias for `Vec<(char, String)>`) sorted by `var_char`.
+///
+/// Conventions:
+/// - If `keys` is empty, returns an empty `LookupKey` (unkeyed bucket).
+/// - If any required key is missing in the binding, also returns an empty `LookupKey`;
+///   callers must check `keys.is_empty()` to distinguish this case.
+/// - Otherwise, returns the full normalized key.
 fn lookup_key_for_binding(
     binding: &Bindings,
     keys: HashSet<char>,
 ) -> LookupKey {
-    // Collect (var_char, var_val) for all required keys; bail out immediately if any is missing.
     let mut pairs: Vec<(char, String)> = Vec::with_capacity(keys.len());
     for var_char in keys {
         match binding.get(var_char) {
             Some(var_val) => pairs.push((var_char, var_val.clone())),
-            None => return Vec::new(), // "impossible" sentinel; caller will skip // TODO is this right?
+            None => return Vec::new(), // required key missing
         }
     }
 
-    // Normalize key order for stable hashing/equality
     pairs.sort_unstable_by_key(|(c, _)| *c);
-
     pairs
 }
+
 
 
 /// Push a binding into the appropriate bucket and bump the count.
