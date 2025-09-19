@@ -359,7 +359,7 @@ fn recursive_join(
             }
 
             selected.push(binding);
-            recursive_join(selected, env, results, num_results_requested, word_list_as_set, joint_constraints, seen, &rjp[1..], &budget)?;
+            recursive_join(selected, env, results, num_results_requested, word_list_as_set, joint_constraints, seen, &rjp[1..], budget)?;
             selected.pop();
             return Ok(()); // IMPORTANT: skip normal enumeration path
         }
@@ -428,7 +428,7 @@ fn recursive_join(
 
             // Choose this candidate for pattern `idx` and recurse for `idx + 1`.
             selected.push(cand.clone());
-            recursive_join(selected, env, results, num_results_requested, word_list_as_set, joint_constraints.clone(), seen, &rjp[1..], &budget)?;
+            recursive_join(selected, env, results, num_results_requested, word_list_as_set, joint_constraints.clone(), seen, &rjp[1..], budget)?;
             selected.pop();
 
             // Backtrack: remove only what we added at this level.
@@ -563,9 +563,7 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
             &rjp,
             &budget
         );
-        if let Err(e) = rj_result {
-            return Err(e);
-        }
+        rj_result?;
 
         // We exit early in three cases
         // 1. We've hit the number of results requested
