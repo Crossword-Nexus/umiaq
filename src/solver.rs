@@ -161,12 +161,6 @@ fn scan_batch(
     budget: &TimeBudget,
 ) -> (usize, bool) {
 
-    // pull what we need from the context
-    let parsed_forms = &equation_context.parsed_forms;
-    let scan_hints   = &equation_context.scan_hints;
-    let var_constraints = &equation_context.var_constraints;
-    let joint_constraints = &equation_context.joint_constraints;
-
     let mut i_word = start_idx;
     let end = start_idx.saturating_add(batch_size).min(word_list.len());
 
@@ -186,15 +180,15 @@ fn scan_batch(
                 continue;
             }
             // Cheap length prefilter
-            if !scan_hints[i].is_word_len_possible(word.len()) {
+            if !&equation_context.scan_hints[i].is_word_len_possible(word.len()) {
                 continue;
             }
 
             let matches = match_equation_all(
                 word,
-                &parsed_forms[i],
-                var_constraints,
-                joint_constraints.clone(),
+                &equation_context.parsed_forms[i],
+                &equation_context.var_constraints,
+                equation_context.joint_constraints.clone(),
             );
 
             for binding in matches {
@@ -369,7 +363,7 @@ fn recursive_join(
 ///
 /// - `input`: equation in our pattern syntax (e.g., `"AB;BA;|A|=2;..."`)
 /// - `word_list`: list of candidate words to test.
-///   Note that we require (but do not enforce!) that all words be lowercase.
+///   Note that we require (but do not enforce!) that all words are lowercase.
 ///   TODO: should we enforce this?
 /// - `num_results_requested`: maximum number of *final* results to return
 ///
@@ -382,14 +376,14 @@ fn recursive_join(
 /// Will return a `ParseError` if a form cannot be parsed.
 // TODO? add more detail in Errors section
 pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: usize) -> Result<Vec<Vec<Bindings>>, Box<ParseError>> {
-    // 0. Make a hash set version of our word list
+    // 1. Make a hash set version of our word list
     let word_list_as_set = word_list.iter().copied().collect();
 
-    // 1. Parse the input equation string into our `EquationContext` struct.
+    // 2. Parse the input equation string into our `EquationContext` struct.
     //    This holds each pattern string, its parsed form, and its `lookup_keys` (shared vars).
     let equation_context = input.parse::<EquationContext>()?;
 
-    // 2. Prepare storage for candidate buckets, one per pattern.
+    // 3. Prepare storage for candidate buckets, one per pattern.
     //    `CandidateBuckets` tracks (a) the bindings bucketed by shared variable values, and
     //    (b) a count so we can stop early if a pattern gets too many matches.
     // Mutable because we fill buckets/counts during the scan phase.
@@ -398,7 +392,7 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
         words.push(CandidateBuckets::default());
     }
 
-    // 3. Pull out some data from equation_context
+    // 4. Pull out some data from equation_context
     let lookup_keys = &equation_context.lookup_keys;
     let parsed_forms = &equation_context.parsed_forms;
     let joint_constraints = equation_context.joint_constraints.clone();

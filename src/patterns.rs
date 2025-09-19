@@ -516,7 +516,7 @@ impl FromStr for EquationContext {
     /// 5. Returns the populated `EquationContext`.
     ///
     /// This is the entry point used when calling
-    /// `let eq_ctx: EquationContext = input.parse()?;`.
+    /// `let equation_context = input.parse::<EquationContext>()?;`.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // Start with an empty context.
         let mut equation_context = EquationContext::default();
@@ -546,21 +546,20 @@ impl FromStr for EquationContext {
 
         // Step 6: Upgrade prefilters once per form.
         for pf in &mut parsed_forms {
-            let upgraded = build_prefilter_regex(pf, &equation_context.var_constraints)?;
-            pf.prefilter = upgraded;
+            pf.prefilter = build_prefilter_regex(pf, &equation_context.var_constraints)?;
         }
 
-        // Step 6.5: Add these finalized parsed_forms to the context
+        // Step 7: Add these finalized parsed_forms to the context
         equation_context.parsed_forms = parsed_forms;
 
-        // Step 7: Get the joint constraints and use them to tighten per-variable constraints
+        // Step 8: Get the joint constraints and use them to tighten per-variable constraints
         // This gets length bounds on variables (from the joint constraints)
         propagate_joint_to_var_bounds(
             &mut equation_context.var_constraints,
             &equation_context.joint_constraints,
         );
 
-        // Step 8: Build cheap, per-form length hints (index-aligned with equation_context/parsed_forms)
+        // Step 9: Build cheap, per-form length hints (index-aligned with parsed_forms)
         // The hints are length bounds for each form
         equation_context.scan_hints = equation_context
             .parsed_forms
@@ -974,7 +973,7 @@ mod tests {
     }
 
     #[test]
-    /// Confirm that `IntoIterator` yields `ordered_list` without consuming `Patterns`.
+    /// Confirm that `IntoIterator` yields `ordered_list` without consuming `EquationContext`.
     fn test_into_iterator_yields_ordered_list() {
         let equation_context = "AB;BC".parse::<EquationContext>().unwrap();
         let from_iter: Vec<_> = (&equation_context).into_iter().map(|p| p.raw_string.clone()).collect();
