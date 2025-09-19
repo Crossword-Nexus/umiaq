@@ -36,7 +36,7 @@ pub enum SolverError {
     /// This generally indicates that an internal constraint check failed during
     /// `recursive_join` or related routines.
     #[error("materialization error: {0}")]
-    MaterializationError(String),
+    MaterializationError(#[from] MaterializationError),
 
     /// The solver exceeded its configured wall-clock time budget and aborted.
     ///
@@ -316,11 +316,16 @@ fn recursive_join(
     word_list_as_set: &HashSet<&str>,
     joint_constraints: JointConstraints,
     seen: &mut HashSet<u64>,
-    rjp: &[RecursiveJoinParameters]
-) -> Result<(), MaterializationError> {
+    rjp: &[RecursiveJoinParameters],
+    budget: &TimeBudget,
+) -> Result<(), SolverError> {
     // Stop if we've met the requested quota of full solutions.
     if results.len() >= num_results_requested {
         return Ok(());
+    }
+
+    if budget.expired() {
+        return Err(SolverError::Timeout(TimeoutError { elapsed: budget.elapsed() }));
     }
 
     if let Some(rjp_cur) = rjp.first() {
@@ -328,7 +333,13 @@ fn recursive_join(
         let p = &rjp_cur.pattern;
         if p.is_deterministic && p.all_vars_in_lookup_keys() {
             // The word is fully determined by literals + already-bound vars in `env`.
-            let Some(expected) = rjp_cur.parsed_form.materialize_deterministic_with_env(env) else { return Err(MaterializationError) };
+            let Some(expected) = rjp_cur.parsed_form
+                .materialize_deterministic_with_env(env)
+            else {
+                return Err(SolverError::MaterializationError(
+                    MaterializationError("deterministic materialization failed".to_string()),
+                ));
+            };
 
             if !word_list_as_set.contains(expected.as_str()) {
                 // This branch cannot succeed — prune immediately.
@@ -348,7 +359,7 @@ fn recursive_join(
             }
 
             selected.push(binding);
-            recursive_join(selected, env, results, num_results_requested, word_list_as_set, joint_constraints, seen, &rjp[1..])?;
+            recursive_join(selected, env, results, num_results_requested, word_list_as_set, joint_constraints, seen, &rjp[1..], &budget)?;
             selected.pop();
             return Ok(()); // IMPORTANT: skip normal enumeration path
         }
@@ -385,6 +396,11 @@ fn recursive_join(
 
         // Try each candidate binding for this pattern.
         for cand in bucket_candidates {
+
+            if budget.expired() {
+                return Err(SolverError::Timeout(TimeoutError { elapsed: budget.elapsed() }));
+            }
+
             if results.len() >= num_results_requested {
                 break; // stop early if we've already met the quota
             }
@@ -412,7 +428,7 @@ fn recursive_join(
 
             // Choose this candidate for pattern `idx` and recurse for `idx + 1`.
             selected.push(cand.clone());
-            recursive_join(selected, env, results, num_results_requested, word_list_as_set, joint_constraints.clone(), seen, &rjp[1..])?;
+            recursive_join(selected, env, results, num_results_requested, word_list_as_set, joint_constraints.clone(), seen, &rjp[1..], &budget)?;
             selected.pop();
 
             // Backtrack: remove only what we added at this level.
@@ -431,22 +447,32 @@ fn recursive_join(
 }
 
 
-/// Read in an equation string and return results from the word list
+/// Top-level entry point to solve an equation against a word list.
 ///
-/// - `input`: equation in our pattern syntax (e.g., `"AB;BA;|A|=2;..."`)
-/// - `word_list`: list of candidate words to test.
-///   Note that we require (but do not enforce!) that all words be lowercase.
-///   TODO: should we enforce this?
-/// - `num_results_requested`: maximum number of *final* results to return
+/// This orchestrates parsing the input string into an [`EquationContext`],
+/// scanning candidate words in adaptive batches, and recursively joining
+/// variable bindings into full solutions. Results are accumulated until either
+/// the requested number of solutions is found or the [`TimeBudget`] expires.
 ///
-/// Returns:
-/// - A `Vec` of solutions, each solution being a `Vec<Binding>` where each `Binding`
-///   maps variable names (chars) to concrete substrings they were bound to in that solution.
+/// # Arguments
+/// - `input`: equation string to parse (e.g. `"AB;BC;CA"`).
+/// - `word_list`: slice of candidate words to match against.
+/// - `num_results_requested`: optional cap on how many solutions to return
+///   (use `None` to search exhaustively).
+///
+/// # Returns
+/// A vector of fully materialized [`Solution`]s, up to the requested limit.
 ///
 /// # Errors
+/// Returns a [`SolverError`] if:
+/// - the equation string cannot be parsed (`ParseFailure`),
+/// - a binding cannot be materialized into a valid solution (`MaterializationError`),
+/// - or the solver exceeds its wall-clock time budget (`Timeout`).
 ///
-/// Will return a `ParseError` if a form cannot be parsed.
-// TODO? add more detail in Errors section
+/// On timeout, any partial solutions discovered before expiration are discarded
+/// and the error is bubbled up to the caller, so the end user sees an explicit
+/// failure rather than a silently truncated result set.
+
 pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: usize) -> Result<Vec<Vec<Bindings>>, SolverError> {
     // 0. Make a hash set version of our word list
     let word_list_as_set = word_list.iter().copied().collect();
@@ -534,11 +560,11 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
             &word_list_as_set,
             joint_constraints.clone(),
             &mut seen,
-            &rjp
+            &rjp,
+            &budget
         );
         if let Err(e) = rj_result {
-            // e is a `MaterializationError` // TODO check/enforce this?
-            return Err(SolverError::MaterializationError(e.to_string()));
+            return Err(e);
         }
 
         // We exit early in three cases
@@ -546,9 +572,14 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
         // 2. The time is up
         // 3. We have no more words to scan
         if results.len() >= num_results_requested ||
-            budget.expired() ||
             scan_pos >= word_list.len() {
             break;
+        }
+
+        if budget.expired() {
+            return Err(SolverError::Timeout(TimeoutError {
+                elapsed: budget.elapsed(),
+            }));
         }
 
         // Grow the batch size for the next round
