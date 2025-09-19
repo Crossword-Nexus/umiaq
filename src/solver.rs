@@ -141,7 +141,6 @@ fn solution_key(solution: &[Bindings]) -> u64 {
 /// ```
 ///
 /// You can also query how much time is left (`remaining()`).
-/// TODO: consider using a countdown timer with one "time left" parameter
 struct TimeBudget {
     start: Instant,   // when the budget began
     limit: Duration,  // maximum allowed elapsed time
