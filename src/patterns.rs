@@ -267,8 +267,6 @@ impl Pattern {
 ///   earlier and subsequent forms maximize overlap with already-chosen variables.
 ///   As part of this step, each later form's `lookup_keys` is set to the overlap
 ///   with the variables seen so far (its *join key*).
-///
-/// TODO change the name of this struct (since it contains (a list of) `Pattern`s... but also more)
 pub struct EquationContext {
     /// List of patterns directly extracted from the input string (not constraints)
     // TODO should we keep Vec<Pattern> for each order or just one (likely ordered_list) and use map
