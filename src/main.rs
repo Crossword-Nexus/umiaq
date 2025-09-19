@@ -5,10 +5,12 @@ use std::time::Instant;
 use umiaq::solver;
 use umiaq::word_list;
 
+// TODO rename "pattern" here
 /// Umiaq pattern solver
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
+    // TODO rename "pattern" here
     /// The pattern to solve (e.g., "AB;BA;|A|=2;|B|=2;!=AB")
     pattern: String,
 
