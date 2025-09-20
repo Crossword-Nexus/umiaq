@@ -145,10 +145,10 @@ fn main() -> std::io::Result<()> {
             let solve_secs = t_solve.elapsed().as_secs_f64();
 
             // Prevent the compiler from proving the result unused and eliding work.
-            let _keep = black_box(solutions.len());
+            let _keep = black_box(solutions.solutions.len());
 
             times.push(solve_secs);
-            last_solutions = solutions;
+            last_solutions = solutions.solutions;
 
             eprintln!(
                 "  run {:>2}/{:>2}: {:.3}s ({} solutions)",

@@ -17,6 +17,33 @@ const DEFAULT_BATCH_SIZE: usize = 10_000;
 // A constant to split up items in our hashes
 const HASH_SPLIT: u16 = 0xFFFFu16;
 
+/// Status of the solver run.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SolveStatus {
+    /// Solver ran to completion (word list exhausted or requested number found).
+    Complete,
+    /// Solver stopped because the time budget expired. Contains the elapsed time.
+    TimedOut { elapsed: Duration },
+}
+
+/// Successful solver run (even if it stopped early).
+#[derive(Debug, Clone)]
+pub struct SolveResult {
+    /// Solutions discovered (may be fewer than requested if timed out).
+    pub solutions: Vec<Vec<Bindings>>,
+    /// Status indicating whether we finished or timed out.
+    pub status: SolveStatus,
+}
+
+impl IntoIterator for SolveResult {
+    type Item = Vec<Bindings>;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.solutions.into_iter()
+    }
+}
+
 /// Unified error type for the solver pipeline.
 ///
 /// This consolidates the different error sources we encounter when parsing
@@ -37,13 +64,6 @@ pub enum SolverError {
     /// `recursive_join` or related routines.
     #[error("materialization error: {0}")]
     MaterializationError(#[from] MaterializationError),
-
-    /// The solver exceeded its configured wall-clock time budget and aborted.
-    ///
-    /// The attached `TimeoutError` includes information about how long it ran
-    /// (and possibly the configured limit).
-    #[error("{0}")]
-    Timeout(#[from] TimeoutError),
 }
 
 
@@ -162,17 +182,24 @@ impl TimeBudget {
         self.start.elapsed() >= self.limit
     }
 
-    pub fn check(&self) -> Result<(), SolverError> {
-        if self.expired() {
-            Err(SolverError::Timeout(TimeoutError { elapsed: self.elapsed() }))
-        } else {
-            Ok(())
-        }
-    }
-
     // Returns the remaining time before expiration, or zero if the budget is already used up.
     // Unused for now but it may be useful later
     // fn remaining(&self) -> Duration {self.limit.saturating_sub(self.start.elapsed())}
+}
+
+macro_rules! timed_stop {
+    // For functions that return Result<(), E>
+    ($budget:expr) => {
+        if $budget.expired() {
+            return Ok(());
+        }
+    };
+    // For functions that return Result<T, E>; caller passes the Ok(...) expr to return
+    ($budget:expr, $ret_expr:expr) => {
+        if $budget.expired() {
+            return Ok($ret_expr);
+        }
+    };
 }
 
 /// Build the deterministic lookup key for a binding given the pattern's lookup vars.
@@ -240,7 +267,7 @@ fn scan_batch(
     let end = start_idx.saturating_add(batch_size).min(word_list.len());
 
     while i_word < end {
-        budget.check()?;
+        timed_stop!(budget, i_word);
 
         let word = word_list[i_word];
 
@@ -264,7 +291,7 @@ fn scan_batch(
             );
 
             for binding in matches {
-                budget.check()?;
+                timed_stop!(budget, i_word);
                 let key = lookup_key_for_binding(&binding, p.lookup_keys.clone());
 
                 // If a required key is missing, skip
@@ -328,7 +355,7 @@ fn recursive_join(
         return Ok(());
     }
 
-    budget.check()?;
+    timed_stop!(budget);
 
     if let Some(rjp_cur) = rjp.first() {
         // ---- FAST PATH: deterministic + fully keyed ----------------------------
@@ -378,7 +405,7 @@ fn recursive_join(
             // so the final key is stable/deterministic.
             let mut pairs: Vec<(char, String)> = Vec::with_capacity(rjp_cur.lookup_keys.len());
             for &var_char in &rjp_cur.lookup_keys {
-                budget.check()?;
+                timed_stop!(budget);
                 if let Some(var_val) = env.get(&var_char) {
                     pairs.push((var_char, var_val.clone()));
                 } else {
@@ -400,7 +427,7 @@ fn recursive_join(
         // Try each candidate binding for this pattern.
         for cand in bucket_candidates {
 
-            budget.check()?;
+            timed_stop!(budget);
 
             if results.len() >= num_results_requested {
                 break; // stop early if we've already met the quota
@@ -473,7 +500,11 @@ fn recursive_join(
 /// On timeout, any partial solutions discovered before expiration are discarded
 /// and the error is bubbled up to the caller, so the end user sees an explicit
 /// failure rather than a silently truncated result set.
-pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: usize) -> Result<Vec<Vec<Bindings>>, SolverError> {
+pub fn solve_equation(
+    input: &str,
+    word_list: &[&str],
+    num_results_requested: usize,
+) -> Result<SolveResult, SolverError> {
     // 1. Make a hash set version of our word list
     let word_list_as_set = word_list.iter().copied().collect();
 
@@ -533,9 +564,6 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
         )?;
         scan_pos = new_pos;
 
-        // Respect the TimeBudget
-        budget.check()?;
-
         // 2. Attempt to build full solutions from the candidates accumulated so far.
         // This may rediscover old partials, so we use `seen` at the base case
         // to ensure only truly new solutions are added to `results`.
@@ -570,8 +598,6 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
             break;
         }
 
-        budget.check()?;
-
         // Grow the batch size for the next round
         // TODO: magic number, maybe adaptive resizing?
         batch_size = batch_size.saturating_mul(2);
@@ -585,7 +611,13 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
     }).collect::<Vec<_>>();
 
     // Return up to `num_results_requested` reordered solutions
-    Ok(reordered)
+    let status = if budget.expired() {
+        SolveStatus::TimedOut { elapsed: budget.elapsed() }
+    } else {
+        SolveStatus::Complete
+    };
+
+    Ok(SolveResult { solutions: reordered, status })
 }
 
 #[cfg(test)]
@@ -598,7 +630,7 @@ mod tests {
         let input = "l.x".to_string();
         let results = solve_equation(&input, &word_list, 5).unwrap();
         println!("{results:?}");
-        assert_eq!(2, results.len());
+        assert_eq!(2, results.solutions.len());
     }
 
     #[test]
@@ -607,7 +639,7 @@ mod tests {
         let input = "/triangle".to_string();
         let results = solve_equation(&input, &word_list, 5).unwrap();
         println!("{results:?}");
-        assert_eq!(2, results.len());
+        assert_eq!(2, results.solutions.len());
     }
 
     #[test]
@@ -616,7 +648,7 @@ mod tests {
         let input = "AB;BA;|A|=2;|B|=2;!=AB".to_string();
         let results = solve_equation(&input, &word_list, 5).unwrap();
         println!("{results:?}");
-        assert_eq!(2, results.len());
+        assert_eq!(2, results.solutions.len());
     }
 
     #[test]
@@ -637,7 +669,7 @@ mod tests {
         // NB: this could give a false negative if SLY comes out before SKY (since we presumably shouldn't care about the order), so...
         // TODO allow order independence for equality... perhaps create a richer struct than just Vec<Bindings> that has a notion of order-independent equality
         let expected = vec![vec![sky_bindings, sly_bindings]];
-        assert_eq!(expected, results);
+        assert_eq!(expected, results.solutions);
     }
 
     #[test]
@@ -657,7 +689,7 @@ mod tests {
         chess_bindings.set('D', "ess".to_string());
         chess_bindings.set_word("chess".to_string().as_ref());
         let expected = vec![vec![inch_bindings, chess_bindings]];
-        assert_eq!(expected, results);
+        assert_eq!(expected, results.solutions);
     }
 
     #[test]
@@ -713,8 +745,8 @@ mod tests {
 
         let expected_bindings_list = vec![expected_atime_bindings, expected_btime_bindings, expected_ab_bindings];
 
-        assert_eq!(1, sols.len());
-        let sol = sols.get(0).unwrap();
+        assert_eq!(1, sols.solutions.len());
+        let sol = sols.solutions.get(0).unwrap();
 
         // we don't care about order, so we allow the actual result to be a list in a different
         // order than the expected list

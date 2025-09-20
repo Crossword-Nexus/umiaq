@@ -341,3 +341,10 @@ hr {
   margin-top: 1em;
   white-space: pre-wrap;
 }
+
+#results-meta {
+    white-space: pre-line;
+    margin-top:0.5em;
+    font-style:italic;
+    color:#bbb;
+}
