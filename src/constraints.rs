@@ -102,7 +102,6 @@ impl Bounds {
         Bounds { min_len, max_len_opt: None }
     }
 
-    // TODO! tests--esp. instances where neither `min_len` is `VarConstraint::DEFAULT_MIN` and where neither `max_len_opt` is `None`
     // only set what the constraint explicitly provides
     fn constrain_by(&mut self, other: Bounds) {
         self.min_len = self.min_len.max(other.min_len);
@@ -110,6 +109,13 @@ impl Bounds {
             .min(other.max_len_opt)
             .or(self.max_len_opt) // since None is treated as less than anything
             .or(other.max_len_opt); // since None is treated as less than anything
+
+        // Panic if we have contradictory bounds
+        assert!(
+            self.max_len_opt.map(|mx| self.min_len <= mx).unwrap_or(true),
+            "invalid interval after constrain_by: min={}, max={:?}",
+            self.min_len, self.max_len_opt
+        );
     }
 }
 
@@ -263,5 +269,64 @@ mod tests {
         ];
 
         assert_eq!(expected, lines);
+    }
+
+    // constrain_by tests
+
+    #[test]
+    fn both_finite_overlap() {
+        let mut a = Bounds::of(1, 5);
+        let b = Bounds::of(3, 7);
+        a.constrain_by(b);
+        assert_eq!(a, Bounds::of(3, 5));
+    }
+
+    #[test]
+    fn both_finite_nested() {
+        let mut a = Bounds::of(2, 8);
+        let b = Bounds::of(3, 6);
+        a.constrain_by(b);
+        assert_eq!(a, Bounds::of(3, 6));
+    }
+
+    #[test]
+    fn left_finite_right_unbounded() {
+        let mut a = Bounds::of(2, 6);
+        let b = Bounds::of_unbounded(4);
+        a.constrain_by(b);
+        assert_eq!(a, Bounds::of(4, 6));
+    }
+
+    #[test]
+    fn left_unbounded_right_finite() {
+        let mut a = Bounds::of_unbounded(5);
+        let b = Bounds::of(3, 8);
+        a.constrain_by(b);
+        assert_eq!(a, Bounds::of(5, 8));
+    }
+
+    #[test]
+    fn both_unbounded() {
+        let mut a = Bounds::of_unbounded(1);
+        let b = Bounds::of_unbounded(4);
+        a.constrain_by(b);
+        assert_eq!(a, Bounds::of_unbounded(4));
+    }
+
+    #[test]
+    fn exact_length_intersection() {
+        let mut a = Bounds::of(5, 5);
+        let b = Bounds::of(3, 7);
+        a.constrain_by(b);
+        assert_eq!(a, Bounds::of(5, 5));
+    }
+
+    #[test]
+    fn impossible_interval_asserts() {
+        // This should panic because min > max
+        let mut a = Bounds::of(5, 5);
+        let b = Bounds::of(10, 12);
+        let result = std::panic::catch_unwind(move || a.constrain_by(b));
+        assert!(result.is_err());
     }
 }
