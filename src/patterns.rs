@@ -574,55 +574,71 @@ impl FromStr for EquationContext {
     }
 }
 
-// TODO? do this via regex?
-// e.g., A=(3-:x*)
+/// Parse a complex constraint of the form `X=(...)`.
+///
+/// The right-hand side may be optionally wrapped in parentheses. Inside:
+///
+/// - **With a colon** (`len_range:literal`):
+///   - The part before the colon must be a valid length range (e.g. `5-7` or `3`).
+///   - The part after the colon is treated as a literal constraint string.
+///   - Exactly one colon is allowed; more than one yields `InvalidComplexConstraint`.
+///
+/// - **Without a colon**:
+///   - First try to parse the whole string as a length range. If successful, this
+///     becomes a pure length constraint.
+///   - Otherwise, treat the string as a literal constraint, with default bounds.
+///
+/// Returns the variable name (single char) and a `VarConstraint` carrying the
+/// parsed `Bounds` and optional literal form string.
+///
+/// Errors:
+/// - `InvalidComplexConstraint` if the input is malformed (e.g. no `=`, no variable,
+///   too many colons, or an unparsable length range when one was expected).
 fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint), Box<ParseError>> {
-    if let Some((var_str, constraint_str)) = form.split_once('=') {
-        if var_str.len() == 1 {
-            if constraint_str.contains('=') {
-                return Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("expected 1 equals sign (not {})", form.chars().filter(|c| *c == '=').count()) }));
-            }
+    let (var, rhs) = form
+        .split_once('=')
+        .ok_or_else(|| {
+            Box::new(ParseError::InvalidComplexConstraint { str: form.to_string() })
+        })?;
+    let var = var.chars().next().ok_or_else(|| {
+        Box::new(ParseError::InvalidComplexConstraint { str: form.to_string() })
+    })?;
 
-            let var_char = var_str.chars().next().unwrap();
+    // Allow optional surrounding parentheses
+    let rhs = rhs.trim();
+    let rhs = rhs
+        .strip_prefix('(')
+        .and_then(|s| s.strip_suffix(')'))
+        .unwrap_or(rhs);
 
-            // remove outer parentheses if they are there
-            let inner_constraint_str = if constraint_str.starts_with('(') && constraint_str.ends_with(')') {
-                let mut chars = constraint_str.chars();
-                chars.next();
-                chars.next_back();
-                chars.as_str()
-            } else {
-                constraint_str
-            };
-
-            let (len_range, literal_constraint_str) = if let Some((len_range_raw, literal_constraint_str)) = inner_constraint_str.split_once(':') {
-                if literal_constraint_str.contains(':') { // too many colons
-                    return Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("too many colons--0 or 1 expected (not {})", inner_constraint_str.chars().filter(|c| *c == ':').count()) }));
-                }
-                let len_range = parse_length_range(len_range_raw)?;
-                (len_range, Some(literal_constraint_str))
-            } else {
-                match parse_length_range(inner_constraint_str) {
-                    Ok(len_range) => (len_range, None),
-                    Err(_) => (Bounds::default(), Some(inner_constraint_str))
-                }
-            };
-
-            let vc = VarConstraint {
-                bounds: len_range,
-                form: literal_constraint_str.map(ToString::to_string),
-                not_equal: HashSet::default(),
-                ..Default::default()
-            };
-
-            Ok((var_char, vc))
-        } else {
-            Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("expected 1 character (as the variable) to the left of \"=\" (not {})", var_str.len()) }))
+    let (bounds, form_str_opt) = if let Some((lhs, rhs_after_colon)) = rhs.split_once(':') {
+        if rhs_after_colon.contains(':') {
+            return Err(Box::new(ParseError::InvalidComplexConstraint {
+                str: format!(
+                    "too many colons--0 or 1 expected (not {})",
+                    rhs.chars().filter(|c| *c == ':').count()
+                ),
+            }));
         }
+        let bounds = parse_length_range(lhs)?;
+        (bounds, Some(rhs_after_colon.to_string()))
     } else {
-        Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("expected 1 equals sign (not {})", form.chars().filter(|c| *c == '=').count()) }))
-    }
+        match parse_length_range(rhs) {
+            Ok(bounds) => (bounds, None),
+            Err(_) => (Bounds::default(), Some(rhs.to_string())),
+        }
+    };
+
+    let vc = VarConstraint {
+        bounds,
+        form: form_str_opt,
+        not_equal: HashSet::default(),
+        ..Default::default()
+    };
+
+    Ok((var, vc))
 }
+
 
 /// Enable `for pattern in &equation_context { ... }`.
 ///
