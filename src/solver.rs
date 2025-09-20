@@ -35,6 +35,13 @@ pub struct SolveResult {
     pub status: SolveStatus,
 }
 
+impl SolveResult {
+    #[cfg(test)]
+    pub(crate) fn len(&self) -> usize {
+        self.solutions.len()
+    }
+}
+
 impl IntoIterator for SolveResult {
     type Item = Vec<Bindings>;
     type IntoIter = std::vec::IntoIter<Self::Item>;
@@ -235,25 +242,31 @@ fn push_binding(words: &mut [CandidateBuckets], i: usize, key: LookupKey, bindin
     words[i].count += 1;
 }
 
-/// Scan a batch of candidate words against all patterns in the equation context,
-/// materializing bindings into per-pattern buckets and invoking the join phase
-/// to extend partial solutions.
+/// Scan a slice of candidate words against all patterns in the equation context,
+/// materializing any matching bindings into per-pattern buckets.
 ///
-/// - Extends the given `results` vector in place with any new solutions found.
-/// - Returns the number of solutions added on success.
-/// - Aborts early if the [`TimeBudget`] expires, so that callers can surface
-///   a timeout error to the end user rather than silently truncating results.
+/// - Iterates through `word_list` starting at `start_idx`, up to `batch_size` words
+///   (or the end of the list).
+/// - For each word, applies length prefilters and variable constraints from
+///   `equation_context`, pushing any resulting bindings into `words[i]`.
+/// - May stop early when the [`TimeBudget`] is exhausted; in that case it returns
+///   the number of words processed so far (and any bindings already pushed remain
+///   in `words`).
 ///
-/// Arguments:
-/// - `ctx`: equation context holding parsed forms and constraints
-/// - `budget`: wall-clock time budget to respect
-/// - `batch_size`: maximum number of candidate words to scan in this batch
-/// - `results`: mutable accumulator for discovered solutions
+/// # Arguments
+/// * `word_list` — master list of candidate words (scanned by index range)
+/// * `start_idx` — starting index in `word_list` for this batch
+/// * `batch_size` — maximum number of words to scan in this batch
+/// * `equation_context` — parsed equation state with patterns, constraints, and hints
+/// * `words` — mutable slice of per-pattern candidate buckets to be populated
+/// * `budget` — wall-clock time budget to respect
 ///
-/// # Errors
-/// Returns `Err(SolverError::Timeout)` if the time budget is exceeded before
-/// the batch completes. Partial solutions discovered before timeout remain in
-/// `results` when the error is returned.
+/// # Returns
+/// The number of words consumed (≤ `batch_size`). If the time budget expires,
+/// this count reflects the partial progress made before stopping. Callers that
+/// wish to surface a timeout should detect early completion (e.g., by checking
+/// `budget.expired()` or by comparing the return value against the planned end)
+/// and convert that condition into `SolverError::Timeout` at a higher level.
 fn scan_batch(
     word_list: &[&str],
     start_idx: usize,
@@ -564,6 +577,8 @@ pub fn solve_equation(
         )?;
         scan_pos = new_pos;
 
+        // TODO? add a time budget check
+
         // 2. Attempt to build full solutions from the candidates accumulated so far.
         // This may rediscover old partials, so we use `seen` at the base case
         // to ensure only truly new solutions are added to `results`.
@@ -589,14 +604,15 @@ pub fn solve_equation(
         );
         rj_result?;
 
-        // We exit early in three cases
+        // We exit early in two cases
         // 1. We've hit the number of results requested
-        // 2. The time is up
-        // 3. We have no more words to scan
+        // 2. We have no more words to scan
         if results.len() >= num_results_requested ||
             scan_pos >= word_list.len() {
             break;
         }
+
+        // TODO? Add another time budget check
 
         // Grow the batch size for the next round
         // TODO: magic number, maybe adaptive resizing?
@@ -630,7 +646,7 @@ mod tests {
         let input = "l.x".to_string();
         let results = solve_equation(&input, &word_list, 5).unwrap();
         println!("{results:?}");
-        assert_eq!(2, results.solutions.len());
+        assert_eq!(2, results.len());
     }
 
     #[test]
@@ -639,7 +655,7 @@ mod tests {
         let input = "/triangle".to_string();
         let results = solve_equation(&input, &word_list, 5).unwrap();
         println!("{results:?}");
-        assert_eq!(2, results.solutions.len());
+        assert_eq!(2, results.len());
     }
 
     #[test]
@@ -648,7 +664,7 @@ mod tests {
         let input = "AB;BA;|A|=2;|B|=2;!=AB".to_string();
         let results = solve_equation(&input, &word_list, 5).unwrap();
         println!("{results:?}");
-        assert_eq!(2, results.solutions.len());
+        assert_eq!(2, results.len());
     }
 
     #[test]
@@ -727,7 +743,7 @@ mod tests {
         let eq = "Atime;Btime;AB";
 
         // Solve with a small limit to ensure it runs to completion
-        let sols = solve_equation(eq, &wl, 5)
+        let solve_result = solve_equation(eq, &wl, 5)
             .expect("equation should not trigger MaterializationError");
 
         let mut expected_atime_bindings = Bindings::default();
@@ -745,8 +761,8 @@ mod tests {
 
         let expected_bindings_list = vec![expected_atime_bindings, expected_btime_bindings, expected_ab_bindings];
 
-        assert_eq!(1, sols.solutions.len());
-        let sol = sols.solutions.get(0).unwrap();
+        assert_eq!(1, solve_result.len());
+        let sol = solve_result.solutions.get(0).unwrap();
 
         // we don't care about order, so we allow the actual result to be a list in a different
         // order than the expected list
