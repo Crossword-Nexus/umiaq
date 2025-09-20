@@ -575,7 +575,6 @@ impl FromStr for EquationContext {
 }
 
 // TODO? do this via regex?
-// TODO? Result vs. Option
 // e.g., A=(3-:x*)
 fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint), Box<ParseError>> {
     if let Some((var_str, constraint_str)) = form.split_once('=') {
