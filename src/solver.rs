@@ -73,8 +73,6 @@ pub enum SolverError {
     MaterializationError(#[from] MaterializationError),
 }
 
-
-
 /// Simple `TimeoutError` struct
 #[derive(Debug)]
 pub struct TimeoutError {
