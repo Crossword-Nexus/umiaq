@@ -595,14 +595,26 @@ impl FromStr for EquationContext {
 /// - `InvalidComplexConstraint` if the input is malformed (e.g. no `=`, no variable,
 ///   too many colons, or an unparsable length range when one was expected).
 fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint), Box<ParseError>> {
-    let (var, rhs) = form
-        .split_once('=')
-        .ok_or_else(|| {
-            Box::new(ParseError::InvalidComplexConstraint { str: form.to_string() })
-        })?;
-    let var = var.chars().next().ok_or_else(|| {
+
+    // ensure there's only one equals sign
+    let eq_count = form.chars().filter(|&c| c == '=').count();
+    if eq_count != 1 {
+        return Err(Box::new(ParseError::InvalidComplexConstraint {
+            str: format!("expected 1 equals sign (not {eq_count})"),
+        }));
+    }
+
+    let (var, rhs) = form.split_once('=').unwrap();
+
+    // Find the variable (ensuring there is only one)
+    let mut chars = var.chars();
+    let var_char = chars.next().ok_or_else(|| {
         Box::new(ParseError::InvalidComplexConstraint { str: form.to_string() })
     })?;
+    if chars.next().is_some() {
+        return Err(Box::new(ParseError::InvalidComplexConstraint { str: form.to_string() }));
+    }
+    let var = var_char;
 
     // Allow optional surrounding parentheses
     let rhs = rhs.trim();
@@ -657,18 +669,77 @@ impl<'a> IntoIterator for &'a EquationContext {
     }
 }
 
-/// Parses a string like "3-5", "-5", "3-", or "3" into min and max length values.
-/// Returns `((min, max_opt))`.
+/// Parse a string into a `Bounds` representing a length constraint.
+///
+/// Accepted forms:
+/// - `"N"`
+///     A single number. Produces a lower bound of `N` and no upper bound.
+///     Example: `"5"` → `[5, ∞)`.
+///
+/// - `"N-M"`
+///     An explicit bounded range. Both sides must be integers.
+///     Example: `"4-7"` → `[4, 7]`.
+///
+/// - `"N-"`
+///     An open-ended range from `N` up to infinity.
+///     Example: `"4-"` → `[4, ∞)`.
+///
+/// - `"-M"`
+///     A range from the default minimum up to `M`.
+///     Example: `"-7"` → `[DEFAULT_MIN, 7]`.
+///
+/// Rejected forms:
+/// - Non-numeric tokens (e.g. `"4-5a"`, `"foo"`, `"foo-7"`).
+/// - More than one dash (e.g. `"4-5-6"`).
+/// - Empty string.
+///
+/// Errors return `ParseError::InvalidLengthRange` with the original input.
 fn parse_length_range(input: &str) -> Result<Bounds, Box<ParseError>> {
-    let parts: Vec<_> = input.split('-').map(|part| part.parse::<usize>().ok()).collect();
-    if parts.is_empty() || (parts.len() == 1 && parts[0].is_none()) || parts.len() > 2 {
-        return Err(Box::new(ParseError::InvalidLengthRange { input: input.to_string() }))
+    // Split on dash, but preserve raw strings so we can distinguish
+    // between `""` (empty) and `"junk"` (invalid).
+    let raw_parts: Vec<&str> = input.split('-').collect();
+
+    // Basic validation: must have 1 or 2 parts.
+    if raw_parts.is_empty() || raw_parts.len() > 2 {
+        return Err(Box::new(ParseError::InvalidLengthRange { input: input.to_string() }));
     }
-    // TODO!!! is there a better way to do this?
-    let min = parts.first().unwrap().unwrap_or(VarConstraint::DEFAULT_MIN);
-    let max = *parts.last().unwrap();
-    Ok(max.map_or(Bounds::of_unbounded(min), |u| Bounds::of(min, u)))
+
+    match raw_parts.as_slice() {
+        // Case: single number, e.g. "5"
+        [single] => {
+            let n = single.parse::<usize>().map_err(|_| {
+                Box::new(ParseError::InvalidLengthRange { input: input.to_string() })
+            })?;
+            Ok(Bounds::of(n, n))
+        }
+
+        // Case: two pieces, e.g. "lhs-rhs"
+        [lhs, rhs] => {
+            // LHS: either a number or empty (default min).
+            let min = if lhs.is_empty() {
+                VarConstraint::DEFAULT_MIN
+            } else {
+                lhs.parse::<usize>().map_err(|_| {
+                    Box::new(ParseError::InvalidLengthRange { input: input.to_string() })
+                })?
+            };
+
+            // RHS: either a number or empty (open-ended).
+            if rhs.is_empty() {
+                // "N-" → open ended upper bound
+                Ok(Bounds::of_unbounded(min))
+            } else {
+                let max = rhs.parse::<usize>().map_err(|_| {
+                    Box::new(ParseError::InvalidLengthRange { input: input.to_string() })
+                })?;
+                Ok(Bounds::of(min, max))
+            }
+        }
+
+        _ => Err(Box::new(ParseError::InvalidLengthRange { input: input.to_string() })),
+    }
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -941,7 +1012,7 @@ mod tests {
     fn test_get_complex_constraint_invalid_cases_lhs_too_long() {
         assert!(matches!(
             *get_complex_constraint("AB=3").unwrap_err(),
-            ParseError::InvalidComplexConstraint { str } if str == "expected 1 character (as the variable) to the left of \"=\" (not 2)"
+            ParseError::InvalidComplexConstraint { str } if str == "AB=3"
         ));
     }
 
@@ -1011,5 +1082,56 @@ mod tests {
             *"A=(1-5:k*);A=(5-6:a*);A".parse::<EquationContext>().unwrap_err(),
             ParseError::ConflictingConstraint { var_char, older, newer } if var_char == 'A' && older == "k*" && newer == "a*" )
         );
+    }
+
+    #[test]
+    fn test_parse_length_range_valid_cases() {
+        // Exact bounded range
+        assert_eq!(Bounds::of(2, 3), parse_length_range("2-3").unwrap());
+        // Open start: "-3" → [DEFAULT_MIN, 3]
+        assert_eq!(
+            Bounds::of(VarConstraint::DEFAULT_MIN, 3),
+            parse_length_range("-3").unwrap()
+        );
+        // Open end: "1-" → [1, ∞)
+        assert_eq!(Bounds::of_unbounded(1), parse_length_range("1-").unwrap());
+        // Single number: "7" → exactly 7
+        assert_eq!(Bounds::of(7, 7), parse_length_range("7").unwrap());
+    }
+
+    #[test]
+    fn test_parse_length_range_invalid_cases() {
+        // Empty string
+        assert!(matches!(
+            *parse_length_range("").unwrap_err(),
+            ParseError::InvalidLengthRange { input } if input.is_empty()
+        ));
+
+        // Too many dashes
+        assert!(matches!(
+            *parse_length_range("1-2-3").unwrap_err(),
+            ParseError::InvalidLengthRange { input } if input == "1-2-3"
+        ));
+
+        // Garbage tokens
+        assert!(matches!(
+            *parse_length_range("foo").unwrap_err(),
+            ParseError::InvalidLengthRange { input } if input == "foo"
+        ));
+
+        assert!(matches!(
+            *parse_length_range("4-foo").unwrap_err(),
+            ParseError::InvalidLengthRange { input } if input == "4-foo"
+        ));
+
+        assert!(matches!(
+            *parse_length_range("foo-7").unwrap_err(),
+            ParseError::InvalidLengthRange { input } if input == "foo-7"
+        ));
+
+        assert!(matches!(
+            *parse_length_range("4-5a").unwrap_err(),
+            ParseError::InvalidLengthRange { input } if input == "4-5a"
+        ));
     }
 }
