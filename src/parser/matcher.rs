@@ -220,11 +220,11 @@ impl HelperParams<'_> {
                 };
 
                 // Apply any variable-specific constraint.
-                // TODO! we should really bubble up errors here
+                // Note: we panic here if something goes wrong (because it really shouldn't)
                 let valid = self
                     .constraints
                     .get(*var_name)
-                    .is_none_or(|c| is_valid_binding(&var_val, c, self.bindings).unwrap_or(false));
+                    .is_none_or(|c| is_valid_binding(&var_val, c, self.bindings).unwrap());
 
                 if !valid {
                     return false;
