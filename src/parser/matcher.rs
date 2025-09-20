@@ -159,6 +159,95 @@ struct HelperParams<'a> {
 }
 
 impl HelperParams<'_> {
+    /// Attempt to bind a variable (`var_name`) to some prefix of `chars` and continue recursion.
+    ///
+    /// This explores all candidate substring lengths in `[min_len, max_len]`,
+    /// where the range is determined both by the variable’s declared constraints
+    /// (if any) and by how many characters remain in `chars`.
+    ///
+    /// For each candidate length `l`:
+    /// - Take the first `l` characters from `chars` as a potential binding.
+    /// - If the pattern form is a `RevVar`, reverse those characters.
+    /// - Check the candidate against the variable’s constraint (if present) using
+    ///   [`is_valid_binding`].
+    /// - If valid, temporarily record the binding, recurse on the remainder of `chars`,
+    ///   and then backtrack (remove the binding) if we’re still searching.
+    ///
+    /// Returns `true` as soon as any candidate path leads to a successful match;
+    /// otherwise returns `false`.
+    ///
+    /// # Notes
+    /// - Errors from [`is_valid_binding`] are currently swallowed (treated as “invalid”).
+    ///   A future refactor could bubble them up instead of discarding them.
+    /// - This method mutates `self.bindings` as part of the search, always restoring
+    ///   the state on backtracking.
+    fn try_bind_var(
+        &mut self,
+        var_name: &char,
+        chars: &[char],
+        rest: &[FormPart],
+        first: &FormPart,
+    ) -> bool {
+        // Compute min and max candidate lengths from constraints and availability.
+        let min_len = self
+            .constraints
+            .get(*var_name)
+            .map_or(VarConstraint::DEFAULT_MIN, |vc| vc.bounds.min_len);
+        let max_len_cfg = self
+            .constraints
+            .get(*var_name)
+            .and_then(|vc| vc.bounds.max_len_opt)
+            .unwrap_or(chars.len());
+
+        let avail = chars.len();
+
+        if min_len > avail {
+            // Not enough characters left to satisfy the minimum length.
+            false
+        } else {
+            // Cap the maximum so we never slice past the available characters.
+            let capped_max = std::cmp::min(max_len_cfg, avail);
+
+            (min_len..=capped_max).any(|l| {
+                // Slice off a candidate binding of length `l`.
+                let candidate_chars = &chars[..l];
+
+                // Reverse if this is a RevVar; otherwise leave as-is.
+                let var_val: String = if matches!(first, FormPart::RevVar(_)) {
+                    candidate_chars.iter().rev().collect()
+                } else {
+                    candidate_chars.iter().collect()
+                };
+
+                // Apply any variable-specific constraint.
+                // TODO! we should really bubble up errors here
+                let valid = self
+                    .constraints
+                    .get(*var_name)
+                    .is_none_or(|c| is_valid_binding(&var_val, c, self.bindings).unwrap_or(false));
+
+                if !valid {
+                    return false;
+                }
+
+                // Tentatively record the binding.
+                self.bindings.set(*var_name, var_val);
+
+                // Recurse on the remaining characters.
+                // If `all_matches` is false, stop once we’ve found one match.
+                let retval = self.recurse(&chars[l..], rest) && !self.all_matches;
+
+                if !retval {
+                    // Backtrack (remove the binding) only if we’re continuing the search.
+                    self.bindings.remove(*var_name);
+                }
+
+                retval
+            })
+        }
+    }
+
+
     /// Recursive backtracking matcher.
     ///
     /// Attempts to match the slice of `chars` against the remaining `parts`.
@@ -201,7 +290,7 @@ impl HelperParams<'_> {
                 // Match if the next len chars are an anagram of target
                 let len = ag.len;
                 chars.len() >= len
-                    && ag.is_anagram(&chars[..len]).unwrap() // TODO handle error properly
+                    && ag.is_anagram(&chars[..len]).unwrap_or(false)
                     && self.recurse(&chars[len..], rest)
             }
 
@@ -212,54 +301,7 @@ impl HelperParams<'_> {
                         .is_some_and(|rest_chars| self.recurse(rest_chars, rest))
                 } else {
                     // Not bound yet: try binding to all possible lengths
-                    // (TODO? this block could be split out into `try_bind_var` later)
-                    let min_len = self
-                        .constraints
-                        .get(*var_name)
-                        .map_or(VarConstraint::DEFAULT_MIN, |vc| vc.bounds.min_len);
-                    let max_len_cfg = self
-                        .constraints
-                        .get(*var_name)
-                        .and_then(|vc| vc.bounds.max_len_opt)
-                        .unwrap_or(chars.len());
-
-                    let avail = chars.len();
-
-                    if min_len > avail {
-                        false // Not enough chars left
-                    } else {
-                        // Never try to slice past what's actually available
-                        let capped_max = std::cmp::min(max_len_cfg, avail);
-
-                        (min_len..=capped_max).any(|l| {
-                            let candidate_chars = &chars[..l];
-
-                            let var_val: String = if matches!(first, FormPart::RevVar(_)) {
-                                candidate_chars.iter().rev().collect()
-                            } else {
-                                candidate_chars.iter().collect()
-                            };
-
-                            // Apply variable-specific constraints
-                            // TODO! we should really bubble up errors here
-                            let valid = self
-                                .constraints
-                                .get(*var_name)
-                                .is_none_or(|c| is_valid_binding(&var_val, c, self.bindings).unwrap_or(false));
-
-                            if valid {
-                                self.bindings.set(*var_name, var_val);
-                                let retval = self.recurse(&chars[l..], rest) && !self.all_matches;
-                                if !retval {
-                                    // Backtrack only when continuing the search
-                                    self.bindings.remove(*var_name);
-                                }
-                                retval
-                            } else {
-                                false
-                            }
-                        })
-                    }
+                    self.try_bind_var(var_name, chars, rest, first)
                 }
             }
         }
