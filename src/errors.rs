@@ -25,6 +25,12 @@ pub enum ParseError {
     #[error("int-parsing error: {0}")]
     ParseIntError(#[from] ParseIntError),
 
+    #[error("contradictory bounds: min={min}, max={max}")]
+    ContradictoryBounds {
+        min: usize,
+        max: usize,
+    },
+
     #[error("Invalid range in charset: {0}-{1}")]
     InvalidCharsetRange(char, char),
     #[error("Dangling '-' at end of charset")]
