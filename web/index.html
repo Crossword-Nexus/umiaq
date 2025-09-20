@@ -53,7 +53,7 @@
     <button type="submit" id="word-list-button" value="Upload word list">(Optional) Upload word list</button>
 
     <div id="results"></div>
-    <div id="results-meta" style="margin-top:0.5em; font-style:italic; color:#bbb;"></div>
+    <div id="results-meta"></div>
 
     <div id="examples-container"></div>
 
@@ -118,14 +118,18 @@
         document.getElementById("loading").style.display = "none";
         document.getElementById("mainUI").style.display = "block";
       } else if (e.data.type === 'ok') {
-        const rows = e.data.results;
+        const rows = e.data.results['solutions'];
+        const status = e.data.results['status'];
         resultsEl.textContent = rows.map(r => r.join(' • ').toUpperCase()).join('\n') || 'No matches found.';
 
         if (searchStart !== null) {
           const elapsed = ((performance.now() - searchStart) / 1000).toFixed(2);
           const count = rows.length;
-          document.getElementById("results-meta").textContent =
-                  `${count} result${count !== 1 ? 's' : ''} loaded in ${elapsed} seconds.`;
+          let meta = `${count} result${count !== 1 ? 's' : ''} loaded in ${elapsed} seconds.`;
+          if (status === 'timed_out') {
+            meta += "\n⚠️ Solver timed out. Results may be incomplete. ⚠️";
+          }
+          document.getElementById("results-meta").textContent = meta;
         }
 
       } else if (e.data.type === 'err') {

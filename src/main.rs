@@ -3,6 +3,7 @@ use clap::Parser;
 use std::time::Instant;
 
 use umiaq::solver;
+use umiaq::solver::SolveStatus;
 use umiaq::word_list;
 
 // TODO rename "pattern" here
@@ -75,8 +76,12 @@ fn try_main() -> Result<(), Box<dyn std::error::Error>> {
     let solve_secs = t_solve.elapsed().as_secs_f64();
 
     // 3. Print each solution on stdout
-    for solution in &solutions {
+    for solution in &solutions.solutions {
         println!("{}", solver::solution_to_string(solution)?);
+    }
+
+    if let SolveStatus::TimedOut { elapsed } = solutions.status {
+        eprintln!("⚠️  Timed out after {:.1}s; only partial solutions returned", elapsed.as_secs_f64());
     }
 
     // 4. Print diagnostics (word list size, timings, number of results) to stderr
@@ -85,7 +90,7 @@ fn try_main() -> Result<(), Box<dyn std::error::Error>> {
         wl.entries.len(),
         load_secs,
         solve_secs,
-        solutions.len()
+        solutions.solutions.len()
     );
 
     Ok(())

@@ -21,6 +21,12 @@ fn binding_to_word(b: &Bindings) -> Option<String> {
     b.get_word().cloned()
 }
 
+#[derive(serde::Serialize)]
+struct WasmSolveResult {
+    solutions: Vec<Vec<String>>,
+    status: String,
+}
+
 /// JS entry: (input: string, word_list: string[], num_results_requested: number)
 /// returns Array<Array<string>> — only the bound words
 // TODO remove unnecessary type annotations
@@ -36,16 +42,24 @@ pub fn solve_equation_wasm(
     // Borrow as &[&str] for the solver
     let refs: Vec<&str> = words.iter().map(|s| s.as_str()).collect();
 
-    let raw = solve_equation(input, &refs, num_results_requested)
+    let result = solve_equation(input, &refs, num_results_requested)
         .map_err(|e| JsValue::from_str(&format!("solver error: {e}")))?;
 
-    // Keep only the "*" word from each `Bindings`
-    let js_ready: Vec<Vec<String>> = raw
-        .into_iter()
-        .map(|row| row.into_iter().filter_map(|b| binding_to_word(&b)).collect())
-        .collect();
+    let status = match result.status {
+        crate::solver::SolveStatus::Complete => "complete".to_string(),
+        crate::solver::SolveStatus::TimedOut { .. } => "timed_out".to_string(),
+    };
 
-    serde_wasm_bindgen::to_value(&js_ready)
+    let wasm_result = WasmSolveResult {
+        solutions: result
+            .solutions
+            .iter()
+            .map(|row| row.iter().filter_map(binding_to_word).collect())
+            .collect(),
+        status,
+    };
+
+    serde_wasm_bindgen::to_value(&wasm_result)
         .map_err(|e| JsValue::from_str(&format!("serialization failed: {e}")))
 }
 
