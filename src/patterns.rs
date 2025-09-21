@@ -1032,32 +1032,38 @@ mod tests {
     fn test_conflicting_complex_constraints_error() {
         assert!(matches!(
             *"A=(1-5:k*);A=(5-6:a*);A".parse::<EquationContext>().unwrap_err(),
-            ParseError::ConflictingConstraint { var_char, older, newer } if var_char == 'A' && older == "k*" && newer == "a*" )
+            ParseError::ConflictingConstraint { var_char, older, newer } if var_char == 'A' && older == "k*" && newer == "a*")
         );
     }
 
     #[test]
     fn contradictory_bounds_eq_vs_lt() {
         // |A|=5 and |A|<4 are impossible together
-        let mut ctx = EquationContext::default();
-        let err = ctx.set_var_constraints("A;|A|=5;|A|<4").unwrap_err();
-        assert!(err.to_string().contains("contradictory bounds"));
+        let mut equation_context = EquationContext::default();
+        assert!(matches!(
+            *equation_context.set_var_constraints("A;|A|=5;|A|<4").unwrap_err(),
+            ParseError::ContradictoryBounds { min, max } if min == 5 && max == 4 - 1)
+        );
     }
 
     #[test]
     fn contradictory_bounds_gt_vs_le() {
         // |A|>10 and |A|<=6 are impossible together
-        let mut ctx = EquationContext::default();
-        let err = ctx.set_var_constraints("A;|A|>10;|A|<=6").unwrap_err();
-        assert!(err.to_string().contains("contradictory bounds"));
+        let mut equation_context = EquationContext::default();
+        assert!(matches!(
+            *equation_context.set_var_constraints("A;|A|>10;|A|<=6").unwrap_err(),
+            ParseError::ContradictoryBounds { min, max } if min == 10 + 1 && max == 6)
+        );
     }
 
     #[test]
     fn contradictory_bounds_range_vs_exact() {
         // |A|=7 and A=(5–6) are impossible together
-        let mut ctx = EquationContext::default();
-        let err = ctx.set_var_constraints("A;|A|=7;A=(5-6)").unwrap_err();
-        assert!(err.to_string().contains("contradictory bounds"));
+        let mut equation_context = EquationContext::default();
+        assert!(matches!(
+            *equation_context.set_var_constraints("A;|A|=7;A=(5-6)").unwrap_err(),
+            ParseError::ContradictoryBounds { min, max } if min == 7 && max == 6)
+        );
     }
 
 }
