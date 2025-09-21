@@ -103,7 +103,7 @@ impl Bounds {
     }
 
     // only set what the constraint explicitly provides
-    pub(crate) fn constrain_by(&mut self, other: Bounds) -> Result<(), ParseError> {
+    pub(crate) fn constrain_by(&mut self, other: Bounds) -> Result<(), Box<ParseError>> {
         self.min_len = self.min_len.max(other.min_len);
         self.max_len_opt = self.max_len_opt
             .min(other.max_len_opt)
@@ -112,7 +112,7 @@ impl Bounds {
 
         // Check for contradictory bounds
         if let Some(mx) = self.max_len_opt && self.min_len > mx {
-            return Err(ParseError::ContradictoryBounds { min: self.min_len, max: mx });
+            return Err(Box::new(ParseError::ContradictoryBounds { min: self.min_len, max: mx }));
         }
         Ok(())
     }
@@ -161,7 +161,7 @@ impl VarConstraint {
         Ok(parsed_form_raw)
     }
 
-    pub(crate) fn constrain_by(&mut self, other: &VarConstraint) -> Result<(), ParseError> {
+    pub(crate) fn constrain_by(&mut self, other: &VarConstraint) -> Result<(), Box<ParseError>> {
         self.bounds.constrain_by(other.bounds)
     }
 }
@@ -324,7 +324,9 @@ mod tests {
     fn impossible_interval_errs() {
         let mut a = Bounds::of(5, 5);
         let b = Bounds::of(10, 12);
-        let result = a.constrain_by(b);
-        assert!(matches!(result, Err(ParseError::ContradictoryBounds { .. })));
+        assert!(matches!(
+            *a.constrain_by(b).unwrap_err(),
+            ParseError::ContradictoryBounds { min, max } if min == 10 && max == 5
+        ));
     }
 }
