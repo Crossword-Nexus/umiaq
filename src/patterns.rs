@@ -1,6 +1,6 @@
 use crate::comparison_operator::ComparisonOperator;
 use crate::complex_constraints::{get_complex_constraint};
-use crate::constraints::{VarConstraint, VarConstraints};
+use crate::constraints::{Bounds, VarConstraint, VarConstraints};
 use crate::errors::ParseError;
 use crate::parser::{FormPart, ParsedForm};
 use crate::umiaq_char::UmiaqChar;
