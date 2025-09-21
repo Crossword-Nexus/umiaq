@@ -102,14 +102,21 @@ impl Bounds {
         Bounds { min_len, max_len_opt: None }
     }
 
-    // TODO! tests--esp. instances where neither `min_len` is `VarConstraint::DEFAULT_MIN` and where neither `max_len_opt` is `None`
     // only set what the constraint explicitly provides
-    fn constrain_by(&mut self, other: Bounds) {
+    pub(crate) fn constrain_by(&mut self, other: Bounds) -> Result<(), ParseError> {
         self.min_len = self.min_len.max(other.min_len);
         self.max_len_opt = self.max_len_opt
             .min(other.max_len_opt)
             .or(self.max_len_opt) // since None is treated as less than anything
             .or(other.max_len_opt); // since None is treated as less than anything
+
+        // Check for contradictory bounds
+        if let Some(mx) = self.max_len_opt {
+            if self.min_len > mx {
+                return Err(ParseError::ContradictoryBounds { min: self.min_len, max: mx });
+            }
+        }
+        Ok(())
     }
 }
 
@@ -156,8 +163,8 @@ impl VarConstraint {
         Ok(parsed_form_raw)
     }
 
-    pub(crate) fn constrain_by(&mut self, other: &VarConstraint) {
-        self.bounds.constrain_by(other.bounds);
+    pub(crate) fn constrain_by(&mut self, other: &VarConstraint) -> Result<(), ParseError> {
+        self.bounds.constrain_by(other.bounds)
     }
 }
 
@@ -263,5 +270,63 @@ mod tests {
         ];
 
         assert_eq!(expected, lines);
+    }
+
+    // constrain_by tests
+
+    #[test]
+    fn both_finite_overlap() {
+        let mut a = Bounds::of(1, 5);
+        let b = Bounds::of(3, 7);
+        a.constrain_by(b).unwrap();
+        assert_eq!(a, Bounds::of(3, 5));
+    }
+
+    #[test]
+    fn both_finite_nested() {
+        let mut a = Bounds::of(2, 8);
+        let b = Bounds::of(3, 6);
+        a.constrain_by(b).unwrap();
+        assert_eq!(a, Bounds::of(3, 6));
+    }
+
+    #[test]
+    fn left_finite_right_unbounded() {
+        let mut a = Bounds::of(2, 6);
+        let b = Bounds::of_unbounded(4);
+        a.constrain_by(b).unwrap();
+        assert_eq!(a, Bounds::of(4, 6));
+    }
+
+    #[test]
+    fn left_unbounded_right_finite() {
+        let mut a = Bounds::of_unbounded(5);
+        let b = Bounds::of(3, 8);
+        a.constrain_by(b).unwrap();
+        assert_eq!(a, Bounds::of(5, 8));
+    }
+
+    #[test]
+    fn both_unbounded() {
+        let mut a = Bounds::of_unbounded(1);
+        let b = Bounds::of_unbounded(4);
+        a.constrain_by(b).unwrap();
+        assert_eq!(a, Bounds::of_unbounded(4));
+    }
+
+    #[test]
+    fn exact_length_intersection() {
+        let mut a = Bounds::of(5, 5);
+        let b = Bounds::of(3, 7);
+        a.constrain_by(b).unwrap();
+        assert_eq!(a, Bounds::of(5, 5));
+    }
+
+    #[test]
+    fn impossible_interval_errs() {
+        let mut a = Bounds::of(5, 5);
+        let b = Bounds::of(10, 12);
+        let result = a.constrain_by(b);
+        assert!(matches!(result, Err(ParseError::ContradictoryBounds { .. })));
     }
 }
