@@ -140,15 +140,15 @@ fn main() -> std::io::Result<()> {
         for rep in 0..cli.num_repeats {
             // Keep only the *core* operation inside the timed region.
             let t_solve = Instant::now();
-            let solutions = solver::solve_equation(black_box(pattern), &words_ref, NUM_RESULTS)
+            let solve_result = solver::solve_equation(black_box(pattern), &words_ref, NUM_RESULTS)
                 .expect("solver failed");
             let solve_secs = t_solve.elapsed().as_secs_f64();
 
             // Prevent the compiler from proving the result unused and eliding work.
-            let _keep = black_box(solutions.solutions.len());
+            let _keep = black_box(solve_result.solutions.len());
 
             times.push(solve_secs);
-            last_solutions = solutions.solutions;
+            last_solutions = solve_result.solutions;
 
             eprintln!(
                 "  run {:>2}/{:>2}: {:.3}s ({} solutions)",

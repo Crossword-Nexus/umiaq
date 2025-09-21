@@ -72,15 +72,15 @@ fn try_main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 2. Solve the pattern against the word list
     let t_solve = Instant::now();
-    let solutions = solver::solve_equation(&cli.pattern, &words_ref, cli.num_results_requested)?;
+    let solve_result = solver::solve_equation(&cli.pattern, &words_ref, cli.num_results_requested)?;
     let solve_secs = t_solve.elapsed().as_secs_f64();
 
     // 3. Print each solution on stdout
-    for solution in &solutions.solutions {
+    for solution in &solve_result.solutions {
         println!("{}", solver::solution_to_string(solution)?);
     }
 
-    if let SolveStatus::TimedOut { elapsed } = solutions.status {
+    if let SolveStatus::TimedOut { elapsed } = solve_result.status {
         eprintln!("⚠️  Timed out after {:.1}s; only partial solutions returned", elapsed.as_secs_f64());
     }
 
@@ -90,7 +90,7 @@ fn try_main() -> Result<(), Box<dyn std::error::Error>> {
         wl.entries.len(),
         load_secs,
         solve_secs,
-        solutions.solutions.len()
+        solve_result.solutions.len()
     );
 
     Ok(())
