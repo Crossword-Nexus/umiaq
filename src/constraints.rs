@@ -111,10 +111,8 @@ impl Bounds {
             .or(other.max_len_opt); // since None is treated as less than anything
 
         // Check for contradictory bounds
-        if let Some(mx) = self.max_len_opt {
-            if self.min_len > mx {
-                return Err(ParseError::ContradictoryBounds { min: self.min_len, max: mx });
-            }
+        if let Some(mx) = self.max_len_opt && self.min_len > mx {
+            return Err(ParseError::ContradictoryBounds { min: self.min_len, max: mx });
         }
         Ok(())
     }
