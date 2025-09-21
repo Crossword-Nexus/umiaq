@@ -96,6 +96,13 @@ impl std::error::Error for TimeoutError {}
 /// - The sort happens once when we construct the key, not on hash/compare.
 pub type LookupKey = Vec<(char, String)>;
 
+/// Context for a `recursive_join` call
+struct JoinCtx<'a> {
+    num_results_requested: usize,
+    word_set: &'a HashSet<&'a str>,
+    joint_constraints: &'a JointConstraints,
+}
+
 /// All candidates for one pattern ("bucketed" by `LookupKey`).
 /// - `buckets`: groups candidate bindings that share the same values for the
 ///   pattern's `lookup_keys` (variables that must align with previously chosen patterns).
@@ -232,8 +239,6 @@ fn lookup_key_for_binding(
     pairs
 }
 
-
-
 /// Push a binding into the appropriate bucket and bump the count.
 fn push_binding(words: &mut [CandidateBuckets], i: usize, key: LookupKey, binding: Bindings) {
     words[i].buckets.entry(key).or_default().push(binding);
@@ -320,8 +325,6 @@ fn scan_batch(
     Ok(i_word)
 }
 
-
-
 struct RecursiveJoinParameters {
     candidate_buckets: CandidateBuckets,
     lookup_keys: HashSet<char>,
@@ -354,15 +357,13 @@ fn recursive_join(
     selected: &mut Vec<Bindings>,
     env: &mut HashMap<char, String>,
     results: &mut Vec<Vec<Bindings>>,
-    num_results_requested: usize,
-    word_list_as_set: &HashSet<&str>,
-    joint_constraints: JointConstraints,
+    ctx: &JoinCtx,
     seen: &mut HashSet<u64>,
     rjp: &[RecursiveJoinParameters],
     budget: &TimeBudget,
 ) -> Result<(), SolverError> {
     // Stop if we've met the requested quota of full solutions.
-    if results.len() >= num_results_requested {
+    if results.len() >= ctx.num_results_requested {
         return Ok(());
     }
 
@@ -381,7 +382,7 @@ fn recursive_join(
                 ));
             };
 
-            if !word_list_as_set.contains(expected.as_str()) {
+            if !ctx.word_set.contains(expected.as_str()) {
                 // This branch cannot succeed — prune immediately.
                 return Ok(());
             }
@@ -399,7 +400,7 @@ fn recursive_join(
             }
 
             selected.push(binding);
-            recursive_join(selected, env, results, num_results_requested, word_list_as_set, joint_constraints, seen, &rjp[1..], budget)?;
+            recursive_join(selected, env, results, ctx, seen, &rjp[1..])?;
             selected.pop();
             return Ok(()); // IMPORTANT: skip normal enumeration path
         }
@@ -440,7 +441,7 @@ fn recursive_join(
 
             timed_stop!(budget);
 
-            if results.len() >= num_results_requested {
+            if results.len() >= ctx.num_results_requested {
                 break; // stop early if we've already met the quota
             }
 
@@ -467,7 +468,7 @@ fn recursive_join(
 
             // Choose this candidate for pattern `idx` and recurse for `idx + 1`.
             selected.push(cand.clone());
-            recursive_join(selected, env, results, num_results_requested, word_list_as_set, joint_constraints.clone(), seen, &rjp[1..], budget)?;
+            recursive_join(selected, env, results, ctx, seen, &rjp[1..])?;
             selected.pop();
 
             // Backtrack: remove only what we added at this level.
@@ -477,7 +478,8 @@ fn recursive_join(
         }
     } else {
         // Base case: if we've placed all patterns, `selected` is a full solution.
-        if joint_constraints.all_strictly_satisfied_for_parts(selected) && seen.insert(solution_key(selected)) {
+        if ctx.joint_constraints.all_strictly_satisfied_for_parts(selected)
+            && seen.insert(solution_key(selected)) {
             results.push(selected.clone());
         }
     }
@@ -485,8 +487,7 @@ fn recursive_join(
     Ok(())
 }
 
-
-/// Top-level entry point to solve an equation against a word list.
+/// Read in an equation string and return results from the word list
 ///
 /// This orchestrates parsing the input string into an [`EquationContext`],
 /// scanning candidate words in adaptive batches, and recursively joining
@@ -589,13 +590,20 @@ pub fn solve_equation(
                     parsed_form: parsed_form.clone(),
                 }
             }).collect::<Vec<_>>();
+
+        // Set up the context for `recursive_join`
+        let ctx = JoinCtx {
+            num_results_requested,
+            word_set: &word_list_as_set,
+            joint_constraints: &joint_constraints,
+        };
+
+        // Call `recursive_join`
         let rj_result = recursive_join(
             &mut selected,
             &mut env,
             &mut results,
-            num_results_requested,
-            &word_list_as_set,
-            joint_constraints.clone(),
+            &ctx,
             &mut seen,
             &rjp,
             &budget

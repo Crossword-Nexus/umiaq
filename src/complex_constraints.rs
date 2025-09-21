@@ -32,10 +32,10 @@ pub(crate) fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint)
         }));
     }
 
-    let (var, rhs) = form.split_once('=').unwrap();
+    let (var_raw, rhs_raw) = form.split_once('=').unwrap();
 
     // Find the variable (ensuring there is only one)
-    let mut chars = var.chars();
+    let mut chars = var_raw.chars();
     let var_char = chars.next().ok_or_else(|| {
         Box::new(ParseError::InvalidComplexConstraint { str: form.to_string() })
     })?;
@@ -45,7 +45,7 @@ pub(crate) fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint)
     let var = var_char;
 
     // Allow optional surrounding parentheses
-    let rhs = rhs.trim();
+    let rhs = rhs_raw.trim();
     let rhs = rhs
         .strip_prefix('(')
         .and_then(|s| s.strip_suffix(')'))
@@ -83,19 +83,19 @@ pub(crate) fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint)
 ///
 /// Accepted forms:
 /// - `"N"`
-///   A single number. Produces a lower bound of `N` and no upper bound.
-///   Example: `"5"` → `[5, ∞)`.
+///   A single number.
+///   Example: `"5"` → `[5, 5]`.
 ///
 /// - `"N-M"`
-///   An explicit bounded range. Both sides must be integers.
+///   An explicit bounded range from `N` to `M` (inclusive). Both sides must be integers.
 ///   Example: `"4-7"` → `[4, 7]`.
 ///
 /// - `"N-"`
-///   An open-ended range from `N` up to infinity.
+///   An open-ended range starting from `N`.
 ///   Example: `"4-"` → `[4, ∞)`.
 ///
 /// - `"-M"`
-///   A range from the default minimum up to `M`.
+///   A range from the default minimum up to `M` (inclusive).
 ///   Example: `"-7"` → `[DEFAULT_MIN, 7]`.
 ///
 /// Rejected forms:
@@ -158,6 +158,7 @@ mod tests {
     #[test]
     fn test_parse_length_range() {
         assert_eq!(Bounds::of(2, 3), parse_length_range("2-3").unwrap());
+        assert_eq!(Bounds::of(5, 5), parse_length_range("5").unwrap());
         assert_eq!(Bounds::of(VarConstraint::DEFAULT_MIN, 3), parse_length_range("-3").unwrap());
         assert_eq!(Bounds::of_unbounded(1), parse_length_range("1-").unwrap());
         assert_eq!(Bounds::of(7, 7), parse_length_range("7").unwrap());
