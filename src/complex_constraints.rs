@@ -152,6 +152,7 @@ fn parse_length_range(input: &str) -> Result<Bounds, Box<ParseError>> {
 
 #[cfg(test)]
 mod tests {
+    use crate::patterns::EquationContext;
     use super::*;
 
     #[test]
@@ -241,4 +242,50 @@ mod tests {
             ParseError::InvalidLengthRange { input } if input == "4-5a"
         ));
     }
+
+    #[test]
+    fn test_complex_constraint_len_and_form() {
+        // A=(3-5:g@*) → variable A has bounds [3,5], form "g@*"
+        let eq = "A;A=(3-5:g@*)".parse::<EquationContext>().unwrap();
+        let a = eq.var_constraints.get('A').unwrap();
+        assert_eq!(a.bounds, Bounds::of(3, 5));
+        assert_eq!(a.form.as_deref(), Some("g@*"));
+    }
+
+    #[test]
+    fn test_complex_constraint_form_only() {
+        // A=(r*) → variable A has unbounded length (default min), form "r*"
+        let eq = "A;A=(r*)".parse::<EquationContext>().unwrap();
+        let a = eq.var_constraints.get('A').unwrap();
+        assert_eq!(a.bounds, Bounds::of_unbounded(VarConstraint::DEFAULT_MIN));
+        assert_eq!(a.form.as_deref(), Some("r*"));
+    }
+
+    #[test]
+    fn test_complex_constraint_len_only() {
+        // A=(6) → variable A has exact length 6, no form
+        let eq = "A;A=(6)".parse::<EquationContext>().unwrap();
+        let a = eq.var_constraints.get('A').unwrap();
+        assert_eq!(a.bounds, Bounds::of(6, 6));
+        assert_eq!(a.form, None);
+    }
+
+    #[test]
+    fn test_complex_constraint_open_start() {
+        // A=(-4:x*) → variable A has bounds [DEFAULT_MIN,4], form "x*"
+        let eq = "A;A=(-4:x*)".parse::<EquationContext>().unwrap();
+        let a = eq.var_constraints.get('A').unwrap();
+        assert_eq!(a.bounds, Bounds::of(VarConstraint::DEFAULT_MIN, 4));
+        assert_eq!(a.form.as_deref(), Some("x*"));
+    }
+
+    #[test]
+    fn test_complex_constraint_open_end() {
+        // A=(2-:z*) → variable A has bounds [2,∞), form "z*"
+        let eq = "A;A=(2-:z*)".parse::<EquationContext>().unwrap();
+        let a = eq.var_constraints.get('A').unwrap();
+        assert_eq!(a.bounds, Bounds::of_unbounded(2));
+        assert_eq!(a.form.as_deref(), Some("z*"));
+    }
+
 }
