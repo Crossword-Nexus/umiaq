@@ -183,7 +183,7 @@ impl HelperParams<'_> {
     ///   the state on backtracking.
     fn try_bind_var(
         &mut self,
-        var_name: &char,
+        var_name: char,
         chars: &[char],
         rest: &[FormPart],
         first: &FormPart,
@@ -191,11 +191,11 @@ impl HelperParams<'_> {
         // Compute min and max candidate lengths from constraints and availability.
         let min_len = self
             .constraints
-            .get(*var_name)
+            .get(var_name)
             .map_or(VarConstraint::DEFAULT_MIN, |vc| vc.bounds.min_len);
         let max_len_cfg = self
             .constraints
-            .get(*var_name)
+            .get(var_name)
             .and_then(|vc| vc.bounds.max_len_opt)
             .unwrap_or(chars.len());
 
@@ -223,7 +223,7 @@ impl HelperParams<'_> {
                 // Note: we panic here if something goes wrong (because it really shouldn't)
                 let valid = self
                     .constraints
-                    .get(*var_name)
+                    .get(var_name)
                     .is_none_or(|c| is_valid_binding(&var_val, c, self.bindings).unwrap());
 
                 if !valid {
@@ -231,7 +231,7 @@ impl HelperParams<'_> {
                 }
 
                 // Tentatively record the binding.
-                self.bindings.set(*var_name, var_val);
+                self.bindings.set(var_name, var_val);
 
                 // Recurse on the remaining characters.
                 // If `all_matches` is false, stop once we’ve found one match.
@@ -239,7 +239,7 @@ impl HelperParams<'_> {
 
                 if !retval {
                     // Backtrack (remove the binding) only if we’re continuing the search.
-                    self.bindings.remove(*var_name);
+                    self.bindings.remove(var_name);
                 }
 
                 retval
@@ -301,7 +301,7 @@ impl HelperParams<'_> {
                         .is_some_and(|rest_chars| self.recurse(rest_chars, rest))
                 } else {
                     // Not bound yet: try binding to all possible lengths
-                    self.try_bind_var(var_name, chars, rest, first)
+                    self.try_bind_var(*var_name, chars, rest, first)
                 }
             }
         }
