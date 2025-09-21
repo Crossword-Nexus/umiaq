@@ -330,19 +330,57 @@ impl EquationContext {
             match form.parse::<FormKind>()? {
                 // --- Length constraint on a single variable (e.g., |A|=5, |B|>3) ---
                 FormKind::LenConstraint { var_char, op, bound } => {
+                    // Ensure a VarConstraint object exists for this variable.
+                    // We'll tighten its bounds according to the operator.
                     let vc = self.var_constraints.ensure(var_char);
+
                     match op {
-                        ComparisonOperator::EQ => vc.set_exact_len(bound),
-                        ComparisonOperator::NE => return Err(Box::new(ParseError::ParseFailure { s: "not-equals length constraints are not supported".to_string() })), // should never occur, since LenConstraint should never have op == NE (LEN_RE doesn't allow it)
-                        ComparisonOperator::LE => vc.bounds.max_len_opt = Some(bound),
-                        ComparisonOperator::GE => vc.bounds.min_len = bound,
-                        ComparisonOperator::LT => vc.bounds.max_len_opt = bound.checked_sub(1),
-                        ComparisonOperator::GT => {
-                            vc.bounds.min_len = bound.checked_add(1).ok_or_else(|| {
-                                Box::new(ParseError::InvalidInput {
+                        // Exact length: interval [bound, bound].
+                        ComparisonOperator::EQ => {
+                            vc.bounds.constrain_by(Bounds::of(bound, bound))?;
+                        }
+
+                        // Not-equals length constraints are disallowed by grammar,
+                        // but we defend here just in case.
+                        ComparisonOperator::NE => {
+                            return Err(Box::new(ParseError::ParseFailure {
+                                s: "not-equals length constraints are not supported".to_string(),
+                            }));
+                        }
+
+                        // ≤ bound: interval [1, bound].
+                        // Tighten existing bounds accordingly.
+                        ComparisonOperator::LE => {
+                            vc.bounds.constrain_by(Bounds::of(1, bound))?;
+                        }
+
+                        // ≥ bound: interval [bound, ∞).
+                        ComparisonOperator::GE => {
+                            vc.bounds.constrain_by(Bounds::of_unbounded(bound))?;
+                        }
+
+                        // < bound: interval [1, bound - 1].
+                        // Use checked_sub to avoid underflow on bound=0.
+                        ComparisonOperator::LT => {
+                            if let Some(max) = bound.checked_sub(1) {
+                                vc.bounds.constrain_by(Bounds::of(1, max))?;
+                            } else {
+                                return Err(Box::new(ParseError::InvalidInput {
                                     str: (*form).to_string(),
-                                })
-                            })?;
+                                }));
+                            }
+                        }
+
+                        // > bound: interval [bound + 1, ∞).
+                        // Use checked_add to avoid overflow on usize::MAX.
+                        ComparisonOperator::GT => {
+                            if let Some(min) = bound.checked_add(1) {
+                                vc.bounds.constrain_by(Bounds::of_unbounded(min))?;
+                            } else {
+                                return Err(Box::new(ParseError::InvalidInput {
+                                    str: (*form).to_string(),
+                                }));
+                            }
                         }
                     }
                 }
@@ -359,7 +397,7 @@ impl EquationContext {
                 // --- Complex constraint: bounds + embedded pattern ---
                 FormKind::ComplexConstraint { var_char, vc: cc_vc} => {
                     let vc = self.var_constraints.ensure(var_char);
-                    vc.constrain_by(&cc_vc);
+                    vc.constrain_by(&cc_vc)?;
 
                     // If the complex constraint carries a subform, ensure consistency
                     // with any prior form assigned to this variable.
@@ -900,4 +938,29 @@ mod tests {
             ParseError::ConflictingConstraint { var_char, older, newer } if var_char == 'A' && older == "k*" && newer == "a*" )
         );
     }
+
+    #[test]
+    fn contradictory_bounds_eq_vs_lt() {
+        // |A|=5 and |A|<4 are impossible together
+        let mut ctx = EquationContext::default();
+        let err = ctx.set_var_constraints("A;|A|=5;|A|<4").unwrap_err();
+        assert!(err.to_string().contains("contradictory bounds"));
+    }
+
+    #[test]
+    fn contradictory_bounds_gt_vs_le() {
+        // |A|>10 and |A|<=6 are impossible together
+        let mut ctx = EquationContext::default();
+        let err = ctx.set_var_constraints("A;|A|>10;|A|<=6").unwrap_err();
+        assert!(err.to_string().contains("contradictory bounds"));
+    }
+
+    #[test]
+    fn contradictory_bounds_range_vs_exact() {
+        // |A|=7 and A=(5–6) are impossible together
+        let mut ctx = EquationContext::default();
+        let err = ctx.set_var_constraints("A;|A|=7;A=(5-6)").unwrap_err();
+        assert!(err.to_string().contains("contradictory bounds"));
+    }
+
 }
