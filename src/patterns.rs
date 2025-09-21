@@ -1,4 +1,5 @@
 use crate::comparison_operator::ComparisonOperator;
+use crate::complex_constraints::{get_complex_constraint};
 use crate::constraints::{Bounds, VarConstraint, VarConstraints};
 use crate::errors::ParseError;
 use crate::parser::{FormPart, ParsedForm};
@@ -612,56 +613,6 @@ impl FromStr for EquationContext {
     }
 }
 
-// TODO? do this via regex?
-// TODO? Result vs. Option
-// e.g., A=(3-:x*)
-fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint), Box<ParseError>> {
-    if let Some((var_str, constraint_str)) = form.split_once('=') {
-        if var_str.len() == 1 {
-            if constraint_str.contains('=') {
-                return Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("expected 1 equals sign (not {})", form.chars().filter(|c| *c == '=').count()) }));
-            }
-
-            let var_char = var_str.chars().next().unwrap();
-
-            // remove outer parentheses if they are there
-            let inner_constraint_str = if constraint_str.starts_with('(') && constraint_str.ends_with(')') {
-                let mut chars = constraint_str.chars();
-                chars.next();
-                chars.next_back();
-                chars.as_str()
-            } else {
-                constraint_str
-            };
-
-            let (len_range, literal_constraint_str) = if let Some((len_range_raw, literal_constraint_str)) = inner_constraint_str.split_once(':') {
-                if literal_constraint_str.contains(':') { // too many colons
-                    return Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("too many colons--0 or 1 expected (not {})", inner_constraint_str.chars().filter(|c| *c == ':').count()) }));
-                }
-                let len_range = parse_length_range(len_range_raw)?;
-                (len_range, Some(literal_constraint_str))
-            } else {
-                match parse_length_range(inner_constraint_str) {
-                    Ok(len_range) => (len_range, None),
-                    Err(_) => (Bounds::default(), Some(inner_constraint_str))
-                }
-            };
-
-            let vc = VarConstraint {
-                bounds: len_range,
-                form: literal_constraint_str.map(ToString::to_string),
-                not_equal: HashSet::default(),
-                ..Default::default()
-            };
-
-            Ok((var_char, vc))
-        } else {
-            Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("expected 1 character (as the variable) to the left of \"=\" (not {})", var_str.len()) }))
-        }
-    } else {
-        Err(Box::new(ParseError::InvalidComplexConstraint { str: format!("expected 1 equals sign (not {})", form.chars().filter(|c| *c == '=').count()) }))
-    }
-}
 
 /// Enable `for pattern in &equation_context { ... }`.
 ///
@@ -680,23 +631,10 @@ impl<'a> IntoIterator for &'a EquationContext {
     }
 }
 
-/// Parses a string like "3-5", "-5", "3-", or "3" into min and max length values.
-/// Returns `((min, max_opt))`.
-fn parse_length_range(input: &str) -> Result<Bounds, Box<ParseError>> {
-    let parts: Vec<_> = input.split('-').map(|part| part.parse::<usize>().ok()).collect();
-    if parts.is_empty() || (parts.len() == 1 && parts[0].is_none()) || parts.len() > 2 {
-        return Err(Box::new(ParseError::InvalidLengthRange { input: input.to_string() }))
-    }
-    // TODO!!! is there a better way to do this?
-    let min = parts.first().unwrap().unwrap_or(VarConstraint::DEFAULT_MIN);
-    let max = *parts.last().unwrap();
-    Ok(max.map_or(Bounds::of_unbounded(min), |u| Bounds::of(min, u)))
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::constraints::VarConstraint;
     use super::*;
+    use crate::constraints::Bounds;
 
     #[test]
     fn test_basic_pattern_and_constraints() {
@@ -814,15 +752,7 @@ mod tests {
     }
 
 
-    #[test]
-    fn test_parse_length_range() {
-        assert_eq!(Bounds::of(2, 3), parse_length_range("2-3").unwrap());
-        assert_eq!(Bounds::of(VarConstraint::DEFAULT_MIN, 3), parse_length_range("-3").unwrap());
-        assert_eq!(Bounds::of_unbounded(1), parse_length_range("1-").unwrap());
-        assert_eq!(Bounds::of(7, 7), parse_length_range("7").unwrap());
-        assert!(matches!(*parse_length_range("").unwrap_err(), ParseError::InvalidLengthRange { input } if input.is_empty() ));
-        assert!(matches!(*parse_length_range("1-2-3").unwrap_err(), ParseError::InvalidLengthRange { input } if input == "1-2-3" ));
-    }
+
 
     #[test]
     fn test_len_gt() {
@@ -915,33 +845,6 @@ mod tests {
     }
 
     #[test]
-    /// Ensure parse_length_range rejects malformed or nonsensical inputs—dashes pair.
-    fn test_parse_length_range_invalid_cases_dashes_pair() {
-        assert!(matches!(
-            *parse_length_range("--").unwrap_err(),
-            ParseError::InvalidLengthRange{ input } if input == "--"
-        ));
-    }
-
-    #[test]
-    /// Ensure parse_length_range rejects malformed or nonsensical inputs—just letters.
-    fn test_parse_length_range_invalid_cases_just_letters() {
-        assert!(matches!(
-            *parse_length_range("abc").unwrap_err(),
-            ParseError::InvalidLengthRange { input } if input == "abc"
-        ));
-    }
-
-    #[test]
-    /// Ensure parse_length_range rejects malformed or nonsensical inputs—1-2-3-.
-    fn test_parse_length_range_invalid_cases_1_2_3() {
-        assert!(matches!(
-            *parse_length_range("1-2-3").unwrap_err(),
-            ParseError::InvalidLengthRange { input } if input == "1-2-3"
-        ));
-    }
-
-    #[test]
     /// Ensure get_complex_constraint returns errors for malformed inputs—no '='.
     fn test_get_complex_constraint_invalid_cases_no_equals() {
         assert!(matches!(
@@ -964,7 +867,7 @@ mod tests {
     fn test_get_complex_constraint_invalid_cases_lhs_too_long() {
         assert!(matches!(
             *get_complex_constraint("AB=3").unwrap_err(),
-            ParseError::InvalidComplexConstraint { str } if str == "expected 1 character (as the variable) to the left of \"=\" (not 2)"
+            ParseError::InvalidComplexConstraint { str } if str == "AB=3"
         ));
     }
 
