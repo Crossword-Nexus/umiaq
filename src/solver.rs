@@ -101,6 +101,7 @@ struct JoinCtx<'a> {
     num_results_requested: usize,
     word_set: &'a HashSet<&'a str>,
     joint_constraints: &'a JointConstraints,
+    budget: &'a TimeBudget,
 }
 
 /// All candidates for one pattern ("bucketed" by `LookupKey`).
@@ -360,14 +361,13 @@ fn recursive_join(
     ctx: &JoinCtx,
     seen: &mut HashSet<u64>,
     rjp: &[RecursiveJoinParameters],
-    budget: &TimeBudget,
 ) -> Result<(), SolverError> {
     // Stop if we've met the requested quota of full solutions.
     if results.len() >= ctx.num_results_requested {
         return Ok(());
     }
 
-    timed_stop!(budget);
+    timed_stop!(ctx.budget);
 
     if let Some(rjp_cur) = rjp.first() {
         // ---- FAST PATH: deterministic + fully keyed ----------------------------
@@ -417,7 +417,7 @@ fn recursive_join(
             // so the final key is stable/deterministic.
             let mut pairs: Vec<(char, String)> = Vec::with_capacity(rjp_cur.lookup_keys.len());
             for &var_char in &rjp_cur.lookup_keys {
-                timed_stop!(budget);
+                timed_stop!(ctx.budget);
                 if let Some(var_val) = env.get(&var_char) {
                     pairs.push((var_char, var_val.clone()));
                 } else {
@@ -439,7 +439,7 @@ fn recursive_join(
         // Try each candidate binding for this pattern.
         for cand in bucket_candidates {
 
-            timed_stop!(budget);
+            timed_stop!(ctx.budget);
 
             if results.len() >= ctx.num_results_requested {
                 break; // stop early if we've already met the quota
@@ -596,6 +596,7 @@ pub fn solve_equation(
             num_results_requested,
             word_set: &word_list_as_set,
             joint_constraints: &joint_constraints,
+            budget: &budget,
         };
 
         // Call `recursive_join`
@@ -606,7 +607,6 @@ pub fn solve_equation(
             &ctx,
             &mut seen,
             &rjp,
-            &budget
         );
         rj_result?;
 
