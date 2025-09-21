@@ -32,7 +32,6 @@ struct JoinCtx<'a> {
     joint_constraints: &'a JointConstraints,
 }
 
-
 /// All candidates for one pattern ("bucketed" by `LookupKey`).
 /// - `buckets`: groups candidate bindings that share the same values for the
 ///   pattern's `lookup_keys` (variables that must align with previously chosen patterns).
@@ -125,7 +124,6 @@ impl TimeBudget {
     // fn remaining(&self) -> Duration {self.limit.saturating_sub(self.start.elapsed())}
 }
 
-
 /// Build the deterministic lookup key for a binding given the pattern's lookup vars.
 /// Returns:
 ///   - None: pattern has no lookup constraints (unkeyed bucket)
@@ -149,7 +147,6 @@ fn lookup_key_for_binding(
 
     pairs
 }
-
 
 /// Push a binding into the appropriate bucket and bump the count.
 fn push_binding(words: &mut [CandidateBuckets], i: usize, key: LookupKey, binding: Bindings) {
@@ -215,8 +212,6 @@ fn scan_batch(
 
     (i_word, false)
 }
-
-
 
 struct RecursiveJoinParameters {
     candidate_buckets: CandidateBuckets,
@@ -363,7 +358,6 @@ fn recursive_join(
 
     Ok(())
 }
-
 
 /// Read in an equation string and return results from the word list
 ///
