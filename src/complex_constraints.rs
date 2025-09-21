@@ -7,7 +7,7 @@ use crate::errors::ParseError;
 /// The right-hand side may be optionally wrapped in parentheses. Inside:
 ///
 /// - **With a colon** (`len_range:literal`):
-///   - The part before the colon must be a valid length range (e.g. `5-7` or `3`).
+///   - The part before the colon must be a valid length range (e.g., `5-7` or `3`).
 ///   - The part after the colon is treated as a literal constraint string.
 ///   - Exactly one colon is allowed; more than one yields `InvalidComplexConstraint`.
 ///
@@ -20,7 +20,7 @@ use crate::errors::ParseError;
 /// parsed `Bounds` and optional literal form string.
 ///
 /// Errors:
-/// - `InvalidComplexConstraint` if the input is malformed (e.g. no `=`, no variable,
+/// - `InvalidComplexConstraint` if the input is malformed (e.g., no `=`, no variable,
 ///   too many colons, or an unparsable length range when one was expected).
 pub(crate) fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint), Box<ParseError>> {
 
@@ -99,8 +99,8 @@ pub(crate) fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint)
 ///   Example: `"-7"` → `[DEFAULT_MIN, 7]`.
 ///
 /// Rejected forms:
-/// - Non-numeric tokens (e.g. `"4-5a"`, `"foo"`, `"foo-7"`).
-/// - More than one dash (e.g. `"4-5-6"`).
+/// - Non-numeric tokens (e.g., `"4-5a"`, `"foo"`, `"foo-7"`).
+/// - More than one dash (e.g., `"4-5-6"`).
 /// - Empty string.
 ///
 /// Errors return `ParseError::InvalidLengthRange` with the original input.
@@ -115,7 +115,7 @@ fn parse_length_range(input: &str) -> Result<Bounds, Box<ParseError>> {
     }
 
     match raw_parts.as_slice() {
-        // Case: single number, e.g. "5"
+        // Case: single number, e.g., "5"
         [single] => {
             let n = single.parse::<usize>().map_err(|_| {
                 Box::new(ParseError::InvalidLengthRange { input: input.to_string() })
@@ -123,7 +123,7 @@ fn parse_length_range(input: &str) -> Result<Bounds, Box<ParseError>> {
             Ok(Bounds::of(n, n))
         }
 
-        // Case: two pieces, e.g. "lhs-rhs"
+        // Case: two pieces, e.g., "lhs-rhs"
         [lhs, rhs] => {
             // LHS: either a number or empty (default min).
             let min = if lhs.is_empty() {
