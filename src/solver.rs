@@ -73,21 +73,6 @@ pub enum SolverError {
     MaterializationError(#[from] MaterializationError),
 }
 
-/// Simple `TimeoutError` struct
-#[derive(Debug)]
-pub struct TimeoutError {
-    pub elapsed: Duration,
-}
-
-impl std::fmt::Display for TimeoutError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "solver timed out after {:.3}s", self.elapsed.as_secs_f64())
-    }
-}
-
-impl std::error::Error for TimeoutError {}
-
-
 /// Bucket key for indexing candidates by the subset of variables that must agree.
 /// - `None` means "no lookup constraints for this pattern" (Python's `words[i][None]`).
 /// - When present, we store a *sorted* `(var_char, var_val)` list so the key is deterministic
@@ -193,6 +178,14 @@ impl TimeBudget {
     /// Returns true if the allowed time has fully elapsed.
     fn expired(&self) -> bool {
         self.start.elapsed() >= self.limit
+    }
+
+    pub fn check(&self) -> Result<(), SolverError> {
+        if self.expired() {
+            Err(SolverError::Timeout(TimeoutError { elapsed: self.elapsed() }))
+        } else {
+            Ok(())
+        }
     }
 
     // Returns the remaining time before expiration, or zero if the budget is already used up.
@@ -309,6 +302,7 @@ fn scan_batch(
 
             for binding in matches {
                 timed_stop!(budget, i_word);
+              
                 let key = lookup_key_for_binding(&binding, p.lookup_keys.clone());
 
                 // If a required key is missing, skip
@@ -400,7 +394,7 @@ fn recursive_join(
             }
 
             selected.push(binding);
-            recursive_join(selected, env, results, ctx, seen, &rjp[1..])?;
+            recursive_join(selected, env, results, ctx, seen, &rjp[1..], budget)?;
             selected.pop();
             return Ok(()); // IMPORTANT: skip normal enumeration path
         }
@@ -468,7 +462,7 @@ fn recursive_join(
 
             // Choose this candidate for pattern `idx` and recurse for `idx + 1`.
             selected.push(cand.clone());
-            recursive_join(selected, env, results, ctx, seen, &rjp[1..])?;
+            recursive_join(selected, env, results, ctx, seen, &rjp[1..], budget)?;
             selected.pop();
 
             // Backtrack: remove only what we added at this level.
