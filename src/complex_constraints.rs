@@ -32,10 +32,10 @@ pub(crate) fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint)
         }));
     }
 
-    let (var, rhs) = form.split_once('=').unwrap();
+    let (var_raw, rhs_raw) = form.split_once('=').unwrap();
 
     // Find the variable (ensuring there is only one)
-    let mut chars = var.chars();
+    let mut chars = var_raw.chars();
     let var_char = chars.next().ok_or_else(|| {
         Box::new(ParseError::InvalidComplexConstraint { str: form.to_string() })
     })?;
@@ -45,7 +45,7 @@ pub(crate) fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint)
     let var = var_char;
 
     // Allow optional surrounding parentheses
-    let rhs = rhs.trim();
+    let rhs = rhs_raw.trim();
     let rhs = rhs
         .strip_prefix('(')
         .and_then(|s| s.strip_suffix(')'))
