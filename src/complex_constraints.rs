@@ -83,20 +83,20 @@ pub(crate) fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint)
 ///
 /// Accepted forms:
 /// - `"N"`
-///     A single number. Produces a lower bound of `N` and no upper bound.
-///     Example: `"5"` → `[5, ∞)`.
+///   A single number. Produces a lower bound of `N` and no upper bound.
+///   Example: `"5"` → `[5, ∞)`.
 ///
 /// - `"N-M"`
-///     An explicit bounded range. Both sides must be integers.
-///     Example: `"4-7"` → `[4, 7]`.
+///   An explicit bounded range. Both sides must be integers.
+///   Example: `"4-7"` → `[4, 7]`.
 ///
 /// - `"N-"`
-///     An open-ended range from `N` up to infinity.
-///     Example: `"4-"` → `[4, ∞)`.
+///   An open-ended range from `N` up to infinity.
+///   Example: `"4-"` → `[4, ∞)`.
 ///
 /// - `"-M"`
-///     A range from the default minimum up to `M`.
-///     Example: `"-7"` → `[DEFAULT_MIN, 7]`.
+///   A range from the default minimum up to `M`.
+///   Example: `"-7"` → `[DEFAULT_MIN, 7]`.
 ///
 /// Rejected forms:
 /// - Non-numeric tokens (e.g. `"4-5a"`, `"foo"`, `"foo-7"`).
