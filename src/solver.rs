@@ -180,14 +180,6 @@ impl TimeBudget {
         self.start.elapsed() >= self.limit
     }
 
-    pub fn check(&self) -> Result<(), SolverError> {
-        if self.expired() {
-            Err(SolverError::Timeout(TimeoutError { elapsed: self.elapsed() }))
-        } else {
-            Ok(())
-        }
-    }
-
     // Returns the remaining time before expiration, or zero if the budget is already used up.
     // Unused for now but it may be useful later
     // fn remaining(&self) -> Duration {self.limit.saturating_sub(self.start.elapsed())}
@@ -394,7 +386,7 @@ fn recursive_join(
             }
 
             selected.push(binding);
-            recursive_join(selected, env, results, ctx, seen, &rjp[1..], budget)?;
+            recursive_join(selected, env, results, ctx, seen, &rjp[1..])?;
             selected.pop();
             return Ok(()); // IMPORTANT: skip normal enumeration path
         }
@@ -462,7 +454,7 @@ fn recursive_join(
 
             // Choose this candidate for pattern `idx` and recurse for `idx + 1`.
             selected.push(cand.clone());
-            recursive_join(selected, env, results, ctx, seen, &rjp[1..], budget)?;
+            recursive_join(selected, env, results, ctx, seen, &rjp[1..])?;
             selected.pop();
 
             // Backtrack: remove only what we added at this level.
