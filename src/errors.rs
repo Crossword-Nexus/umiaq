@@ -62,10 +62,6 @@ impl From<Box<fancy_regex::Error>> for Box<ParseError> {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
-#[error("Deterministic materialization failed")]
-pub struct MaterializationError();
-
 impl<'a> NomParseError<&'a str> for Box<ParseError> {
     fn from_error_kind(_input: &'a str, kind: ErrorKind) -> Self {
         Box::new(ParseError::NomError(kind))
