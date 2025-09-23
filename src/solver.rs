@@ -779,16 +779,4 @@ mod tests {
             panic!("{:?}", solver_error)
         }
     }
-
-    // #[test]
-    // fn test_materialization_error() {
-    //     let words = vec!["a", "b"];
-    //     // Form forces an impossible variable overlap // TODO what does this mean?
-    //     let solver_error = solve_equation("AB;A;B;???", &words, 10).unwrap_err();
-    //     if let SolverError::ParseFailure(bpe) = solver_error {
-    //         assert!(matches!(*bpe, ParseError::InvalidInput { str } if str == "???" ))
-    //     } else {
-    //         panic!("{:?}", solver_error)
-    //     }
-    // }
 }
