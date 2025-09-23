@@ -24,6 +24,7 @@ pub enum SolveStatus {
     Complete,
     /// Solver stopped because the time budget expired. Contains the elapsed time.
     TimedOut { elapsed: Duration },
+    // TODO: distinguish between word list exhausted and requested number found
 }
 
 /// Successful solver run (even if it stopped early).
@@ -208,6 +209,7 @@ macro_rules! timed_stop {
 /// - If `keys` is empty, returns an empty `LookupKey` (unkeyed bucket).
 /// - If any required key is missing in the binding, also returns an empty `LookupKey`;
 ///   callers must check `keys.is_empty()` to distinguish this case.
+/// TODO: perhaps avoid pushing this responsibility on callers (via an enum return type?)
 /// - Otherwise, returns the full normalized key.
 fn lookup_key_for_binding(
     binding: &Bindings,
@@ -364,7 +366,7 @@ fn recursive_join(
                 .materialize_deterministic_with_env(env)
             else {
                 return Err(SolverError::MaterializationError(
-                    MaterializationError("deterministic materialization failed".to_string()),
+                    MaterializationError(),
                 ));
             };
 
