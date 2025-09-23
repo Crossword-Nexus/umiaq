@@ -1,8 +1,7 @@
 use crate::errors::ParseError::ParseFailure;
 use nom::error::{ErrorKind, ParseError as NomParseError};
-use std::fmt::Formatter;
 use std::num::ParseIntError;
-use std::{fmt, io};
+use std::io;
 
 
 /// Custom error type for parsing operations
@@ -63,14 +62,9 @@ impl From<Box<fancy_regex::Error>> for Box<ParseError> {
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct MaterializationError;
-
-impl fmt::Display for MaterializationError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "unexpected inability to materialize in bucket joining") // TODO word better (and is this even always correct?)
-    }
-}
+#[derive(Debug, thiserror::Error)]
+#[error("Deterministic materialization failed")]
+pub struct MaterializationError();
 
 impl<'a> NomParseError<&'a str> for Box<ParseError> {
     fn from_error_kind(_input: &'a str, kind: ErrorKind) -> Self {

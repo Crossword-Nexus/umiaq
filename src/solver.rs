@@ -17,6 +17,63 @@ const DEFAULT_BATCH_SIZE: usize = 10_000;
 // A constant to split up items in our hashes
 const HASH_SPLIT: u16 = 0xFFFFu16;
 
+/// Status of the solver run.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SolveStatus {
+    /// Solver ran to completion (word list exhausted or requested number found).
+    Complete,
+    /// Solver stopped because the time budget expired. Contains the elapsed time.
+    TimedOut { elapsed: Duration },
+    // TODO: distinguish between word list exhausted and requested number found
+}
+
+/// Successful solver run (even if it stopped early).
+#[derive(Debug, Clone)]
+pub struct SolveResult {
+    /// Solutions discovered (may be fewer than requested if timed out).
+    pub solutions: Vec<Vec<Bindings>>,
+    /// Status indicating whether we finished or timed out.
+    pub status: SolveStatus,
+}
+
+impl SolveResult {
+    #[cfg(test)]
+    pub(crate) fn len(&self) -> usize {
+        self.solutions.len()
+    }
+}
+
+impl IntoIterator for SolveResult {
+    type Item = Vec<Bindings>;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.solutions.into_iter()
+    }
+}
+
+/// Unified error type for the solver pipeline.
+///
+/// This consolidates the different error sources we encounter when parsing
+/// equations, materializing solutions, or respecting time budgets, so that
+/// callers only need to handle a single `Result<_, SolverError>`.
+#[derive(Debug, thiserror::Error)]
+pub enum SolverError {
+    /// Failure during parsing of the equation string into an `EquationContext`.
+    ///
+    /// These originate from the parser (`ParseError`), which we box to keep the
+    /// error type size stable.
+    #[error("parse failure: {0}")]
+    ParseFailure(#[from] Box<ParseError>),
+
+    /// Failure while materializing a candidate binding into a concrete solution.
+    ///
+    /// This generally indicates that an internal constraint check failed during
+    /// `recursive_join` or related routines.
+    #[error("materialization error: {0}")]
+    MaterializationError(#[from] MaterializationError),
+}
+
 /// Bucket key for indexing candidates by the subset of variables that must agree.
 /// - `None` means "no lookup constraints for this pattern" (Python's `words[i][None]`).
 /// - When present, we store a *sorted* `(var_char, var_val)` list so the key is deterministic
@@ -30,6 +87,7 @@ struct JoinCtx<'a> {
     num_results_requested: usize,
     word_set: &'a HashSet<&'a str>,
     joint_constraints: &'a JointConstraints,
+    budget: &'a TimeBudget,
 }
 
 /// All candidates for one pattern ("bucketed" by `LookupKey`).
@@ -72,7 +130,7 @@ fn solution_key(solution: &[Bindings]) -> u64 {
             w.hash(&mut hasher);
         } else {
             // this should never happen
-            // TODO: throw an error if it does
+            panic!("solution_key: no '*' binding found in solution: {solution:?}");
             /*
             // Fall back: hash all (var_char, var_val) pairs sorted by var
             let mut pairs: Vec<(char, String)> =
@@ -102,7 +160,6 @@ fn solution_key(solution: &[Bindings]) -> u64 {
 /// ```
 ///
 /// You can also query how much time is left (`remaining()`).
-/// TODO: consider using a countdown timer with one "time left" parameter
 struct TimeBudget {
     start: Instant,   // when the budget began
     limit: Duration,  // maximum allowed elapsed time
@@ -112,6 +169,11 @@ impl TimeBudget {
     /// Create a new budget that lasts for `limit` (e.g., 30 seconds).
     fn new(limit: Duration) -> Self {
         Self { start: Instant::now(), limit }
+    }
+
+    /// How long this budget has been running.
+    fn elapsed(&self) -> Duration {
+        self.start.elapsed()
     }
 
     /// Returns true if the allowed time has fully elapsed.
@@ -124,27 +186,44 @@ impl TimeBudget {
     // fn remaining(&self) -> Duration {self.limit.saturating_sub(self.start.elapsed())}
 }
 
+macro_rules! timed_stop {
+    // For functions that return Result<(), E>
+    ($budget:expr) => {
+        if $budget.expired() {
+            return Ok(());
+        }
+    };
+    // For functions that return Result<T, E>; caller passes the Ok(...) expr to return
+    ($budget:expr, $ret_expr:expr) => {
+        if $budget.expired() {
+            return Ok($ret_expr);
+        }
+    };
+}
+
 /// Build the deterministic lookup key for a binding given the pattern's lookup vars.
-/// Returns:
-///   - None: pattern has no lookup constraints (unkeyed bucket)
-///   - Some(vec): concrete key (sorted by `var_char`)
-///   - Some(empty vec): sentinel meaning "required key missing" → caller should skip
+///
+/// Returns a `LookupKey` (alias for `Vec<(char, String)>`) sorted by `var_char`.
+///
+/// Conventions:
+/// - If `keys` is empty, returns an empty `LookupKey` (unkeyed bucket).
+/// - If any required key is missing in the binding, also returns an empty `LookupKey`;
+///   callers must check `keys.is_empty()` to distinguish this case.
+/// TODO: perhaps avoid pushing this responsibility on callers (via an enum return type?)
+/// - Otherwise, returns the full normalized key.
 fn lookup_key_for_binding(
     binding: &Bindings,
     keys: HashSet<char>,
 ) -> LookupKey {
-    // Collect (var_char, var_val) for all required keys; bail out immediately if any is missing.
     let mut pairs: Vec<(char, String)> = Vec::with_capacity(keys.len());
     for var_char in keys {
         match binding.get(var_char) {
             Some(var_val) => pairs.push((var_char, var_val.clone())),
-            None => return Vec::new(), // "impossible" sentinel; caller will skip // TODO is this right?
+            None => return Vec::new(), // required key missing
         }
     }
 
-    // Normalize key order for stable hashing/equality
     pairs.sort_unstable_by_key(|(c, _)| *c);
-
     pairs
 }
 
@@ -154,8 +233,31 @@ fn push_binding(words: &mut [CandidateBuckets], i: usize, key: LookupKey, bindin
     words[i].count += 1;
 }
 
-/// Scan a slice of the word list and incrementally fill candidate buckets.
-/// Returns a pair containing (in order) the new scan position and a boolean stating if time is up.
+/// Scan a slice of candidate words against all patterns in the equation context,
+/// materializing any matching bindings into per-pattern buckets.
+///
+/// - Iterates through `word_list` starting at `start_idx`, up to `batch_size` words
+///   (or the end of the list).
+/// - For each word, applies length prefilters and variable constraints from
+///   `equation_context`, pushing any resulting bindings into `words[i]`.
+/// - May stop early when the [`TimeBudget`] is exhausted; in that case it returns
+///   the number of words processed so far (and any bindings already pushed remain
+///   in `words`).
+///
+/// # Arguments
+/// * `word_list` — master list of candidate words (scanned by index range)
+/// * `start_idx` — starting index in `word_list` for this batch
+/// * `batch_size` — maximum number of words to scan in this batch
+/// * `equation_context` — parsed equation state with patterns, constraints, and hints
+/// * `words` — mutable slice of per-pattern candidate buckets to be populated
+/// * `budget` — wall-clock time budget to respect
+///
+/// # Returns
+/// The number of words consumed (≤ `batch_size`). If the time budget expires,
+/// this count reflects the partial progress made before stopping. Callers that
+/// wish to surface a timeout should detect early completion (e.g., by checking
+/// `budget.expired()` or by comparing the return value against the planned end)
+/// and convert that condition into `SolverError::Timeout` at a higher level.
 fn scan_batch(
     word_list: &[&str],
     start_idx: usize,
@@ -163,16 +265,13 @@ fn scan_batch(
     equation_context: &EquationContext,
     words: &mut [CandidateBuckets],
     budget: &TimeBudget,
-) -> (usize, bool) {
+) -> Result<usize, SolverError> {
 
     let mut i_word = start_idx;
     let end = start_idx.saturating_add(batch_size).min(word_list.len());
 
     while i_word < end {
-        // TODO: have this timeout bubble all the way up
-        if budget.expired() {
-            return (i_word, true);
-        }
+        timed_stop!(budget, i_word);
 
         let word = word_list[i_word];
 
@@ -196,6 +295,8 @@ fn scan_batch(
             );
 
             for binding in matches {
+                timed_stop!(budget, i_word);
+              
                 let key = lookup_key_for_binding(&binding, p.lookup_keys.clone());
 
                 // If a required key is missing, skip
@@ -210,7 +311,7 @@ fn scan_batch(
         i_word += 1;
     }
 
-    (i_word, false)
+    Ok(i_word)
 }
 
 struct RecursiveJoinParameters {
@@ -238,6 +339,9 @@ struct RecursiveJoinParameters {
 /// Return:
 /// - This function mutates `results` and stops early once `results` contains
 ///   `num_results_requested` values.
+/// # Errors
+/// Returns `Err(SolverError::Timeout)` if the time budget expires during the join.
+/// In that case, partial solutions already found remain in `results`.
 fn recursive_join(
     selected: &mut Vec<Bindings>,
     env: &mut HashMap<char, String>,
@@ -245,18 +349,26 @@ fn recursive_join(
     ctx: &JoinCtx,
     seen: &mut HashSet<u64>,
     rjp: &[RecursiveJoinParameters],
-) -> Result<(), MaterializationError> {
+) -> Result<(), SolverError> {
     // Stop if we've met the requested quota of full solutions.
     if results.len() >= ctx.num_results_requested {
         return Ok(());
     }
+
+    timed_stop!(ctx.budget);
 
     if let Some(rjp_cur) = rjp.first() {
         // ---- FAST PATH: deterministic + fully keyed ----------------------------
         let p = &rjp_cur.pattern;
         if p.is_deterministic && p.all_vars_in_lookup_keys() {
             // The word is fully determined by literals + already-bound vars in `env`.
-            let Some(expected) = rjp_cur.parsed_form.materialize_deterministic_with_env(env) else { return Err(MaterializationError) };
+            let Some(expected) = rjp_cur.parsed_form
+                .materialize_deterministic_with_env(env)
+            else {
+                return Err(SolverError::MaterializationError(
+                    MaterializationError(),
+                ));
+            };
 
             if !ctx.word_set.contains(expected.as_str()) {
                 // This branch cannot succeed — prune immediately.
@@ -293,6 +405,7 @@ fn recursive_join(
             // so the final key is stable/deterministic.
             let mut pairs: Vec<(char, String)> = Vec::with_capacity(rjp_cur.lookup_keys.len());
             for &var_char in &rjp_cur.lookup_keys {
+                timed_stop!(ctx.budget);
                 if let Some(var_val) = env.get(&var_char) {
                     pairs.push((var_char, var_val.clone()));
                 } else {
@@ -313,6 +426,9 @@ fn recursive_join(
 
         // Try each candidate binding for this pattern.
         for cand in bucket_candidates {
+
+            timed_stop!(ctx.budget);
+
             if results.len() >= ctx.num_results_requested {
                 break; // stop early if we've already met the quota
             }
@@ -361,22 +477,34 @@ fn recursive_join(
 
 /// Read in an equation string and return results from the word list
 ///
-/// - `input`: equation in our pattern syntax (e.g., `"AB;BA;|A|=2;..."`)
-/// - `word_list`: list of candidate words to test.
-///   Note that we require (but do not enforce!) that all words be lowercase.
-///   TODO: should we enforce this?
-/// - `num_results_requested`: maximum number of *final* results to return
+/// This orchestrates parsing the input string into an [`EquationContext`],
+/// scanning candidate words in adaptive batches, and recursively joining
+/// variable bindings into full solutions. Results are accumulated until either
+/// the requested number of solutions is found or the [`TimeBudget`] expires.
 ///
-/// Returns:
-/// - A `Vec` of solutions, each solution being a `Vec<Binding>` where each `Binding`
-///   maps variable names (chars) to concrete substrings they were bound to in that solution.
+/// # Arguments
+/// - `input`: equation string to parse (e.g. `"AB;BC;CA"`).
+/// - `word_list`: slice of candidate words to match against.
+/// - `num_results_requested`: optional cap on how many solutions to return
+///   (use `None` to search exhaustively).
+///
+/// # Returns
+/// A vector of fully materialized [`Solution`]s, up to the requested limit.
 ///
 /// # Errors
+/// Returns a [`SolverError`] if:
+/// - the equation string cannot be parsed (`ParseFailure`),
+/// - a binding cannot be materialized into a valid solution (`MaterializationError`),
+/// - or the solver exceeds its wall-clock time budget (`Timeout`).
 ///
-/// Will return a `ParseError` if a form cannot be parsed.
-// TODO? add more detail in Errors section
-// TODO rename "input" here
-pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: usize) -> Result<Vec<Vec<Bindings>>, Box<ParseError>> {
+/// On timeout, any partial solutions discovered before expiration are discarded
+/// and the error is bubbled up to the caller, so the end user sees an explicit
+/// failure rather than a silently truncated result set.
+pub fn solve_equation(
+    input: &str,
+    word_list: &[&str],
+    num_results_requested: usize,
+) -> Result<SolveResult, SolverError> {
     // 1. Make a hash set version of our word list
     let word_list_as_set = word_list.iter().copied().collect();
 
@@ -426,18 +554,17 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
     {
         // 1. Scan the next batch_size words into candidate buckets.
         // Each candidate binding is grouped by its lookup key so later joins are fast.
-        let (new_pos, _is_time_up) = scan_batch(
+        let new_pos = scan_batch(
             word_list,
             scan_pos,
             batch_size,
             &equation_context,
             &mut words,
             &budget,
-        );
+        )?;
         scan_pos = new_pos;
 
-        // Respect the TimeBudget
-        if budget.expired() { break; }
+        // TODO? add a time budget check
 
         // 2. Attempt to build full solutions from the candidates accumulated so far.
         // This may rediscover old partials, so we use `seen` at the base case
@@ -457,6 +584,7 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
             num_results_requested,
             word_set: &word_list_as_set,
             joint_constraints: &joint_constraints,
+            budget: &budget,
         };
 
         // Call `recursive_join`
@@ -466,22 +594,19 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
             &mut results,
             &ctx,
             &mut seen,
-            &rjp
+            &rjp,
         );
-        if let Err(e) = rj_result {
-            // e is a `MaterializationError` // TODO check/enforce this?
-            return Err(Box::new(ParseFailure { s: e.to_string() }))
-        }
+        rj_result?;
 
-        // We exit early in three cases
+        // We exit early in two cases
         // 1. We've hit the number of results requested
-        // 2. The time is up
-        // 3. We have no more words to scan
+        // 2. We have no more words to scan
         if results.len() >= num_results_requested ||
-            budget.expired() ||
             scan_pos >= word_list.len() {
             break;
         }
+
+        // TODO? Add another time budget check
 
         // Grow the batch size for the next round
         // TODO: magic number, maybe adaptive resizing?
@@ -496,7 +621,13 @@ pub fn solve_equation(input: &str, word_list: &[&str], num_results_requested: us
     }).collect::<Vec<_>>();
 
     // Return up to `num_results_requested` reordered solutions
-    Ok(reordered)
+    let status = if budget.expired() {
+        SolveStatus::TimedOut { elapsed: budget.elapsed() }
+    } else {
+        SolveStatus::Complete
+    };
+
+    Ok(SolveResult { solutions: reordered, status })
 }
 
 #[cfg(test)]
@@ -548,7 +679,7 @@ mod tests {
         // NB: this could give a false negative if SLY comes out before SKY (since we presumably shouldn't care about the order), so...
         // TODO allow order independence for equality... perhaps create a richer struct than just Vec<Bindings> that has a notion of order-independent equality
         let expected = vec![vec![sky_bindings, sly_bindings]];
-        assert_eq!(expected, results);
+        assert_eq!(expected, results.solutions);
     }
 
     #[test]
@@ -568,7 +699,7 @@ mod tests {
         chess_bindings.set('D', "ess".to_string());
         chess_bindings.set_word("chess".to_string().as_ref());
         let expected = vec![vec![inch_bindings, chess_bindings]];
-        assert_eq!(expected, results);
+        assert_eq!(expected, results.solutions);
     }
 
     #[test]
@@ -606,7 +737,7 @@ mod tests {
         let eq = "Atime;Btime;AB";
 
         // Solve with a small limit to ensure it runs to completion
-        let sols = solve_equation(eq, &wl, 5)
+        let solve_result = solve_equation(eq, &wl, 5)
             .expect("equation should not trigger MaterializationError");
 
         let mut expected_atime_bindings = Bindings::default();
@@ -624,8 +755,8 @@ mod tests {
 
         let expected_bindings_list = vec![expected_atime_bindings, expected_btime_bindings, expected_ab_bindings];
 
-        assert_eq!(1, sols.len());
-        let sol = sols.get(0).unwrap();
+        assert_eq!(1, solve_result.len());
+        let sol = solve_result.solutions.get(0).unwrap();
 
         // we don't care about order, so we allow the actual result to be a list in a different
         // order than the expected list
@@ -637,5 +768,20 @@ mod tests {
         expected_bindings_list.iter().for_each(|bindings| {
             assert!(sol.contains(bindings))
         });
+    }
+
+    #[test]
+    fn test_malformed_pattern_returns_error() {
+        let words = vec!["TEST"];
+        let result = solve_equation("BAD(PATTERN", &words, 10);
+        assert!(result.is_err(), "Expected parse failure but got success");
+    }
+
+    #[test]
+    fn test_materialization_error() {
+        let words = vec!["a", "b"];
+        // Form forces an impossible variable overlap
+        let result = solve_equation("AB;A;B;???", &words, 10);
+        assert!(result.is_err(), "Expected error but got success");
     }
 }

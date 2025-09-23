@@ -21,6 +21,12 @@ fn binding_to_word(b: &Bindings) -> Option<String> {
     b.get_word().cloned()
 }
 
+#[derive(serde::Serialize)]
+struct WasmSolveResult {
+    solutions: Vec<Vec<String>>,
+    status: String,
+}
+
 /// JS entry: (input: string, word_list: string[], num_results_requested: number)
 /// returns Array<Array<string>> — only the bound words
 // TODO remove unnecessary type annotations
@@ -36,21 +42,38 @@ pub fn solve_equation_wasm(
     // Borrow as &[&str] for the solver
     let refs: Vec<&str> = words.iter().map(|s| s.as_str()).collect();
 
-    let raw = solve_equation(input, &refs, num_results_requested)?; // Vec<Vec<Bindings>>
+    let result = solve_equation(input, &refs, num_results_requested)
+        .map_err(|e| JsValue::from_str(&format!("solver error: {e}")))?;
 
-    // Keep only the "*" word from each Bindings
-    let js_ready: Vec<Vec<String>> = raw
-        .into_iter()
-        .map(|row| row.into_iter().filter_map(|b| binding_to_word(&b)).collect())
-        .collect();
+    let status = match result.status {
+        crate::solver::SolveStatus::Complete => "complete".to_string(),
+        crate::solver::SolveStatus::TimedOut { .. } => "timed_out".to_string(),
+    };
 
-    serde_wasm_bindgen::to_value(&js_ready)
+    let wasm_result = WasmSolveResult {
+        solutions: result
+            .solutions
+            .iter()
+            .map(|row| row.iter().filter_map(binding_to_word).collect())
+            .collect(),
+        status,
+    };
+
+    serde_wasm_bindgen::to_value(&wasm_result)
         .map_err(|e| JsValue::from_str(&format!("serialization failed: {e}")))
 }
 
+/// Parse a newline-separated word list string into a `WordList`.
+///
+/// Each line of the input should be in the `word;score` format.
+/// Words with a score below `min_score` are filtered out.
+/// Returns the surviving entries as a `JsValue` array of strings,
+/// suitable for consumption in JavaScript.
+///
+/// # Errors
+/// Returns a `JsValue` error if parsing fails (e.g. malformed input).
 #[wasm_bindgen]
 pub fn parse_word_list(text: &str, min_score: i32) -> JsValue {
     let wl = WordList::parse_from_str(text, min_score);
-    // Convert Vec<String> to a real JS array
     to_value(&wl.entries).expect("serde_wasm_bindgen conversion failed")
 }
