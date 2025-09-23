@@ -1,5 +1,5 @@
 use crate::bindings::{Bindings, WORD_SENTINEL};
-use crate::errors::{MaterializationError, ParseError};
+use crate::errors::ParseError;
 use crate::joint_constraints::JointConstraints;
 use crate::parser::{match_equation_all, ParsedForm};
 use crate::patterns::{Pattern, EquationContext};
@@ -70,8 +70,8 @@ pub enum SolverError {
     ///
     /// This generally indicates that an internal constraint check failed during
     /// `recursive_join` or related routines.
-    #[error("materialization error: {0}")]
-    MaterializationError(#[from] MaterializationError),
+    #[error("materialization error")]
+    MaterializationError(),
 }
 
 /// Bucket key for indexing candidates by the subset of variables that must agree.
@@ -365,9 +365,7 @@ fn recursive_join(
             let Some(expected) = rjp_cur.parsed_form
                 .materialize_deterministic_with_env(env)
             else {
-                return Err(SolverError::MaterializationError(
-                    MaterializationError(),
-                ));
+                return Err(SolverError::MaterializationError());
             };
 
             if !ctx.word_set.contains(expected.as_str()) {
@@ -781,16 +779,4 @@ mod tests {
             panic!("{:?}", solver_error)
         }
     }
-
-    // #[test]
-    // fn test_materialization_error() {
-    //     let words = vec!["a", "b"];
-    //     // Form forces an impossible variable overlap // TODO what does this mean?
-    //     let solver_error = solve_equation("AB;A;B;???", &words, 10).unwrap_err();
-    //     if let SolverError::ParseFailure(bpe) = solver_error {
-    //         assert!(matches!(*bpe, ParseError::InvalidInput { str } if str == "???" ))
-    //     } else {
-    //         panic!("{:?}", solver_error)
-    //     }
-    // }
 }
