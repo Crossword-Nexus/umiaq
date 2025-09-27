@@ -46,7 +46,8 @@ pub fn solve_equation_wasm(
         .map_err(|e| JsValue::from_str(&format!("solver error: {e}")))?;
 
     let status = match result.status {
-        crate::solver::SolveStatus::Complete => "complete".to_string(),
+        crate::solver::SolveStatus::FoundEnough => "found_enough".to_string(),
+        crate::solver::SolveStatus::WordListExhausted => "word_list_exhausted".to_string(),
         crate::solver::SolveStatus::TimedOut { .. } => "timed_out".to_string(),
     };
 
