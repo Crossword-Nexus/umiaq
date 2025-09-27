@@ -129,7 +129,7 @@
           if (status === 'timed_out') {
             meta += "\n⚠️ Solver timed out. Results may be incomplete. ⚠️";
           } else if (status === 'found_enough') {
-            meta += `\nSearch terminated early.`;
+            meta += `\nSearch terminated after finding ${count} results.`;
           }
           document.getElementById("results-meta").textContent = meta;
         }
