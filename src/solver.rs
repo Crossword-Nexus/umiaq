@@ -20,11 +20,14 @@ const HASH_SPLIT: u16 = 0xFFFFu16;
 /// Status of the solver run.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SolveStatus {
-    /// Solver ran to completion (word list exhausted or requested number found).
-    Complete,
+    /// Solver ran through the entire word list without reaching the requested number.
+    WordListExhausted,
+
+    /// Solver stopped early because the requested number of results was found.
+    FoundEnough,
+
     /// Solver stopped because the time budget expired. Contains the elapsed time.
     TimedOut { elapsed: Duration },
-    // TODO: distinguish between word list exhausted and requested number found
 }
 
 /// Successful solver run (even if it stopped early).
@@ -562,7 +565,9 @@ pub fn solve_equation(
         )?;
         scan_pos = new_pos;
 
-        // TODO? add a time budget check
+        if budget.expired() {
+            break;
+        }
 
         // 2. Attempt to build full solutions from the candidates accumulated so far.
         // This may rediscover old partials, so we use `seen` at the base case
@@ -604,7 +609,9 @@ pub fn solve_equation(
             break;
         }
 
-        // TODO? Add another time budget check
+        if budget.expired() {
+            break;
+        }
 
         // Grow the batch size for the next round
         // TODO: magic number, maybe adaptive resizing?
@@ -621,8 +628,10 @@ pub fn solve_equation(
     // Return up to `num_results_requested` reordered solutions
     let status = if budget.expired() {
         SolveStatus::TimedOut { elapsed: budget.elapsed() }
+    } else if results.len() >= num_results_requested {
+        SolveStatus::FoundEnough
     } else {
-        SolveStatus::Complete
+        SolveStatus::WordListExhausted
     };
 
     Ok(SolveResult { solutions: reordered, status })

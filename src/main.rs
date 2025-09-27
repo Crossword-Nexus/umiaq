@@ -80,8 +80,16 @@ fn try_main() -> Result<(), Box<dyn std::error::Error>> {
         println!("{}", solver::solution_to_string(solution)?);
     }
 
-    if let SolveStatus::TimedOut { elapsed } = solve_result.status {
-        eprintln!("⚠️  Timed out after {:.1}s; only partial solutions returned", elapsed.as_secs_f64());
+    match solve_result.status {
+        SolveStatus::TimedOut { elapsed } => {
+            eprintln!("⚠️  Timed out after {:.1}s; some solutions may not have been returned", elapsed.as_secs_f64());
+        }
+        SolveStatus::FoundEnough => {
+            eprintln!("✓ Stopped after finding {}/{} requested solutions", solve_result.solutions.len(), cli.num_results_requested);
+        }
+        SolveStatus::WordListExhausted => {
+            eprintln!("✓ Word list exhausted (no more solutions)");
+        }
     }
 
     // 4. Print diagnostics (word list size, timings, number of results) to stderr
