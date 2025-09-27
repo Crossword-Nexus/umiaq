@@ -565,7 +565,9 @@ pub fn solve_equation(
         )?;
         scan_pos = new_pos;
 
-        // TODO? add a time budget check
+        if budget.expired() {
+            break;
+        }
 
         // 2. Attempt to build full solutions from the candidates accumulated so far.
         // This may rediscover old partials, so we use `seen` at the base case
@@ -607,7 +609,9 @@ pub fn solve_equation(
             break;
         }
 
-        // TODO? Add another time budget check
+        if budget.expired() {
+            break;
+        }
 
         // Grow the batch size for the next round
         // TODO: magic number, maybe adaptive resizing?
