@@ -333,7 +333,14 @@ impl EquationContext {
         let mut next_form_ix = 0;
 
         for form in &forms {
-            match form.parse::<FormKind>()? {
+            let form_kind = form.parse::<FormKind>().map_err(|e| {
+                Box::new(ParseError::ClauseParseError {
+                    clause: form.trim().to_string(),
+                    source: e,
+                })
+            })?;
+
+            match form_kind {
                 // --- Length constraint on a single variable (e.g., |A|=5, |B|>3) ---
                 FormKind::LenConstraint { var_char, op, bound } => {
                     // Ensure a VarConstraint object exists for this variable.
