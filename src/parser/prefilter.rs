@@ -237,8 +237,13 @@ pub(crate) fn build_prefilter_regex(
     };
 
     // TODO perhaps get_regex shouldn't be throwing exceptions on cases that we shouldn't be panicking on
-    // Compile, fall back to existing prefilter if needed
-    Ok(get_regex(&regex_str).unwrap_or_else(|_| parsed_form.prefilter.clone()))
+    // Compile the upgraded regex; if compilation fails (e.g., due to complex lookaheads),
+    // fall back to the existing prefilter--this is safe because the existing prefilter
+    // is less specific but still correct
+    Ok(get_regex(&regex_str).unwrap_or_else(|e| {
+        debug_assert!(false, "Failed to compile upgraded prefilter regex: {}. Falling back to original.", e);
+        parsed_form.prefilter.clone()
+    }))
 }
 
 

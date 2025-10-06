@@ -439,7 +439,9 @@ mod tests {
         assert_eq!(RelMask::GE, RelMask::from_str(">=").unwrap());
         assert_eq!(RelMask::LT, RelMask::from_str("<").unwrap());
         assert_eq!(RelMask::GT, RelMask::from_str(">").unwrap());
-        assert!(RelMask::from_str("INVALID123").is_err_and(|pe| { pe.to_string() == "Form parsing failed: \"Cannot parse operator from \"INVALID123\"\""})); // TODO better message
+        assert!(RelMask::from_str("INVALID123").is_err_and(|pe| {
+            pe.to_string() == "Form parsing failed: \"Invalid comparison operator 'INVALID123' (expected: =, !=, <, >, <=, >=)\""
+        }));
         assert!(!RelMask::EQ.allows(Ordering::Less));
         assert!(RelMask::EQ.allows(Ordering::Equal));
         assert!(!RelMask::EQ.allows(Ordering::Greater));
