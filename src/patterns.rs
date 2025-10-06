@@ -16,17 +16,28 @@ use crate::scan_hints::{form_len_hints_pf, PatternLenHints};
 /// The character that separates forms, in an equation
 pub const FORM_SEPARATOR: char = ';';
 
+/// Regex pattern for comparative length constraints like `|A|>4`, `|A|<=7`, etc.
+const LEN_CMP_PATTERN: &str = r"^\|([A-Z])\|\s*(<=|>=|=|<|>)\s*(\d+)$";
+
 /// Matches comparative length constraints like `|A|>4`, `|A|<=7`, etc.
 /// (Whitespace is permitted around operator.)
-/// Safe unwrap: hardcoded regex pattern is known to be valid at compile time
 static LEN_CMP_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\|([A-Z])\|\s*(<=|>=|=|<|>)\s*(\d+)$")
-        .expect("LEN_CMP_RE regex pattern is valid"));
+    LazyLock::new(|| Regex::new(LEN_CMP_PATTERN)
+        .unwrap_or_else(|e| panic!(
+            "BUG: Failed to compile LEN_CMP_RE regex pattern '{}': {}.",
+            LEN_CMP_PATTERN, e
+        )));
+
+/// Regex pattern for inequality constraints like `!=AB`
+const NEQ_PATTERN: &str = r"^!=([A-Z]+)$";
 
 /// Matches inequality constraints like `!=AB`
-/// Safe unwrap: hardcoded regex pattern is known to be valid at compile time
-static NEQ_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^!=([A-Z]+)$")
-    .expect("NEQ_RE regex pattern is valid"));
+static NEQ_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(NEQ_PATTERN)
+        .unwrap_or_else(|e| panic!(
+            "BUG: Failed to compile NEQ_RE regex pattern '{}': {}.",
+            NEQ_PATTERN, e
+        )));
 
 /// Classification of a single input "form" string into one of the
 /// supported categories.
