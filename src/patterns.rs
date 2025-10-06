@@ -484,11 +484,12 @@ impl EquationContext {
             };
 
             // Select the best candidate
+            // Safe: patterns is non-empty (checked by while loop condition)
             let (ix, _) = patterns
                 .iter()
                 .enumerate()
                 .max_by_key(|(_, p)| get_score(p))
-                .unwrap();
+                .expect("patterns is non-empty in while loop");
 
             let mut chosen = patterns.remove(ix);
 

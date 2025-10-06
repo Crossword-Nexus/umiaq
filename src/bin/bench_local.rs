@@ -92,7 +92,9 @@ fn median(mut xs: Vec<f64>) -> f64 {
     if xs.is_empty() {
         return 0.0;
     }
-    xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    // Safe: f64 durations are never NaN in this context
+    xs.sort_by(|a, b| a.partial_cmp(b)
+        .expect("f64 durations should not be NaN"));
     let n = xs.len();
     if n % 2 == 1 {
         xs[n / 2]
@@ -130,8 +132,13 @@ fn main() -> std::io::Result<()> {
 
         // One *warm-up* execution per pattern to "touch" code paths / caches.
         // We intentionally ignore its timing.
-        let _warmup = solver::solve_equation(pattern, &words_ref, NUM_RESULTS)
-            .expect("solver warm-up failed");
+        let _warmup = match solver::solve_equation(pattern, &words_ref, NUM_RESULTS) {
+            Ok(result) => result,
+            Err(e) => {
+                eprintln!("  ✗ Warm-up failed: {}", e);
+                continue;
+            }
+        };
 
         // Repeat the timed runs and collect durations.
         let mut times = Vec::with_capacity(cli.num_repeats);
@@ -140,8 +147,13 @@ fn main() -> std::io::Result<()> {
         for rep in 0..cli.num_repeats {
             // Keep only the *core* operation inside the timed region.
             let t_solve = Instant::now();
-            let solve_result = solver::solve_equation(black_box(pattern), &words_ref, NUM_RESULTS)
-                .expect("solver failed");
+            let solve_result = match solver::solve_equation(black_box(pattern), &words_ref, NUM_RESULTS) {
+                Ok(result) => result,
+                Err(e) => {
+                    eprintln!("  ✗ Run {}/{} failed: {}", rep + 1, cli.num_repeats, e);
+                    continue;
+                }
+            };
             let solve_secs = t_solve.elapsed().as_secs_f64();
 
             // Prevent the compiler from proving the result unused and eliding work.
