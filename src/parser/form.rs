@@ -206,8 +206,11 @@ fn parser_one_char_inner<'a>(
     input: &'a str,
     form_part: &FormPart
 ) -> PResult<'a, FormPart> {
+    // safe while only called for variants which have tag strings (i.e., Dot/Star/Vowel/Consonant)
+    let tag_str = form_part.get_tag_string()  // TODO? make a FormPart subclass for those with tag strings (then get_tag_string wouldn't need to return an Option)
+        .expect("parser_one_char_inner called with FormPart that has no tag");
     map(
-        tag(form_part.get_tag_string().unwrap()),
+        tag(tag_str),
         |_| form_part.clone()
     ).parse(input)
 }
@@ -244,7 +247,9 @@ fn charset(input: &'_ str) -> PResult<'_, FormPart> {
 fn anagram(input: &'_ str) -> PResult<'_, FormPart> {
     let (input, _) = tag("/")(input)?;
     let (input, chars) = many1(one_of(LITERAL_CHARS)).parse(input)?;
-    Ok((input, FormPart::anagram_of(&chars.into_iter().collect::<String>()).unwrap())) // TODO handle error (better than unwrap)
+    let anagram_str = chars.into_iter().collect::<String>();
+    let anagram_part = FormPart::anagram_of(&anagram_str).map_err(nom::Err::Failure)?;
+    Ok((input, anagram_part))
 }
 
 fn equation_part(input: &'_ str) -> PResult<'_, FormPart> {
