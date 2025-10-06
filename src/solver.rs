@@ -73,8 +73,8 @@ pub enum SolverError {
     ///
     /// This generally indicates that an internal constraint check failed during
     /// `recursive_join` or related routines.
-    #[error("materialization error")]
-    MaterializationError(),
+    #[error("materialization error: {context}")]
+    MaterializationError { context: String },
 }
 
 /// Bucket key for indexing candidates by the subset of variables that must agree.
@@ -368,7 +368,9 @@ fn recursive_join(
             let Some(expected) = rjp_cur.parsed_form
                 .materialize_deterministic_with_env(env)
             else {
-                return Err(SolverError::MaterializationError());
+                return Err(SolverError::MaterializationError {
+                    context: format!("failed to materialize deterministic pattern with variables: {:?}", p.variables)
+                });
             };
 
             if !ctx.word_set.contains(expected.as_str()) {
