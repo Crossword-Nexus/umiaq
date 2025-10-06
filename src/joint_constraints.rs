@@ -156,8 +156,10 @@ fn resolve_var_len(parts: &[Bindings], var_char: char) -> Option<usize> {
 }
 
 // TODO derive "=|!=|<=|>=|<|>" from a single source (e.g., COMPARISON_OPERATORS)
+/// Safe unwrap: hardcoded regex pattern is known to be valid at compile time
 static JOINT_LEN_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\|(?<vars>[A-Z]{2,})\| *(?<op>=|!=|<=|>=|<|>) *(?<len>\d+)$").unwrap());
+    LazyLock::new(|| Regex::new(r"^\|(?<vars>[A-Z]{2,})\| *(?<op>=|!=|<=|>=|<|>) *(?<len>\d+)$")
+        .expect("JOINT_LEN_RE regex pattern is valid"));
 
 // TODO should this be turning (potential) errors into `None`s (i.e., swallowing errors...)?
 /// Parse a single joint-length expression that **starts at** a `'|'`. Returns `None` on invalid

@@ -29,19 +29,25 @@ static REGEX_CACHE: OnceLock<Mutex<HashMap<String, Regex>>> = OnceLock::new();
 pub(crate) fn get_regex(pattern: &str) -> Result<Regex, Box<fancy_regex::Error>> {
     let cache = REGEX_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
 
-    if let Some(re) = cache.lock().unwrap().get(pattern).cloned() {
-        return Ok(re);
+    // check cache first; if lock is poisoned, recover and continue
+    if let Ok(guard) = cache.lock() {
+        if let Some(re) = guard.get(pattern).cloned() {
+            return Ok(re);
+        }
     }
+    // if lock was poisoned, we just compile without caching
 
     // Compile outside the lock.
     let compiled = Regex::new(pattern)?;
 
     // Insert with a double-check in case another thread inserted it meanwhile.
-    let mut guard = cache.lock().unwrap();
-    if let Some(existing) = guard.get(pattern).cloned() {
-        return Ok(existing);
+    // if lock is poisoned, we still return the compiled regex (but don't cache it)
+    if let Ok(mut guard) = cache.lock() {
+        if let Some(existing) = guard.get(pattern).cloned() {
+            return Ok(existing);
+        }
+        guard.insert(pattern.to_string(), compiled.clone());
     }
-    guard.insert(pattern.to_string(), compiled.clone());
     Ok(compiled)
 }
 

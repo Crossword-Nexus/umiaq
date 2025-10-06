@@ -18,11 +18,15 @@ pub const FORM_SEPARATOR: char = ';';
 
 /// Matches comparative length constraints like `|A|>4`, `|A|<=7`, etc.
 /// (Whitespace is permitted around operator.)
+/// Safe unwrap: hardcoded regex pattern is known to be valid at compile time
 static LEN_CMP_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\|([A-Z])\|\s*(<=|>=|=|<|>)\s*(\d+)$").unwrap());
+    LazyLock::new(|| Regex::new(r"^\|([A-Z])\|\s*(<=|>=|=|<|>)\s*(\d+)$")
+        .expect("LEN_CMP_RE regex pattern is valid"));
 
 /// Matches inequality constraints like `!=AB`
-static NEQ_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^!=([A-Z]+)$").unwrap());
+/// Safe unwrap: hardcoded regex pattern is known to be valid at compile time
+static NEQ_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^!=([A-Z]+)$")
+    .expect("NEQ_RE regex pattern is valid"));
 
 /// Classification of a single input "form" string into one of the
 /// supported categories.
@@ -83,13 +87,15 @@ impl FromStr for FormKind {
         // 1. Check for a simple length comparison constraint: |A|=5
         // NB: this assumes that any form that matches LEN_CMP_RE is either a LenConstraint or is
         // malformed (see the "?"s at the end of deriving op and bound)
-        if let Some(cap) = LEN_CMP_RE.captures(s).unwrap() {
-            let var_char = cap[1].chars().next().unwrap();
+        if let Some(cap) = LEN_CMP_RE.captures(s).map_err(|e| ParseError::RegexError(e))? {
+            // Safe: regex guarantees capture group 1 contains exactly one char A-Z
+            let var_char = cap[1].chars().next()
+                .expect("LEN_CMP_RE capture group 1 must contain at least one character");
             let op = ComparisonOperator::from_str(&cap[2])?;
             let bound = cap[3].parse::<usize>()?;
             Ok(FormKind::LenConstraint { var_char, op, bound })
         // 2. Check for inequality constraints: e.g., !=ABC
-        } else if let Some(cap) = NEQ_RE.captures(s).unwrap() {
+        } else if let Some(cap) = NEQ_RE.captures(s).map_err(|e| ParseError::RegexError(e))? {
             let var_chars: Vec<_> = cap[1].chars().collect();
             Ok(FormKind::NeqConstraint { var_chars })
         // 3. Complex constraints (delegate to helper)

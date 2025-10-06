@@ -220,11 +220,11 @@ impl HelperParams<'_> {
                 };
 
                 // Apply any variable-specific constraint.
-                // Note: we panic here if something goes wrong (because it really shouldn't)
+                // If there's a parse error, treat the binding as invalid.
                 let valid = self
                     .constraints
                     .get(var_name)
-                    .is_none_or(|c| is_valid_binding(&var_val, c, self.bindings).unwrap());
+                    .is_none_or(|c| is_valid_binding(&var_val, c, self.bindings).unwrap_or(false)); // TODO! does it make sense to set to false here in case of error? 
 
                 if !valid {
                     return false;
