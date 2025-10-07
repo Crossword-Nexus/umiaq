@@ -69,6 +69,11 @@ pub enum SolverError {
     #[error("parse failure: {0}")]
     ParseFailure(#[from] Box<ParseError>),
 
+    /// The equation contained only constraints and no patterns,
+    /// so there is nothing to solve.
+    #[error("no patterns to solve (constraints only)")]
+    NoPatterns,
+
     /// Failure while materializing a candidate binding into a concrete solution.
     ///
     /// This generally indicates that an internal constraint check failed during
@@ -522,6 +527,11 @@ pub fn solve_equation(
     //    This holds each pattern string, its parsed form, and its `lookup_keys` (shared vars).
     let equation_context = input.parse::<EquationContext>()?;
 
+    // If there are no patterns, propagate a NoPatterns error.
+    if equation_context.len() == 0 {
+        return Err(SolverError::NoPatterns);
+    }
+
     // 3. Prepare storage for candidate buckets, one per pattern.
     //    `CandidateBuckets` tracks (a) the bindings bucketed by shared variable values, and
     //    (b) a count so we can stop early if a pattern gets too many matches.
@@ -800,4 +810,12 @@ mod tests {
             panic!("Expected ParseFailure, got: {:?}", solver_error)
         }
     }
+
+    #[test]
+    fn test_solve_constraints_only_returns_error() {
+        let wl: Vec<&str> = vec!["cat", "dog"];
+        let res = solve_equation("|A|=3", &wl, 10);
+        assert!(matches!(res, Err(SolverError::NoPatterns)));
+    }
+
 }
