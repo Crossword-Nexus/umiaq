@@ -94,7 +94,14 @@ impl Default for Bounds {
 }
 
 impl Bounds {
+    /// Create bounds with the given min and max lengths.
+    ///
+    /// # Panics
+    /// Panics if min_len > max_len, as this represents an invalid configuration
+    /// that should be caught at parse time.
     pub(crate) fn of(min_len: usize, max_len: usize) -> Self {
+        assert!(min_len <= max_len,
+            "Invalid bounds: min ({}) must be <= max ({})", min_len, max_len);
         Bounds { min_len, max_len_opt: Some(max_len) }
     }
 

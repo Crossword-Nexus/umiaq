@@ -32,7 +32,10 @@ pub(crate) fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint)
         }));
     }
 
-    let (var_raw, rhs_raw) = form.split_once('=').unwrap();
+    // safe to unwrap b/c eq_count == 1 is checked above
+    let (var_raw, rhs_raw) = form
+        .split_once('=')
+        .expect("split_once should succeed after validating eq_count == 1");
 
     // Find the variable (ensuring there is only one)
     let mut chars = var_raw.chars();

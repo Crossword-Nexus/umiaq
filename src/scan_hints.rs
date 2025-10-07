@@ -296,12 +296,14 @@ fn weighted_extreme_for_t(
     }
 
     // If we reach here with rem != 0, `t` wasn't feasible to begin with.
-    // TODO: throw an error?
+    // this can happen with complex constraints--(presumably?) not an error... it (probably) just
+    // means that this particular target length cannot be achieved with these bounds; returning None
+    // allows the caller to handle this gracefully // TODO! is this right?
     if rem != 0 {
         return None;
     }
 
-    debug_assert_eq!(rem, 0);
+    debug_assert_eq!(rem, 0, "Greedy allocation should have consumed all remaining length");
     Some(base_weighted.saturating_add(extra))
 }
 

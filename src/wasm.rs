@@ -74,7 +74,8 @@ pub fn solve_equation_wasm(
 /// # Errors
 /// Returns a `JsValue` error if parsing fails (e.g. malformed input).
 #[wasm_bindgen]
-pub fn parse_word_list(text: &str, min_score: i32) -> JsValue {
+pub fn parse_word_list(text: &str, min_score: i32) -> Result<JsValue, JsValue> {
     let wl = WordList::parse_from_str(text, min_score);
-    to_value(&wl.entries).expect("serde_wasm_bindgen conversion failed")
+    to_value(&wl.entries)
+        .map_err(|e| JsValue::from_str(&format!("serialization failed: {e}")))
 }

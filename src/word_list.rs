@@ -142,9 +142,16 @@ impl WordList {
         path: P,
         min_score: i32,
     ) -> std::io::Result<WordList> {
+        let path_ref = path.as_ref();
+
         // Read the entire file into a single string.
         // Using `read_to_string` ensures UTF-8 decoding.
-        let data = std::fs::read_to_string(path)?;
+        let data = std::fs::read_to_string(path_ref).map_err(|e| {
+            std::io::Error::new(
+                e.kind(),
+                format!("failed to read word list from '{}': {}", path_ref.display(), e)
+            )
+        })?;
 
         // Pass the file contents to the WASM-safe parsing method.
         Ok(Self::parse_from_str(&data, min_score))

@@ -220,11 +220,18 @@ impl HelperParams<'_> {
                 };
 
                 // Apply any variable-specific constraint.
-                // Note: we panic here if something goes wrong (because it really shouldn't)
+                // If there's a parse error in the constraint form, treat the binding as invalid
+                // (better to reject than to accept malformed constraints) // TODO  is this right?
                 let valid = self
                     .constraints
                     .get(var_name)
-                    .is_none_or(|c| is_valid_binding(&var_val, c, self.bindings).unwrap());
+                    .is_none_or(|c| {
+                        is_valid_binding(&var_val, c, self.bindings).unwrap_or_else(|e| {
+                            // This indicates a malformed constraint that should have been caught earlier
+                            debug_assert!(false, "Failed to parse constraint form: {}", e);
+                            false
+                        })
+                    });
 
                 if !valid {
                     return false;

@@ -114,7 +114,11 @@ impl JointConstraint {
         // If not all vars are bound, skip this check for now.
         if bindings.contains_all_vars(&self.vars) {
             // Sum the lengths of the bound strings for the referenced vars.
-            let total: usize = self.vars.iter().map(|var_char| bindings.get(*var_char).unwrap().len()).sum();
+            // Safe: unwrap is guaranteed to succeed because contains_all_vars returned true
+            let total: usize = self.vars.iter()
+                .map(|var_char| bindings.get(*var_char)
+                    .expect("var must be bound after contains_all_vars check").len())
+                .sum();
 
             // Compare once via Ordering -> mask test.
             self.rel.allows(total.cmp(&self.target))
@@ -156,8 +160,16 @@ fn resolve_var_len(parts: &[Bindings], var_char: char) -> Option<usize> {
 }
 
 // TODO derive "=|!=|<=|>=|<|>" from a single source (e.g., COMPARISON_OPERATORS)
+/// Regex pattern for joint length constraints like `|AB|=7`
+const JOINT_LEN_PATTERN: &str = r"^\|(?<vars>[A-Z]{2,})\| *(?<op>=|!=|<=|>=|<|>) *(?<len>\d+)$";
+
+/// Matches joint length constraints like `|AB|=7`
 static JOINT_LEN_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\|(?<vars>[A-Z]{2,})\| *(?<op>=|!=|<=|>=|<|>) *(?<len>\d+)$").unwrap());
+    LazyLock::new(|| Regex::new(JOINT_LEN_PATTERN)
+        .unwrap_or_else(|e| panic!(
+            "BUG: Failed to compile JOINT_LEN_RE regex pattern '{}': {}.",
+            JOINT_LEN_PATTERN, e
+        )));
 
 // TODO should this be turning (potential) errors into `None`s (i.e., swallowing errors...)?
 /// Parse a single joint-length expression that **starts at** a `'|'`. Returns `None` on invalid
@@ -433,7 +445,9 @@ mod tests {
         assert_eq!(RelMask::GE, RelMask::from_str(">=").unwrap());
         assert_eq!(RelMask::LT, RelMask::from_str("<").unwrap());
         assert_eq!(RelMask::GT, RelMask::from_str(">").unwrap());
-        assert!(RelMask::from_str("INVALID123").is_err_and(|pe| { pe.to_string() == "Form parsing failed: \"Cannot parse operator from \"INVALID123\"\""})); // TODO better message
+        assert!(RelMask::from_str("INVALID123").is_err_and(|pe| {
+            pe.to_string() == "Form parsing failed: \"Invalid comparison operator 'INVALID123' (expected: =, !=, <, >, <=, >=)\""
+        }));
         assert!(!RelMask::EQ.allows(Ordering::Less));
         assert!(RelMask::EQ.allows(Ordering::Equal));
         assert!(!RelMask::EQ.allows(Ordering::Greater));

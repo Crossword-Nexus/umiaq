@@ -29,19 +29,25 @@ static REGEX_CACHE: OnceLock<Mutex<HashMap<String, Regex>>> = OnceLock::new();
 pub(crate) fn get_regex(pattern: &str) -> Result<Regex, Box<fancy_regex::Error>> {
     let cache = REGEX_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
 
-    if let Some(re) = cache.lock().unwrap().get(pattern).cloned() {
-        return Ok(re);
+    // check cache first; if lock is poisoned, recover and continue
+    if let Ok(guard) = cache.lock() {
+        if let Some(re) = guard.get(pattern).cloned() {
+            return Ok(re);
+        }
     }
+    // if lock was poisoned, we just compile without caching
 
     // Compile outside the lock.
     let compiled = Regex::new(pattern)?;
 
     // Insert with a double-check in case another thread inserted it meanwhile.
-    let mut guard = cache.lock().unwrap();
-    if let Some(existing) = guard.get(pattern).cloned() {
-        return Ok(existing);
+    // if lock is poisoned, we still return the compiled regex (but don't cache it)
+    if let Ok(mut guard) = cache.lock() {
+        if let Some(existing) = guard.get(pattern).cloned() {
+            return Ok(existing);
+        }
+        guard.insert(pattern.to_string(), compiled.clone());
     }
-    guard.insert(pattern.to_string(), compiled.clone());
     Ok(compiled)
 }
 
@@ -231,8 +237,13 @@ pub(crate) fn build_prefilter_regex(
     };
 
     // TODO perhaps get_regex shouldn't be throwing exceptions on cases that we shouldn't be panicking on
-    // Compile, fall back to existing prefilter if needed
-    Ok(get_regex(&regex_str).unwrap_or_else(|_| parsed_form.prefilter.clone()))
+    // Compile the upgraded regex; if compilation fails (e.g., due to complex lookaheads),
+    // fall back to the existing prefilter--this is safe because the existing prefilter
+    // is less specific but still correct
+    Ok(get_regex(&regex_str).unwrap_or_else(|e| {
+        debug_assert!(false, "Failed to compile upgraded prefilter regex: {}. Falling back to original.", e);
+        parsed_form.prefilter.clone()
+    }))
 }
 
 

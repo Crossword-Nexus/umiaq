@@ -20,7 +20,7 @@ pub enum ParseError {
 
     #[error("Invalid input: {str}")]
     InvalidInput { str: String },
-    
+
     #[error("int-parsing error: {0}")]
     ParseIntError(#[from] ParseIntError),
 
@@ -37,6 +37,13 @@ pub enum ParseError {
 
     #[error("Conflicting constraints for {var_char} ({older} / {newer})")]
     ConflictingConstraint { var_char: char, older: String, newer: String },
+
+    #[error("Parse error in clause '{clause}': {source}")]
+    ClauseParseError {
+        clause: String,
+        #[source]
+        source: Box<ParseError>,
+    },
 
     // ... existing variants, e.g., from variables, constraints, etc. ...
     #[error("nom parser error: {0:?}")]

@@ -16,13 +16,28 @@ use crate::scan_hints::{form_len_hints_pf, PatternLenHints};
 /// The character that separates forms, in an equation
 pub const FORM_SEPARATOR: char = ';';
 
+/// Regex pattern for comparative length constraints like `|A|>4`, `|A|<=7`, etc.
+const LEN_CMP_PATTERN: &str = r"^\|([A-Z])\|\s*(<=|>=|=|<|>)\s*(\d+)$";
+
 /// Matches comparative length constraints like `|A|>4`, `|A|<=7`, etc.
 /// (Whitespace is permitted around operator.)
 static LEN_CMP_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"^\|([A-Z])\|\s*(<=|>=|=|<|>)\s*(\d+)$").unwrap());
+    LazyLock::new(|| Regex::new(LEN_CMP_PATTERN)
+        .unwrap_or_else(|e| panic!(
+            "BUG: Failed to compile LEN_CMP_RE regex pattern '{}': {}.",
+            LEN_CMP_PATTERN, e
+        )));
+
+/// Regex pattern for inequality constraints like `!=AB`
+const NEQ_PATTERN: &str = r"^!=([A-Z]+)$";
 
 /// Matches inequality constraints like `!=AB`
-static NEQ_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^!=([A-Z]+)$").unwrap());
+static NEQ_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(NEQ_PATTERN)
+        .unwrap_or_else(|e| panic!(
+            "BUG: Failed to compile NEQ_RE regex pattern '{}': {}.",
+            NEQ_PATTERN, e
+        )));
 
 /// Classification of a single input "form" string into one of the
 /// supported categories.
@@ -83,13 +98,15 @@ impl FromStr for FormKind {
         // 1. Check for a simple length comparison constraint: |A|=5
         // NB: this assumes that any form that matches LEN_CMP_RE is either a LenConstraint or is
         // malformed (see the "?"s at the end of deriving op and bound)
-        if let Some(cap) = LEN_CMP_RE.captures(s).unwrap() {
-            let var_char = cap[1].chars().next().unwrap();
+        if let Some(cap) = LEN_CMP_RE.captures(s).map_err(|e| ParseError::RegexError(e))? {
+            // Safe: regex guarantees capture group 1 contains exactly one char A-Z
+            let var_char = cap[1].chars().next()
+                .expect("LEN_CMP_RE capture group 1 must contain at least one character");
             let op = ComparisonOperator::from_str(&cap[2])?;
             let bound = cap[3].parse::<usize>()?;
             Ok(FormKind::LenConstraint { var_char, op, bound })
         // 2. Check for inequality constraints: e.g., !=ABC
-        } else if let Some(cap) = NEQ_RE.captures(s).unwrap() {
+        } else if let Some(cap) = NEQ_RE.captures(s).map_err(|e| ParseError::RegexError(e))? {
             let var_chars: Vec<_> = cap[1].chars().collect();
             Ok(FormKind::NeqConstraint { var_chars })
         // 3. Complex constraints (delegate to helper)
@@ -327,7 +344,14 @@ impl EquationContext {
         let mut next_form_ix = 0;
 
         for form in &forms {
-            match form.parse::<FormKind>()? {
+            let form_kind = form.parse::<FormKind>().map_err(|e| {
+                Box::new(ParseError::ClauseParseError {
+                    clause: form.trim().to_string(),
+                    source: e,
+                })
+            })?;
+
+            match form_kind {
                 // --- Length constraint on a single variable (e.g., |A|=5, |B|>3) ---
                 FormKind::LenConstraint { var_char, op, bound } => {
                     // Ensure a VarConstraint object exists for this variable.
@@ -478,11 +502,12 @@ impl EquationContext {
             };
 
             // Select the best candidate
+            // Safe: patterns is non-empty (checked by while loop condition)
             let (ix, _) = patterns
                 .iter()
                 .enumerate()
                 .max_by_key(|(_, p)| get_score(p))
-                .unwrap();
+                .expect("patterns is non-empty in while loop");
 
             let mut chosen = patterns.remove(ix);
 
