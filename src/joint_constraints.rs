@@ -116,8 +116,11 @@ impl JointConstraint {
             // Sum the lengths of the bound strings for the referenced vars.
             // safe: unwrap is guaranteed to succeed because contains_all_vars returned true
             let total: usize = self.vars.iter()
-                .map(|var_char| bindings.get(*var_char)
-                    .expect("var must be bound after contains_all_vars check").len())
+                .map(|var_char| {
+                    let binding = bindings.get(*var_char);
+                    debug_assert!(binding.is_some(), "var '{}' must be bound after contains_all_vars check", var_char);
+                    binding.expect("var must be bound after contains_all_vars check").len()
+                })
                 .sum();
 
             // Compare once via Ordering -> mask test.

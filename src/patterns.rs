@@ -103,6 +103,9 @@ impl FromStr for FormKind {
             // group 1: ([A-Z]) - exactly one uppercase letter
             // group 2: (<=|>=|=|<|>) - comparison operator
             // group 3: (\d+) - one or more digits
+            debug_assert!(cap.get(1).is_some() && cap.get(2).is_some() && cap.get(3).is_some(),
+                "LEN_CMP_RE must have 3 capture groups");
+            debug_assert!(!cap[1].is_empty(), "LEN_CMP_RE capture group 1 must be non-empty");
             let var_char = cap[1].chars().next()
                 .expect("LEN_CMP_RE capture group 1 must contain at least one character");
             let op = ComparisonOperator::from_str(&cap[2])?;
@@ -111,6 +114,8 @@ impl FromStr for FormKind {
         // 2. Check for inequality constraints: e.g., !=ABC
         } else if let Some(cap) = NEQ_RE.captures(s).map_err(|e| ParseError::RegexError(e))? {
             // safe: NEQ_PATTERN has 1 capture group: ([A-Z]+)--one or more uppercase letters
+            debug_assert!(cap.get(1).is_some() && !cap[1].is_empty(),
+                "NEQ_RE must have 1 non-empty capture group");
             let var_chars: Vec<_> = cap[1].chars().collect();
             Ok(FormKind::NeqConstraint { var_chars })
         // 3. Complex constraints (delegate to helper)
@@ -507,6 +512,7 @@ impl EquationContext {
 
             // Select the best candidate
             // safe: patterns is non-empty (checked by while loop condition)
+            debug_assert!(!patterns.is_empty(), "patterns must be non-empty in while loop");
             let (ix, _) = patterns
                 .iter()
                 .enumerate()

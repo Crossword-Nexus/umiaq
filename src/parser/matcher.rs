@@ -276,6 +276,7 @@ impl HelperParams<'_> {
         }
 
         // safe: parts is non-empty (checked above), so indexing [0] and slicing [1..] are valid
+        debug_assert!(!parts.is_empty(), "parts must be non-empty after early return check");
         let (first, rest) = (&parts[0], &parts[1..]);
 
         match first {

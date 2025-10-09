@@ -285,6 +285,8 @@ fn weighted_extreme_for_t(
         };
 
         if cap > 0 {
+            // Invariant: `cap <= rem` at each step (ensured by min() in calculation above)
+            debug_assert!(cap <= rem, "cap ({}) must be <= rem ({})", cap, rem);
             extra = extra.saturating_add(r.w.saturating_mul(cap));
             rem -= cap;
             // Invariant: `rem` never goes negative because `cap <= rem` at each step.
