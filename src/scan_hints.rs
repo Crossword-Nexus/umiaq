@@ -295,10 +295,11 @@ fn weighted_extreme_for_t(
         }
     }
 
-    // If we reach here with rem != 0, `t` wasn't feasible to begin with.
-    // this can happen with complex constraints--(presumably?) not an error... it (probably) just
-    // means that this particular target length cannot be achieved with these bounds; returning None
-    // allows the caller to handle this gracefully // TODO! is this right?
+    // If we reach here with rem != 0, the target length `t` is infeasible given the constraints.
+    // This is a normal outcome (not an error) when the combined min/max bounds make it impossible
+    // to construct a solution of exactly length `t`. For example, if variables have |A|=3, |B|=5,
+    // it's impossible to achieve total length 7. Returning None allows the caller to skip this
+    // length and try others.
     if rem != 0 {
         return None;
     }

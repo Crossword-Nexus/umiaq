@@ -520,6 +520,11 @@ pub fn solve_equation(
     word_list: &[&str],
     num_results_requested: usize,
 ) -> Result<SolveResult, SolverError> {
+    // validate input at API boundary
+    if input.is_empty() {
+        return Err(SolverError::ParseFailure(Box::new(ParseError::EmptyForm)));
+    }
+
     // 1. Make a hash set version of our word list
     let word_list_as_set = word_list.iter().copied().collect();
 
@@ -803,9 +808,19 @@ mod tests {
         // verify we get a parse error (could be wrapped in ClauseParseError)
         if let SolverError::ParseFailure(bpe) = solver_error {
             // accept either direct InvalidInput or wrapped in ClauseParseError
-            let is_valid = matches!(*bpe, ParseError::InvalidInput { .. }) || // TODO be more specific with both instances of "{ .. }"
-                matches!(*bpe, ParseError::ClauseParseError { .. });
-            assert!(is_valid, "Expected InvalidInput or ClauseParseError, got: {:?}", bpe);
+            match &*bpe {
+                ParseError::InvalidInput { str } if str == "BAD(PATTERN" => {
+                    // direct InvalidInput is OK
+                }
+                ParseError::ClauseParseError { clause, source } if clause == "BAD(PATTERN" => {
+                    // wrapped in ClauseParseError--verify the source is also InvalidInput
+                    assert!(
+                        matches!(**source, ParseError::InvalidInput { ref str } if str == "BAD(PATTERN"),
+                        "Expected source to be InvalidInput with 'BAD(PATTERN', got: {:?}", source
+                    );
+                }
+                other => panic!("Expected InvalidInput or ClauseParseError with 'BAD(PATTERN', got: {:?}", other)
+            }
         } else {
             panic!("Expected ParseFailure, got: {:?}", solver_error)
         }

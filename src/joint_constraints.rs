@@ -171,7 +171,6 @@ static JOINT_LEN_RE: LazyLock<Regex> =
             JOINT_LEN_PATTERN, e
         )));
 
-// TODO should this be turning (potential) errors into `None`s (i.e., swallowing errors...)?
 /// Parse a single joint-length expression that **starts at** a `'|'`. Returns `None` on invalid
 /// input.
 ///
@@ -179,6 +178,11 @@ static JOINT_LEN_RE: LazyLock<Regex> =
 ///  - `VARS`  : at least **two** ASCII uppercase letters (A–Z).
 ///  - `OP`    : one of `<=`, `>=`, `!=`, `<`, `>`, `=` (NB: two-char ops checked first).
 ///  - `NUMBER`: one or more ASCII digits (base 10).
+///
+/// Returns `None` instead of propagating errors because this function is called speculatively
+/// during pattern parsing on clauses that may or may not be joint constraints. Invalid syntax
+/// simply means "not a joint constraint", not a fatal error. Only regex compilation errors
+/// (at initialization) are true errors that should panic.
 fn parse_joint_len(expr: &str) -> Option<JointConstraint> {
     if let Ok(Some(captures)) = JOINT_LEN_RE.captures(expr) {
         let vars_match = captures.name("vars")?;
