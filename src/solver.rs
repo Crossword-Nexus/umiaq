@@ -480,7 +480,6 @@ struct RecursiveJoinParameters {
 /// - `ctx`: join context containing the requested result count, word set, constraints, and budget.
 /// - `seen`: set of solution hashes to avoid duplicates.
 /// - `rjp`: remaining patterns to process (candidate buckets, lookup keys, pattern info).
-/// - `total_patterns`: total number of patterns (for invariant checking).
 ///
 /// Return:
 /// - This function mutates `results` and stops early once `results` contains
@@ -495,7 +494,26 @@ fn recursive_join(
     ctx: &JoinCtx,
     seen: &mut HashSet<u64>,
     rjp: &[RecursiveJoinParameters],
-    total_patterns: usize,
+) -> Result<(), SolverError> {
+    recursive_join_inner(
+        selected,
+        env,
+        results,
+        ctx,
+        seen,
+        rjp,
+        rjp.len(),
+    )
+}
+
+fn recursive_join_inner(
+    selected: &mut Vec<Bindings>,
+    env: &mut HashMap<char, String>,
+    results: &mut Vec<Vec<Bindings>>,
+    ctx: &JoinCtx,
+    seen: &mut HashSet<u64>,
+    rjp: &[RecursiveJoinParameters],
+    total_patterns: usize, // for debug assert
 ) -> Result<(), SolverError> {
     // Invariant: selected.len() + rjp.len() == total_patterns
     // (we've processed 'selected' patterns and have 'rjp' remaining)
@@ -550,7 +568,7 @@ fn recursive_join(
             }
 
             selected.push(binding);
-            recursive_join(selected, env, results, ctx, seen, &rjp[1..], total_patterns)?;
+            recursive_join_inner(selected, env, results, ctx, seen, &rjp[1..], total_patterns)?;
             selected.pop();
             return Ok(()); // IMPORTANT: skip normal enumeration path
         }
@@ -618,7 +636,7 @@ fn recursive_join(
 
             // Choose this candidate for pattern `idx` and recurse for `idx + 1`.
             selected.push(cand.clone());
-            recursive_join(selected, env, results, ctx, seen, &rjp[1..], total_patterns)?;
+            recursive_join_inner(selected, env, results, ctx, seen, &rjp[1..], total_patterns)?;
             selected.pop();
 
             // Backtrack: remove only what we added at this level.
@@ -777,7 +795,6 @@ pub fn solve_equation(
             &ctx,
             &mut seen,
             &rjp,
-            rjp.len(),
         );
         rj_result?;
 
