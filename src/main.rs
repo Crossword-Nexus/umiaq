@@ -38,8 +38,12 @@ struct Cli {
 /// in a user-friendly way before exiting with code 1.
 fn main() -> ExitCode {
     if let Err(e) = try_main() {
-        // Print the error message to stderr
-        eprintln!("Error: {e}");
+        // Print the error message to stderr, with detailed formatting if it's a SolverError
+        if let Some(solver_err) = e.downcast_ref::<solver::SolverError>() {
+            eprintln!("Error: {}", solver_err.display_detailed());
+        } else {
+            eprintln!("Error: {e}");
+        }
         // Exit explicitly with a nonzero code so scripts can detect failure
         ExitCode::FAILURE
     } else {

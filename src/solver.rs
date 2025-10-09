@@ -82,6 +82,39 @@ pub enum SolverError {
     MaterializationError { context: String },
 }
 
+impl SolverError {
+    /// Returns the error code for this error variant
+    pub fn code(&self) -> &'static str {
+        match self {
+            SolverError::ParseFailure(_) => "S001",
+            SolverError::NoPatterns => "S002",
+            SolverError::MaterializationError { .. } => "S003",
+        }
+    }
+
+    /// Returns a helpful suggestion for this error
+    pub fn help(&self) -> Option<&'static str> {
+        match self {
+            SolverError::NoPatterns => Some("Add at least one pattern to solve. Example: 'A*B' or '*cat*;*dog*'"),
+            SolverError::MaterializationError { .. } => Some("This is an internal error. The pattern matched but constraints could not be satisfied."),
+            SolverError::ParseFailure(_) => None, // ParseError has its own help
+        }
+    }
+
+    /// Formats the error with code and optional help text
+    pub fn display_detailed(&self) -> String {
+        match self {
+            SolverError::ParseFailure(pe) => {
+                // delegate to ParseError's detailed display
+                format!("{}\n  caused by: {}", self.code(), pe.display_detailed())
+            }
+            _ => {
+                crate::errors::format_error_with_code_and_help(&self.to_string(), self.code(), self.help())
+            }
+        }
+    }
+}
+
 /// Bucket key for indexing candidates by the subset of variables that must agree.
 /// - `None` means "no lookup constraints for this pattern" (Python's `words[i][None]`).
 /// - When present, we store a *sorted* `(var_char, var_val)` list so the key is deterministic
