@@ -110,7 +110,7 @@ impl FromStr for FormKind {
             Ok(FormKind::LenConstraint { var_char, op, bound })
         // 2. Check for inequality constraints: e.g., !=ABC
         } else if let Some(cap) = NEQ_RE.captures(s).map_err(|e| ParseError::RegexError(e))? {
-            // Safe: NEQ_PATTERN has 1 capture group: ([A-Z]+) - one or more uppercase letters
+            // safe: NEQ_PATTERN has 1 capture group: ([A-Z]+)--one or more uppercase letters
             let var_chars: Vec<_> = cap[1].chars().collect();
             Ok(FormKind::NeqConstraint { var_chars })
         // 3. Complex constraints (delegate to helper)
@@ -506,7 +506,7 @@ impl EquationContext {
             };
 
             // Select the best candidate
-            // Safe: patterns is non-empty (checked by while loop condition)
+            // safe: patterns is non-empty (checked by while loop condition)
             let (ix, _) = patterns
                 .iter()
                 .enumerate()

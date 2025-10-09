@@ -389,7 +389,7 @@ fn recursive_join(
             let mut binding = Bindings::default();
             binding.set_word(&expected);
             for &var_char in &p.variables {
-                // Safe: all vars in lookup_keys must be in env by construction
+                // safe: all vars in lookup_keys must be in env by construction
                 if let Some(var_val) = env.get(&var_char) {
                     binding.set(var_char, var_val.clone());
                 } else {
