@@ -1,3 +1,81 @@
+//! Error types for parsing operations with error codes and helpful messages.
+//!
+//! # Error Codes
+//!
+//! Each error variant has a unique code (E001-E016) for documentation lookup:
+//!
+//! - E001: ParseFailure (Generic parse failure)
+//! - E002: RegexError (Invalid regex pattern)
+//! - E003: EmptyForm (Empty form string)
+//! - E004: InvalidLengthRange (Invalid length range format)
+//! - E005: InvalidComplexConstraint (Invalid complex constraint)
+//! - E006: InvalidInput (Invalid input)
+//! - E007: ParseIntError (Integer parsing error)
+//! - E008: ContradictoryBounds (Contradictory length bounds)
+//! - E009: InvalidCharsetRange (Invalid charset range)
+//! - E010: DanglingCharsetDash (Dangling '-' in charset)
+//! - E011: ConflictingConstraint (Conflicting variable constraints)
+//! - E012: ClauseParseError (Parse error in clause (wraps another error))
+//! - E013: InvalidVariableName (Variable name not A-Z)
+//! - E014: InvalidLowercaseChar (Non-lowercase character)
+//! - E015: InvalidAnagramChars (Invalid characters in anagram)
+//! - E016: NomError (Low-level nom parser error)
+//!
+//! # Examples
+//!
+//! ## Basic Error Handling
+//!
+//! ```
+//! use umiaq::errors::ParseError;
+//!
+//! fn parse_something(input: &str) -> Result<(), Box<ParseError>> {
+//!     if input.is_empty() {
+//!         return Err(Box::new(ParseError::EmptyForm));
+//!     }
+//!     Ok(())
+//! }
+//!
+//! match parse_something("") {
+//!     Err(e) => {
+//!         println!("Error: {}", e);
+//!         println!("Code: {}", e.code());
+//!         if let Some(help) = e.help() {
+//!             println!("Help: {}", help);
+//!         }
+//!     }
+//!     Ok(_) => println!("Success"),
+//! }
+//! ```
+//!
+//! ## Error Wrapping with Context
+//!
+//! ```
+//! use umiaq::errors::ParseError;
+//!
+//! fn parse_low_level(c: char) -> Result<usize, Box<ParseError>> {
+//!     if !c.is_ascii_lowercase() {
+//!         return Err(Box::new(ParseError::InvalidLowercaseChar { invalid_char: c }));
+//!     }
+//!     Ok(c as usize - 'a' as usize)
+//! }
+//!
+//! fn parse_high_level(word: &str) -> Result<Vec<usize>, Box<ParseError>> {
+//!     word.chars().map(|c| {
+//!         parse_low_level(c).map_err(|e| {
+//!             // Wrap with additional context
+//!             if let ParseError::InvalidLowercaseChar { invalid_char } = *e {
+//!                 Box::new(ParseError::InvalidAnagramChars {
+//!                     anagram: word.to_string(),
+//!                     invalid_char
+//!                 })
+//!             } else {
+//!                 e
+//!             }
+//!         })
+//!     }).collect()
+//! }
+//! ```
+
 use nom::error::{ErrorKind, ParseError as NomParseError};
 use std::num::ParseIntError;
 use std::io;

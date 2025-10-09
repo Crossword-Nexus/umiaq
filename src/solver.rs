@@ -1,3 +1,67 @@
+//! The main solver for pattern-matching equations against word lists.
+//!
+//! # Error Handling
+//!
+//! The solver uses [`SolverError`] with three variants:
+//!
+//! - S001: ParseFailure (Pattern parsing failed (wraps [`ParseError`]))
+//! - S002: NoPatterns (Equation has only constraints, no patterns to solve)
+//! - S003: MaterializationError (Internal error during solution construction)
+//!
+//! Each error has a `code()`, optional `help()`, and `display_detailed()` method.
+//!
+//! # Examples
+//!
+//! ## Basic Usage
+//!
+//! ```
+//! use umiaq::solver;
+//!
+//! let words = vec!["cat", "dog", "catalog", "dogma"];
+//! let result = solver::solve_equation("A*B", &words, 10)?;
+//!
+//! println!("Found {} solutions", result.solutions.len());
+//! for solution in result.solutions {
+//!     println!("{}", solver::solution_to_string(&solution)?);
+//! }
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
+//!
+//! ## Handling Errors with Detailed Messages
+//!
+//! ```
+//! use umiaq::solver::{self, SolverError};
+//!
+//! let words = vec!["test"];
+//! match solver::solve_equation("", &words, 10) {
+//!     Ok(result) => println!("Success: {} solutions", result.solutions.len()),
+//!     Err(e) => {
+//!         // Show detailed error with code and help
+//!         eprintln!("{}", e.display_detailed());
+//!         // Error code: S001
+//!         // Help text: Example: Use 'A*B' or '*cat*' instead of empty string
+//!     }
+//! }
+//! ```
+//!
+//! ## Checking Solve Status
+//!
+//! ```
+//! use umiaq::solver::{self, SolveStatus};
+//!
+//! let words = vec!["cat", "dog"];
+//! let result = solver::solve_equation("A*", &words, 100)?;
+//!
+//! match result.status {
+//!     SolveStatus::FoundEnough => println!("Found all requested results"),
+//!     SolveStatus::WordListExhausted => println!("Searched entire word list"),
+//!     SolveStatus::TimedOut { elapsed } => {
+//!         println!("Timed out after {:?}", elapsed);
+//!     }
+//! }
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
+
 use crate::bindings::{Bindings, WORD_SENTINEL};
 use crate::errors::ParseError;
 use crate::joint_constraints::JointConstraints;
