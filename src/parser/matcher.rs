@@ -275,6 +275,7 @@ impl HelperParams<'_> {
             return false;
         }
 
+        // safe: parts is non-empty (checked above), so indexing [0] and slicing [1..] are valid
         let (first, rest) = (&parts[0], &parts[1..]);
 
         match first {

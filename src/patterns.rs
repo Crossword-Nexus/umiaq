@@ -99,7 +99,10 @@ impl FromStr for FormKind {
         // NB: this assumes that any form that matches LEN_CMP_RE is either a LenConstraint or is
         // malformed (see the "?"s at the end of deriving op and bound)
         if let Some(cap) = LEN_CMP_RE.captures(s).map_err(|e| ParseError::RegexError(e))? {
-            // Safe: regex guarantees capture group 1 contains exactly one char A-Z
+            // safe: LEN_CMP_PATTERN has 3 capture groups, all guaranteed by successful match
+            // group 1: ([A-Z]) - exactly one uppercase letter
+            // group 2: (<=|>=|=|<|>) - comparison operator
+            // group 3: (\d+) - one or more digits
             let var_char = cap[1].chars().next()
                 .expect("LEN_CMP_RE capture group 1 must contain at least one character");
             let op = ComparisonOperator::from_str(&cap[2])?;
@@ -107,6 +110,7 @@ impl FromStr for FormKind {
             Ok(FormKind::LenConstraint { var_char, op, bound })
         // 2. Check for inequality constraints: e.g., !=ABC
         } else if let Some(cap) = NEQ_RE.captures(s).map_err(|e| ParseError::RegexError(e))? {
+            // Safe: NEQ_PATTERN has 1 capture group: ([A-Z]+) - one or more uppercase letters
             let var_chars: Vec<_> = cap[1].chars().collect();
             Ok(FormKind::NeqConstraint { var_chars })
         // 3. Complex constraints (delegate to helper)
