@@ -284,18 +284,28 @@ impl JointConstraints {
 ///   • Since sum(mins) = 14, every variable must be exactly length 1.
 /// This allows the solver to avoid exploring longer assignments unnecessarily.
 ///
+/// This function implements a circuit-breaker pattern for performance and robustness:
+/// before attempting expensive search, we check if the constraints are provably impossible to satisfy.
+/// For example, if sum(mins) > target or sum(maxes) < target, we immediately return an error.
+///
 /// Algorithm outline:
-///   1. For each joint constraint with relation `= T`:
+///      - If sum(mins) > T: impossible (minimum required exceeds target)
+///      - If sum(maxes) < T: impossible (maximum possible falls short of target)
 ///      - Collect current min/max bounds for the vars in the group.
 ///      - If sum(mins) == T, then all vars are fixed at their minimum length.
 ///      - Else if sum(maxes) == T (and all maxes are finite), then all vars are fixed at their maximum.
 ///      - Else, perform generic interval tightening:
 ///        • New min for Vi = max(current min, T - Σ other maxes)
 ///        • New max for Vi = min(current max, T - Σ other mins)
+///        • If new_min > new_max, fail immediately with `ContradictoryBounds`
 ///
 /// This propagation is *sound* (never removes feasible solutions) and often
 /// eliminates huge amounts of search, especially for long chains of unconstrained vars.
-pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstraints) {
+///
+/// # Errors
+///
+/// Returns `Err(ContradictoryBounds)` if the constraints are provably unsatisfiable.
+pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstraints) -> Result<(), Box<ParseError>> {
     for jc in jcs.clone() {
         if jc.rel != RelMask::EQ { continue; }
 
@@ -316,6 +326,24 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
             mins.push((var_char, bounds.min_len));
             if let Some(u) = bounds.max_len_opt {
                 maxes.push((var_char, u));
+            }
+        }
+
+        // Fail fast: if constraints are provably unsatisfiable, fail immediately
+        if sum_min > jc.target {
+            // sum of minimums exceeds target (impossible to satisfy)
+            return Err(Box::new(ParseError::ContradictoryBounds {
+                min: sum_min,
+                max: jc.target,
+            }));
+        }
+        if let Some(sum_max) = sum_max_opt {
+            if sum_max < jc.target {
+                // sum of maximums is less than target (impossible to satisfy)
+                return Err(Box::new(ParseError::ContradictoryBounds {
+                    min: jc.target,
+                    max: sum_max,
+                }));
             }
         }
 
@@ -361,11 +389,20 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
                 let new_min = bounds.min_len.max(lower_from_joint);
                 let new_max = bounds.max_len_opt.unwrap_or(upper_from_joint).min(upper_from_joint);
 
+                // fail fast: check for contradictory bounds
+                if new_min > new_max {
+                    return Err(Box::new(ParseError::ContradictoryBounds {
+                        min: new_min,
+                        max: new_max,
+                    }));
+                }
+
                 let e = vcs.ensure_entry_mut(var_char);
                 e.bounds = Bounds::of(new_min, new_max);
             }
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -385,7 +422,7 @@ mod tests {
         let jc = JointConstraint { vars: vec!['A','B'], target: 5, rel: RelMask::EQ };
         let jcs = JointConstraints::of(vec![jc]);
 
-        propagate_joint_to_var_bounds(&mut vcs, &jcs);
+        propagate_joint_to_var_bounds(&mut vcs, &jcs).unwrap();
 
         assert_eq!(vcs.bounds('A'), Bounds::of(2, 2));
         assert_eq!(vcs.bounds('B'), Bounds::of(3, 3));
@@ -402,7 +439,7 @@ mod tests {
         let jc = JointConstraint { vars: vec!['A','B','C'], target: 7, rel: RelMask::EQ };
         let jcs = JointConstraints::of(vec![jc]);
 
-        propagate_joint_to_var_bounds(&mut vcs, &jcs);
+        propagate_joint_to_var_bounds(&mut vcs, &jcs).unwrap();
 
         // All should be exact, B should lock to default=1
         assert_eq!(vcs.bounds('A'), Bounds::of(3, 3));
@@ -420,7 +457,7 @@ mod tests {
         let jc = JointConstraint { vars: vec!['A','B','C'], target: 8, rel: RelMask::EQ };
         let jcs = JointConstraints::of(vec![jc]);
 
-        propagate_joint_to_var_bounds(&mut vcs, &jcs);
+        propagate_joint_to_var_bounds(&mut vcs, &jcs).unwrap();
 
         // Nothing should be forced exact
         assert_eq!(vcs.bounds('A'), Bounds::of(3, 4));
@@ -438,7 +475,7 @@ mod tests {
         let jc = JointConstraint { vars: vec!['A','B'], target: 7, rel: RelMask::EQ };
         let jcs = JointConstraints::of(vec![jc]);
 
-        propagate_joint_to_var_bounds(&mut vcs, &jcs);
+        propagate_joint_to_var_bounds(&mut vcs, &jcs).unwrap();
 
         assert_eq!(vcs.bounds('A'), Bounds::of(4, 4)); // exact=4
         assert_eq!(vcs.bounds('B'), Bounds::of(3, 3)); // exact=3
@@ -586,7 +623,7 @@ mod tests {
         let jcs = JointConstraints::of(vec![jc1, jc2]);
 
         // Create the variable constraints
-        propagate_joint_to_var_bounds(&mut vcs, &jcs);
+        propagate_joint_to_var_bounds(&mut vcs, &jcs).unwrap();
 
         // At this stage we expect consistent tightening.
         let a_bounds = vcs.bounds('A');
@@ -607,5 +644,52 @@ mod tests {
         assert_eq!(c_bounds.min_len, 4);
         // And at most 5, since B≥1
         assert_eq!(c_max.unwrap(), 5);
+    }
+
+    /// Test failing fast on provably unsatisfiable constraints
+    #[test]
+    fn test_fast_fail_on_unsatisfiable_constraints() {
+        // setup: A has min_len=3, B has min_len=3, but |A+B|=5
+        // (impossible--3+3=6 > 5)
+        let mut vcs = VarConstraints::default();
+        vcs.ensure_entry_mut('A').bounds = Bounds::of(3, 10);
+        vcs.ensure_entry_mut('B').bounds = Bounds::of(3, 10);
+
+        let jc = JointConstraint {
+            vars: vec!['A', 'B'],
+            rel: RelMask::EQ,
+            target: 5,
+        };
+        let jcs = JointConstraints::of(vec![jc]);
+
+        let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);
+        assert!(result.is_err(), "Should fail on unsatisfiable constraints: sum_min=6 > target=5");
+
+        match result.unwrap_err().as_ref() {
+            ParseError::ContradictoryBounds { min, max } => {
+                assert!(*min > *max, "Contradictory bounds: min={} should be > max={}", min, max);
+            }
+            other => panic!("Expected ContradictoryBounds, got: {:?}", other),
+        }
+    }
+
+    /// Test failing fast when maximum is too small
+    #[test]
+    fn test_fast_fail_when_max_too_small() {
+        // setup: A has max=2, B has max=2, but |A+B|=6
+        // (impossible--2+2=4 < 6)
+        let mut vcs = VarConstraints::default();
+        vcs.ensure_entry_mut('A').bounds = Bounds::of(1, 2);
+        vcs.ensure_entry_mut('B').bounds = Bounds::of(1, 2);
+
+        let jc = JointConstraint {
+            vars: vec!['A', 'B'],
+            rel: RelMask::EQ,
+            target: 6,
+        };
+        let jcs = JointConstraints::of(vec![jc]);
+
+        let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);
+        assert!(result.is_err(), "Should fail when sum of maxes < target");
     }
 }

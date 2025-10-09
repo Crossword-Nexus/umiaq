@@ -626,10 +626,11 @@ impl FromStr for EquationContext {
 
         // Step 8: Get the joint constraints and use them to tighten per-variable constraints
         // This gets length bounds on variables (from the joint constraints)
+        // Fails fast if constraints are provably unsatisfiable
         propagate_joint_to_var_bounds(
             &mut equation_context.var_constraints,
             &equation_context.joint_constraints,
-        );
+        )?;
 
         // Step 9: Build cheap, per-form length hints (index-aligned with parsed_forms)
         // The hints are length bounds for each form
