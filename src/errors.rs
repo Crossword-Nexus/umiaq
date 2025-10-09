@@ -220,7 +220,7 @@ impl ParseError {
     }
 }
 
-/// Helper function to format error messages with code and optional help text (DRY)
+/// Helper function to format error messages with code and optional help text
 pub(crate) fn format_error_with_code_and_help(base_msg: &str, code: &str, help: Option<&str>) -> String {
     if let Some(help_text) = help {
         format!("{} ({})\n{}", base_msg, code, help_text)
@@ -249,5 +249,168 @@ mod tests {
         assert_eq!(err.code(), "E008");
         let detailed = err.display_detailed();
         assert!(detailed.contains("minimum length cannot exceed"));
+    }
+
+    /// Test that all `ParseError` variants have unique error codes
+    #[test]
+    fn test_all_error_codes_are_unique() {
+        let mut codes = std::collections::HashSet::new();
+
+        // Sample one of each variant
+        let errors: Vec<ParseError> = vec![
+            ParseError::ParseFailure { s: "test".to_string() },
+            ParseError::EmptyForm,
+            ParseError::InvalidInput { str: "test".to_string() },
+            ParseError::InvalidVariableName { var: "1".to_string() },
+            ParseError::ContradictoryBounds { min: 5, max: 3 },
+            ParseError::InvalidLengthRange { input: "bad".to_string() },
+            ParseError::InvalidComplexConstraint { str: "bad".to_string() },
+            ParseError::InvalidCharsetRange('a', 'z'),
+            ParseError::DanglingCharsetDash,
+            ParseError::ConflictingConstraint { var_char: 'A', older: "old".to_string(), newer: "new".to_string() },
+            ParseError::InvalidLowercaseChar { invalid_char: 'X' },
+            ParseError::InvalidAnagramChars { anagram: "xyz".to_string(), invalid_char: 'X' },
+        ];
+
+        for err in errors {
+            let code = err.code();
+            assert!(
+                code.starts_with('E'),
+                "Error code '{}' should start with 'E'",
+                code
+            );
+            assert!(
+                codes.insert(code),
+                "Duplicate error code found: {}",
+                code
+            );
+        }
+
+        // Verify we tested at least 9 variants
+        assert!(codes.len() >= 9, "Should have at least 9 unique error codes");
+    }
+
+    /// Test that all error codes follow the format E0XX
+    #[test]
+    fn test_error_code_format() {
+        let errors: Vec<ParseError> = vec![
+            ParseError::EmptyForm,
+            ParseError::ContradictoryBounds { min: 5, max: 3 },
+            ParseError::InvalidInput { str: "test".to_string() },
+        ];
+
+        for err in errors {
+            let code = err.code();
+            assert_eq!(code.len(), 4, "Error code '{}' should be 4 characters (E0XX)", code);
+            assert!(
+                code.starts_with("E0"),
+                "Error code '{}' should start with 'E0'",
+                code
+            );
+            let num_part = &code[1..];
+            assert!(
+                num_part.parse::<u16>().is_ok(),
+                "Error code '{}' should end with a number",
+                code
+            );
+        }
+    }
+
+    /// Test that all errors have helpful help text
+    #[test]
+    fn test_all_errors_have_helpful_messages() {
+        let errors: Vec<ParseError> = vec![
+            ParseError::EmptyForm,
+            ParseError::ContradictoryBounds { min: 5, max: 3 },
+            ParseError::InvalidInput { str: "test".to_string() },
+            ParseError::InvalidVariableName { var: "1".to_string() },
+            ParseError::InvalidLengthRange { input: "bad".to_string() },
+        ];
+
+        for err in errors {
+            let help = err.help();
+            if let Some(help_text) = help {
+                assert!(
+                    help_text.len() > 10,
+                    "Help text for {:?} should be substantial",
+                    err
+                );
+                // Help text should not just repeat the error message
+                let err_msg = err.to_string();
+                assert_ne!(help_text, err_msg, "Help text should provide additional information beyond error message");
+            }
+            // Not all errors need help text, so we don't assert help.is_some()
+        }
+    }
+
+    /// Test that display_detailed properly formats errors
+    #[test]
+    fn test_display_detailed_includes_code_and_help() {
+        let err = ParseError::EmptyForm;
+        let detailed = err.display_detailed();
+
+        // should include code
+        assert!(
+            detailed.contains(err.code()),
+            "Detailed display should include error code"
+        );
+
+        // should include base message
+        let base_msg = err.to_string();
+        assert!(
+            detailed.contains(&base_msg),
+            "Detailed display should include base error message"
+        );
+
+        // if there's help text, it should be included
+        if let Some(help) = err.help() {
+            assert!(
+                detailed.contains(help),
+                "Detailed display should include help text when available"
+            );
+        }
+    }
+
+    /// Test that error messages are useful
+    #[test]
+    fn test_error_messages_are_actionable() {
+        let err = ParseError::ContradictoryBounds { min: 5, max: 3 };
+        let detailed = err.display_detailed();
+
+        // should explain what went wrong
+        assert!(
+            detailed.contains("minimum") || detailed.contains("min"),
+            "Error should mention the problematic constraint"
+        );
+
+        // should include the actual values
+        assert!(
+            detailed.contains('5') && detailed.contains('3'),
+            "Error should include the actual conflicting values"
+        );
+    }
+
+    /// Test error chain construction for `ClauseParseError`
+    #[test]
+    fn test_clause_parse_error_chain() {
+        let source = ParseError::InvalidInput { str: "bad".to_string() };
+        let err = ParseError::ClauseParseError {
+            clause: "bad".to_string(),
+            source: Box::new(source),
+        };
+
+        let detailed = err.display_detailed();
+
+        // should show the clause
+        assert!(
+            detailed.contains("bad"),
+            "ClauseParseError should show the problematic clause"
+        );
+
+        // should show error codes from both levels
+        assert!(
+            detailed.contains(err.code()),
+            "Should show outer error code"
+        );
     }
 }

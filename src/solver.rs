@@ -1046,4 +1046,165 @@ mod tests {
         assert!(matches!(res, Err(SolverError::NoPatterns)));
     }
 
+    mod error_tests {
+        use super::*;
+
+        /// Test that all `SolverError` variants have valid error codes
+        #[test]
+        fn test_error_codes_are_valid() {
+            let parse_err = SolverError::ParseFailure(Box::new(ParseError::EmptyForm));
+            assert_eq!(parse_err.code(), "S001");
+
+            let no_patterns_err = SolverError::NoPatterns;
+            assert_eq!(no_patterns_err.code(), "S002");
+
+            let mat_err = SolverError::MaterializationError {
+                context: "test".to_string(),
+            };
+            assert_eq!(mat_err.code(), "S003");
+        }
+
+        /// Test that error help messages are helpful and non-empty
+        #[test]
+        fn test_error_help_messages_are_helpful() {
+            let no_patterns_err = SolverError::NoPatterns;
+            let help = no_patterns_err.help();
+            assert!(help.is_some(), "NoPatterns should have help text");
+            assert!(
+                help.unwrap().len() > 20,
+                "Help text should be reasonably detailed"
+            );
+            assert!(
+                help.unwrap().contains("pattern"),
+                "Help should mention 'pattern'"
+            );
+
+            let mat_err = SolverError::MaterializationError {
+                context: "test".to_string(),
+            };
+            let mat_help = mat_err.help();
+            assert!(mat_help.is_some(), "MaterializationError should have help text");
+        }
+
+        /// Test that `display_detailed` includes error code and help
+        #[test]
+        fn test_display_detailed_format() {
+            let no_patterns_err = SolverError::NoPatterns;
+            let detailed = no_patterns_err.display_detailed();
+
+            // should include error code
+            assert!(
+                detailed.contains("S002"),
+                "Detailed display should include error code"
+            );
+
+            // should include help text
+            assert!(
+                detailed.contains("pattern"),
+                "Detailed display should include help text"
+            );
+        }
+
+        /// Test that `ParseFailure` error chains are properly constructed
+        #[test]
+        fn test_parse_failure_error_chain() {
+            let words = vec!["test"];
+            let result = solve_equation("INVALID(", &words, 10);
+
+            match result {
+                Err(SolverError::ParseFailure(parse_err)) => {
+                    // Verify the error chain is accessible
+                    let detailed = SolverError::ParseFailure(parse_err).display_detailed();
+                    assert!(
+                        detailed.contains("S001"),
+                        "ParseFailure should have S001 code"
+                    );
+                    assert!(
+                        detailed.contains("caused by"),
+                        "ParseFailure should show error chain"
+                    );
+
+                    // The underlying ParseError should have its own code
+                    assert!(
+                        detailed.contains("E0"),
+                        "Should contain ParseError code (E0xx)"
+                    );
+                }
+                _ => panic!("Expected ParseFailure error"),
+            }
+        }
+
+        /// Test that `MaterializationError` includes context
+        #[test]
+        fn test_materialization_error_context() {
+            let err = SolverError::MaterializationError {
+                context: "pattern depth: 2/3, environment: {A: \"test\"}".to_string(),
+            };
+
+            let display = err.to_string();
+            assert!(
+                display.contains("pattern depth"),
+                "MaterializationError should include context"
+            );
+            assert!(
+                display.contains("environment"),
+                "MaterializationError should include environment info"
+            );
+        }
+
+        /// Test that `NoPatterns` error has correct message
+        #[test]
+        fn test_no_patterns_error_message() {
+            let err = SolverError::NoPatterns;
+            let msg = err.to_string();
+
+            assert!(
+                msg.contains("no patterns"),
+                "NoPatterns message should mention 'no patterns'"
+            );
+            assert!(
+                msg.contains("constraints"),
+                "NoPatterns message should mention 'constraints'"
+            );
+        }
+
+        /// Test that empty input returns appropriate error
+        #[test]
+        fn test_empty_input_error() {
+            let words = vec!["test"];
+            let result = solve_equation("", &words, 10);
+
+            match result {
+                Err(SolverError::ParseFailure(parse_err)) => {
+                    assert!(
+                        matches!(*parse_err, ParseError::EmptyForm),
+                        "Empty input should produce EmptyForm error"
+                    );
+                }
+                _ => panic!("Expected ParseFailure with EmptyForm"),
+            }
+        }
+
+        /// Test that error display is consistent with debug
+        #[test]
+        fn test_error_display_consistency() {
+            let err = SolverError::NoPatterns;
+
+            let display = err.to_string();
+            let debug = format!("{:?}", err);
+
+            // debug should contain the variant name
+            assert!(
+                debug.contains("NoPatterns"),
+                "Debug should show variant name"
+            );
+
+            // display should be user-friendly
+            assert!(
+                !display.contains("NoPatterns"),
+                "Display should not expose enum variant names"
+            );
+        }
+    }
+
 }
