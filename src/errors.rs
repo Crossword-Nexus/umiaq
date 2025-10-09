@@ -1,4 +1,3 @@
-use crate::errors::ParseError::ParseFailure;
 use nom::error::{ErrorKind, ParseError as NomParseError};
 use std::num::ParseIntError;
 use std::io;
@@ -53,8 +52,11 @@ pub enum ParseError {
     #[error("Invalid variable name '{var}' (must be A-Z)")]
     InvalidVariableName { var: String },
 
-    #[error("Anagram constraint \"{anagram}\" contains invalid characters (only a-z allowed)")]
-    InvalidAnagramChars { anagram: String },
+    #[error("Invalid character '{invalid_char}' (only lowercase a-z allowed)")]
+    InvalidLowercaseChar { invalid_char: char },
+
+    #[error("Anagram constraint \"{anagram}\" contains invalid character '{invalid_char}' (only a-z allowed)")]
+    InvalidAnagramChars { anagram: String, invalid_char: char },
 
     // // TODO use(?) (e.g., when detecting patterns with excessive nesting, backtracking potential)
     // #[error("Pattern too complex: {reason}")]
@@ -74,13 +76,13 @@ impl From<ParseError> for io::Error {
 
 impl From<ParseIntError> for Box<ParseError> {
     fn from(pie: ParseIntError) -> Self {
-        ParseFailure { s: pie.to_string() }.into()
+        Box::new(ParseError::ParseIntError(pie))
     }
 }
 
 impl From<Box<fancy_regex::Error>> for Box<ParseError> {
     fn from(e: Box<fancy_regex::Error>) -> Self {
-        ParseFailure { s: (*e).to_string() }.into()
+        Box::new(ParseError::RegexError(*e))
     }
 }
 
