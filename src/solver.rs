@@ -539,7 +539,15 @@ fn recursive_join_inner(
                 .materialize_deterministic_with_env(env)
             else {
                 return Err(SolverError::MaterializationError {
-                    context: format!("failed to materialize deterministic pattern with variables: {:?}", p.variables)
+                    context: format!(
+                        "failed to materialize deterministic pattern with variables: {:?}\n  \
+                        environment: {:?}\n  \
+                        pattern depth: {}/{}",
+                        p.variables,
+                        env,
+                        selected.len() + 1,
+                        total_patterns
+                    )
                 });
             };
 
@@ -746,10 +754,26 @@ pub fn solve_equation(
     //   2. recursively joining those buckets into full solutions
     // Continues until either we have enough results, the word list is exhausted,
     // or the time budget expires.
+    #[cfg(debug_assertions)]
+    let mut iteration = 0;
+
     while results.len() < num_results_requested
         && scan_pos < word_list.len()
         && !budget.expired()
     {
+        #[cfg(debug_assertions)]
+        {
+            iteration += 1;
+            if iteration % 10 == 0 {
+                eprintln!(
+                    "[solver] iteration {}: scan_pos={}/{}, batch_size={}, results={}/{}, elapsed={:.2}s",
+                    iteration, scan_pos, word_list.len(), batch_size,
+                    results.len(), num_results_requested,
+                    budget.elapsed().as_secs_f64()
+                );
+            }
+        }
+
         // 1. Scan the next batch_size words into candidate buckets.
         // Each candidate binding is grouped by its lookup key so later joins are fast.
         let new_pos = scan_batch(
