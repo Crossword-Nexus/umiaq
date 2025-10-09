@@ -4,9 +4,9 @@
 //!
 //! The solver uses [`SolverError`] with three variants:
 //!
-//! - S001: ParseFailure (Pattern parsing failed (wraps [`ParseError`]))
-//! - S002: NoPatterns (Equation has only constraints, no patterns to solve)
-//! - S003: MaterializationError (Internal error during solution construction)
+//! - S001: `ParseFailure` (Pattern parsing failed (wraps [`ParseError`]))
+//! - S002: `NoPatterns` (Equation has only constraints, no patterns to solve)
+//! - S003: `MaterializationError` (Internal error during solution construction)
 //!
 //! Each error has a `code()`, optional `help()`, and `display_detailed()` method.
 //!
@@ -321,7 +321,7 @@ fn lookup_key_for_binding(
     keys: HashSet<char>,
 ) -> LookupKey {
     debug_assert!(
-        keys.iter().all(|c| c.is_ascii_uppercase()),
+        keys.iter().all(char::is_ascii_uppercase),
         "All key variables must be one of uppercase A-Z"
     );
 
@@ -569,8 +569,7 @@ fn recursive_join_inner(
                     // this should never happen--indicates a logic error in solver
                     debug_assert!(
                         false,
-                        "Variable '{}' in lookup_keys but not in env--solver invariant violated",
-                        var_char
+                        "Variable '{var_char}' in lookup_keys but not in env--solver invariant violated"
                     );
                 }
             }

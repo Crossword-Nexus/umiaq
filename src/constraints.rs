@@ -97,11 +97,11 @@ impl Bounds {
     /// Create bounds with the given min and max lengths.
     ///
     /// # Panics
-    /// Panics if min_len > max_len, as this represents an invalid configuration
-    /// that should be caught at parse time.
+    /// Panics if `min_len` > `max_len`, since this represents an invalid configuration
+    /// that should be caught when parsing.
     pub(crate) fn of(min_len: usize, max_len: usize) -> Self {
         assert!(min_len <= max_len,
-            "Invalid bounds: min ({}) must be <= max ({})", min_len, max_len);
+            "Invalid bounds: min ({min_len}) must be <= max ({max_len})");
         Bounds { min_len, max_len_opt: Some(max_len) }
     }
 
@@ -113,7 +113,7 @@ impl Bounds {
     pub(crate) fn constrain_by(&mut self, other: Bounds) -> Result<(), Box<ParseError>> {
         // precondition: input bounds must be valid
         debug_assert!(
-            other.max_len_opt.map_or(true, |max| other.min_len <= max),
+            other.max_len_opt.is_none_or(|max| other.min_len <= max),
             "Input bounds must be valid: min ({}) <= max ({:?})",
             other.min_len, other.max_len_opt
         );

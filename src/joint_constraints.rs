@@ -118,7 +118,7 @@ impl JointConstraint {
             let total: usize = self.vars.iter()
                 .map(|var_char| {
                     let binding = bindings.get(*var_char);
-                    debug_assert!(binding.is_some(), "var '{}' must be bound after contains_all_vars check", var_char);
+                    debug_assert!(binding.is_some(), "var '{var_char}' must be bound after contains_all_vars check");
                     binding.expect("var must be bound after contains_all_vars check").len()
                 })
                 .sum();
@@ -170,8 +170,7 @@ const JOINT_LEN_PATTERN: &str = r"^\|(?<vars>[A-Z]{2,})\| *(?<op>=|!=|<=|>=|<|>)
 static JOINT_LEN_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(JOINT_LEN_PATTERN)
         .unwrap_or_else(|e| panic!(
-            "BUG: Failed to compile JOINT_LEN_RE regex pattern '{}': {}.",
-            JOINT_LEN_PATTERN, e
+            "BUG: Failed to compile JOINT_LEN_RE regex pattern '{JOINT_LEN_PATTERN}': {e}."
         )));
 
 /// Parse a single joint-length expression that **starts at** a `'|'`. Returns `None` on invalid
@@ -297,7 +296,7 @@ impl JointConstraints {
 ///      - Else, perform generic interval tightening:
 ///        • New min for Vi = max(current min, T - Σ other maxes)
 ///        • New max for Vi = min(current max, T - Σ other mins)
-///        • If new_min > new_max, fail immediately with `ContradictoryBounds`
+///        • If new min > new max, fail immediately with `ContradictoryBounds`
 ///
 /// This propagation is *sound* (never removes feasible solutions) and often
 /// eliminates huge amounts of search, especially for long chains of unconstrained vars.
@@ -337,14 +336,12 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
                 max: jc.target,
             }));
         }
-        if let Some(sum_max) = sum_max_opt {
-            if sum_max < jc.target {
-                // sum of maximums is less than target (impossible to satisfy)
-                return Err(Box::new(ParseError::ContradictoryBounds {
-                    min: jc.target,
-                    max: sum_max,
-                }));
-            }
+        if let Some(sum_max) = sum_max_opt && sum_max < jc.target {
+            // sum of maximums is less than target (impossible to satisfy)
+            return Err(Box::new(ParseError::ContradictoryBounds {
+                min: jc.target,
+                max: sum_max,
+            }));
         }
 
         if sum_min == jc.target {

@@ -228,7 +228,7 @@ impl HelperParams<'_> {
                     .is_none_or(|c| {
                         is_valid_binding(&var_val, c, self.bindings).unwrap_or_else(|e| {
                             // This indicates a malformed constraint that should have been caught earlier
-                            debug_assert!(false, "Failed to parse constraint form: {}", e);
+                            debug_assert!(false, "Failed to parse constraint form: {e}");
                             false
                         })
                     });

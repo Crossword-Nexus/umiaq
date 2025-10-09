@@ -135,7 +135,7 @@ fn main() -> std::io::Result<()> {
         let _warmup = match solver::solve_equation(pattern, &words_ref, NUM_RESULTS) {
             Ok(result) => result,
             Err(e) => {
-                eprintln!("  ✗ Warm-up failed: {}", e);
+                eprintln!("  ✗ Warm-up failed: {e}");
                 continue;
             }
         };

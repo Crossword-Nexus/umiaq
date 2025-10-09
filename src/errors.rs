@@ -4,22 +4,22 @@
 //!
 //! Each error variant has a unique code (E001-E016) for documentation lookup:
 //!
-//! - E001: ParseFailure (Generic parse failure)
-//! - E002: RegexError (Invalid regex pattern)
-//! - E003: EmptyForm (Empty form string)
-//! - E004: InvalidLengthRange (Invalid length range format)
-//! - E005: InvalidComplexConstraint (Invalid complex constraint)
-//! - E006: InvalidInput (Invalid input)
-//! - E007: ParseIntError (Integer parsing error)
-//! - E008: ContradictoryBounds (Contradictory length bounds)
-//! - E009: InvalidCharsetRange (Invalid charset range)
-//! - E010: DanglingCharsetDash (Dangling '-' in charset)
-//! - E011: ConflictingConstraint (Conflicting variable constraints)
-//! - E012: ClauseParseError (Parse error in clause (wraps another error))
-//! - E013: InvalidVariableName (Variable name not A-Z)
-//! - E014: InvalidLowercaseChar (Non-lowercase character)
-//! - E015: InvalidAnagramChars (Invalid characters in anagram)
-//! - E016: NomError (Low-level nom parser error)
+//! - E001: `ParseFailure` (Generic parse failure)
+//! - E002: `RegexError` (Invalid regex pattern)
+//! - E003: `EmptyForm` (Empty form string)
+//! - E004: `InvalidLengthRange` (Invalid length range format)
+//! - E005: `InvalidComplexConstraint` (Invalid complex constraint)
+//! - E006: `InvalidInput` (Invalid input)
+//! - E007: `ParseIntError` (Integer parsing error)
+//! - E008: `ContradictoryBounds` (Contradictory length bounds)
+//! - E009: `InvalidCharsetRange` (Invalid charset range)
+//! - E010: `DanglingCharsetDash` (Dangling '-' in charset)
+//! - E011: `ConflictingConstraint` (Conflicting variable constraints)
+//! - E012: `ClauseParseError` (Parse error in clause (wraps another error))
+//! - E013: `InvalidVariableName` (Variable name not A-Z)
+//! - E014: `InvalidLowercaseChar` (Non-lowercase character)
+//! - E015: `InvalidAnagramChars` (Invalid characters in anagram)
+//! - E016: `NomError` (Low-level nom parser error)
 //!
 //! # Examples
 //!
@@ -223,9 +223,9 @@ impl ParseError {
 /// Helper function to format error messages with code and optional help text
 pub(crate) fn format_error_with_code_and_help(base_msg: &str, code: &str, help: Option<&str>) -> String {
     if let Some(help_text) = help {
-        format!("{} ({})\n{}", base_msg, code, help_text)
+        format!("{base_msg} ({code})\n{help_text}")
     } else {
-        format!("{} ({})", base_msg, code)
+        format!("{base_msg} ({code})")
     }
 }
 

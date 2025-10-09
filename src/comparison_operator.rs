@@ -28,7 +28,7 @@ impl FromStr for ComparisonOperator {
             "<" => Ok(LT),
             ">" => Ok(GT),
             _ => Err(ParseFailure {
-                s: format!("Invalid comparison operator '{}' (expected: =, !=, <, >, <=, >=)", s)
+                s: format!("Invalid comparison operator '{s}' (expected: =, !=, <, >, <=, >=)")
             })
         }
     }

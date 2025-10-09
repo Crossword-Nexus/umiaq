@@ -24,8 +24,7 @@ const LEN_CMP_PATTERN: &str = r"^\|([A-Z])\|\s*(<=|>=|=|<|>)\s*(\d+)$";
 static LEN_CMP_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(LEN_CMP_PATTERN)
         .unwrap_or_else(|e| panic!(
-            "BUG: Failed to compile LEN_CMP_RE regex pattern '{}': {}.",
-            LEN_CMP_PATTERN, e
+            "BUG: Failed to compile LEN_CMP_RE regex pattern '{LEN_CMP_PATTERN}': {e}."
         )));
 
 /// Regex pattern for inequality constraints like `!=AB`
@@ -35,8 +34,7 @@ const NEQ_PATTERN: &str = r"^!=([A-Z]+)$";
 static NEQ_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(NEQ_PATTERN)
         .unwrap_or_else(|e| panic!(
-            "BUG: Failed to compile NEQ_RE regex pattern '{}': {}.",
-            NEQ_PATTERN, e
+            "BUG: Failed to compile NEQ_RE regex pattern '{NEQ_PATTERN}': {e}."
         )));
 
 /// Classification of a single input "form" string into one of the
@@ -98,7 +96,7 @@ impl FromStr for FormKind {
         // 1. Check for a simple length comparison constraint: |A|=5
         // NB: this assumes that any form that matches LEN_CMP_RE is either a LenConstraint or is
         // malformed (see the "?"s at the end of deriving op and bound)
-        if let Some(cap) = LEN_CMP_RE.captures(s).map_err(|e| ParseError::RegexError(e))? {
+        if let Some(cap) = LEN_CMP_RE.captures(s).map_err(ParseError::RegexError)? {
             // safe: LEN_CMP_PATTERN has 3 capture groups, all guaranteed by successful match
             // group 1: ([A-Z]) - exactly one uppercase letter
             // group 2: (<=|>=|=|<|>) - comparison operator
@@ -112,7 +110,7 @@ impl FromStr for FormKind {
             let bound = cap[3].parse::<usize>()?;
             Ok(FormKind::LenConstraint { var_char, op, bound })
         // 2. Check for inequality constraints: e.g., !=ABC
-        } else if let Some(cap) = NEQ_RE.captures(s).map_err(|e| ParseError::RegexError(e))? {
+        } else if let Some(cap) = NEQ_RE.captures(s).map_err(ParseError::RegexError)? {
             // safe: NEQ_PATTERN has 1 capture group: ([A-Z]+)--one or more uppercase letters
             debug_assert!(cap.get(1).is_some() && !cap[1].is_empty(),
                 "NEQ_RE must have 1 non-empty capture group");
