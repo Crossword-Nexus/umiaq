@@ -184,7 +184,13 @@ pub(crate) fn form_to_regex_str_with_constraints(
 }
 
 // 'A' -> 0, 'B' -> 1, ..., 'Z' -> 25
-fn uc_letter_to_num(c: char) -> Result<usize, Box<ParseError>> { letter_to_num(c, 'A' as usize) }
+fn uc_letter_to_num(c: char) -> Result<usize, Box<ParseError>> {
+    letter_to_num(c, 'A' as usize).map_err(|_| {
+        Box::new(ParseError::InvalidVariableName {
+            var: c.to_string()
+        })
+    })
+}
 
 // Count occurrences of vars and revvars to decide capture/backref scheme.
 fn get_var_and_rev_var_counts(

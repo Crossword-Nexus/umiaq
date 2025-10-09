@@ -9,12 +9,16 @@ use std::io;
 pub enum ParseError {
     #[error("Form parsing failed: \"{s}\"")]
     ParseFailure { s: String },
+
     #[error("Invalid regex pattern: {0}")]
     RegexError(#[from] fancy_regex::Error),
+
     #[error("Empty form string")]
     EmptyForm,
+
     #[error("Invalid length range: \"{input}\"")]
     InvalidLengthRange { input: String },
+
     #[error("{str}")]
     InvalidComplexConstraint { str: String },
 
@@ -32,6 +36,7 @@ pub enum ParseError {
 
     #[error("Invalid range in charset: {0}-{1}")]
     InvalidCharsetRange(char, char),
+
     #[error("Dangling '-' at end of charset")]
     DanglingCharsetDash,
 
@@ -45,7 +50,17 @@ pub enum ParseError {
         source: Box<ParseError>,
     },
 
-    // ... existing variants, e.g., from variables, constraints, etc. ...
+    #[error("Invalid variable name '{var}' (must be A-Z)")]
+    InvalidVariableName { var: String },
+
+    #[error("Anagram constraint \"{anagram}\" contains invalid characters (only a-z allowed)")]
+    InvalidAnagramChars { anagram: String },
+
+    // // TODO use(?) (e.g., when detecting patterns with excessive nesting, backtracking potential)
+    // #[error("Pattern too complex: {reason}")]
+    // PatternComplexity { reason: String },
+
+    // nom parser error (lowest level)
     #[error("nom parser error: {0:?}")]
     NomError(ErrorKind),
 }
