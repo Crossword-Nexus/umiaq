@@ -111,11 +111,33 @@ impl Bounds {
 
     // only set what the constraint explicitly provides
     pub(crate) fn constrain_by(&mut self, other: Bounds) -> Result<(), Box<ParseError>> {
+        // precondition: input bounds must be valid
+        debug_assert!(
+            other.max_len_opt.map_or(true, |max| other.min_len <= max),
+            "Input bounds must be valid: min ({}) <= max ({:?})",
+            other.min_len, other.max_len_opt
+        );
+
+        let old_min = self.min_len;
+        let old_max = self.max_len_opt;
+
         self.min_len = self.min_len.max(other.min_len);
         self.max_len_opt = self.max_len_opt
             .min(other.max_len_opt)
             .or(self.max_len_opt) // since None is treated as less than anything
             .or(other.max_len_opt); // since None is treated as less than anything
+
+        // invariant: constraining can only tighten (or maintain) bounds
+        debug_assert!(
+            self.min_len >= old_min,
+            "min_len can only increase: {} -> {}",
+            old_min, self.min_len
+        );
+        debug_assert!(
+            self.max_len_opt <= old_max || old_max.is_none(),
+            "max_len can only decrease: {:?} -> {:?}",
+            old_max, self.max_len_opt
+        );
 
         // Check for contradictory bounds
         if let Some(mx) = self.max_len_opt && self.min_len > mx {

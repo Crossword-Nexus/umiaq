@@ -320,22 +320,46 @@ fn lookup_key_for_binding(
     binding: &Bindings,
     keys: HashSet<char>,
 ) -> LookupKey {
+    debug_assert!(
+        keys.iter().all(|c| c.is_ascii_uppercase()),
+        "All key variables must be one of uppercase A-Z"
+    );
+
     let mut pairs: Vec<(char, String)> = Vec::with_capacity(keys.len());
     for var_char in keys {
         match binding.get(var_char) {
-            Some(var_val) => pairs.push((var_char, var_val.clone())),
+            Some(var_val) => {
+                debug_assert!(!var_val.is_empty(), "Variable bindings must be non-empty strings");
+                pairs.push((var_char, var_val.clone()));
+            }
             None => return Vec::new(), // required key missing
         }
     }
 
     pairs.sort_unstable_by_key(|(c, _)| *c);
+    debug_assert!(
+        pairs.windows(2).all(|w| w[0].0 < w[1].0),
+        "Sorted pairs must be strictly increasing"
+    );
     pairs
 }
 
 /// Push a binding into the appropriate bucket and bump the count.
 fn push_binding(words: &mut [CandidateBuckets], i: usize, key: LookupKey, binding: Bindings) {
+    debug_assert!(i < words.len(), "Pattern index {} out of bounds (len={})", i, words.len());
+    debug_assert!(
+        binding.get_word().is_some(),
+        "Binding must have a word set before being pushed"
+    );
+
+    let old_count = words[i].count;
     words[i].buckets.entry(key).or_default().push(binding);
     words[i].count += 1;
+
+    debug_assert_eq!(
+        words[i].count, old_count + 1,
+        "Count must increment by exactly 1"
+    );
 }
 
 /// Scan a slice of candidate words against all patterns in the equation context,
@@ -371,9 +395,26 @@ fn scan_batch(
     words: &mut [CandidateBuckets],
     budget: &TimeBudget,
 ) -> Result<usize, SolverError> {
+    // precondition checks
+    debug_assert!(
+        start_idx <= word_list.len(),
+        "start_idx ({}) must be <= word_list.len() ({})",
+        start_idx, word_list.len()
+    );
+    debug_assert_eq!(
+        words.len(), equation_context.len(),
+        "words slice length must match equation_context pattern count"
+    );
+    debug_assert!(batch_size > 0, "batch_size must be positive");
 
     let mut i_word = start_idx;
     let end = start_idx.saturating_add(batch_size).min(word_list.len());
+
+    debug_assert!(
+        end <= word_list.len(),
+        "end ({}) must be <= word_list.len() ({})",
+        end, word_list.len()
+    );
 
     while i_word < end {
         timed_stop!(budget, i_word);
@@ -436,10 +477,10 @@ struct RecursiveJoinParameters {
 /// - `selected`: the partial solution (one chosen `Bindings` per pattern so far).
 /// - `env`: the accumulated variable → value environment from earlier choices.
 /// - `results`: completed solutions (each is a `Vec<Binding>`, one per pattern).
-/// - `num_results_requested`: cap on how many full solutions to collect.
-/// - `rjp.candidate_buckets`: per-pattern candidate buckets (what you built during scanning).
-/// - `rjp.lookup_keys`: for each pattern, which variables must agree with previously chosen
-///   patterns.
+/// - `ctx`: join context containing the requested result count, word set, constraints, and budget.
+/// - `seen`: set of solution hashes to avoid duplicates.
+/// - `rjp`: remaining patterns to process (candidate buckets, lookup keys, pattern info).
+/// - `total_patterns`: total number of patterns (for invariant checking).
 ///
 /// Return:
 /// - This function mutates `results` and stops early once `results` contains
@@ -454,7 +495,16 @@ fn recursive_join(
     ctx: &JoinCtx,
     seen: &mut HashSet<u64>,
     rjp: &[RecursiveJoinParameters],
+    total_patterns: usize,
 ) -> Result<(), SolverError> {
+    // Invariant: selected.len() + rjp.len() == total_patterns
+    // (we've processed 'selected' patterns and have 'rjp' remaining)
+    debug_assert_eq!(
+        selected.len() + rjp.len(), total_patterns,
+        "selected ({}) + remaining ({}) must equal total patterns ({})",
+        selected.len(), rjp.len(), total_patterns
+    );
+
     // Stop if we've met the requested quota of full solutions.
     if results.len() >= ctx.num_results_requested {
         return Ok(());
@@ -500,7 +550,7 @@ fn recursive_join(
             }
 
             selected.push(binding);
-            recursive_join(selected, env, results, ctx, seen, &rjp[1..])?;
+            recursive_join(selected, env, results, ctx, seen, &rjp[1..], total_patterns)?;
             selected.pop();
             return Ok(()); // IMPORTANT: skip normal enumeration path
         }
@@ -568,7 +618,7 @@ fn recursive_join(
 
             // Choose this candidate for pattern `idx` and recurse for `idx + 1`.
             selected.push(cand.clone());
-            recursive_join(selected, env, results, ctx, seen, &rjp[1..])?;
+            recursive_join(selected, env, results, ctx, seen, &rjp[1..], total_patterns)?;
             selected.pop();
 
             // Backtrack: remove only what we added at this level.
@@ -617,10 +667,18 @@ pub fn solve_equation(
     word_list: &[&str],
     num_results_requested: usize,
 ) -> Result<SolveResult, SolverError> {
-    // validate input at API boundary
+    // Precondition: validate input at API boundary
     if input.is_empty() {
         return Err(SolverError::ParseFailure(Box::new(ParseError::EmptyForm)));
     }
+    debug_assert!(
+        num_results_requested > 0,
+        "num_results_requested must be positive"
+    );
+    debug_assert!(
+        word_list.iter().all(|w| !w.is_empty()),
+        "All words in word list must be non-empty"
+    );
 
     // 1. Make a hash set version of our word list
     let word_list_as_set = word_list.iter().copied().collect();
@@ -719,6 +777,7 @@ pub fn solve_equation(
             &ctx,
             &mut seen,
             &rjp,
+            rjp.len(),
         );
         rj_result?;
 
@@ -754,6 +813,22 @@ pub fn solve_equation(
     } else {
         SolveStatus::WordListExhausted
     };
+
+    // Postcondition: verify solution structure is consistent
+    debug_assert!(
+        reordered.len() <= num_results_requested,
+        "Number of solutions ({}) must not exceed requested ({})",
+        reordered.len(), num_results_requested
+    );
+    debug_assert!(
+        reordered.iter().all(|sol| sol.len() == equation_context.len()),
+        "Each solution must have exactly {} bindings (one per pattern)",
+        equation_context.len()
+    );
+    debug_assert!(
+        reordered.iter().all(|sol| sol.iter().all(|b| b.get_word().is_some())),
+        "All bindings in solutions must have a word set"
+    );
 
     Ok(SolveResult { solutions: reordered, status })
 }
