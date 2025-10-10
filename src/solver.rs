@@ -148,6 +148,7 @@ pub enum SolverError {
 
 impl SolverError {
     /// Returns the error code for this error variant
+    #[must_use]
     pub fn code(&self) -> &'static str {
         match self {
             SolverError::ParseFailure(_) => "S001",
@@ -157,6 +158,7 @@ impl SolverError {
     }
 
     /// Returns a helpful suggestion for this error
+    #[must_use]
     pub fn help(&self) -> Option<&'static str> {
         match self {
             SolverError::NoPatterns => Some("Add at least one pattern to solve. Example: 'A*B' or '*cat*;*dog*'"),
@@ -166,6 +168,7 @@ impl SolverError {
     }
 
     /// Formats the error with code and optional help text
+    #[must_use]
     pub fn display_detailed(&self) -> String {
         match self {
             SolverError::ParseFailure(pe) => {

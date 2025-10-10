@@ -177,6 +177,7 @@ impl<'a> NomParseError<&'a str> for Box<ParseError> {
 
 impl ParseError {
     /// Returns the error code for this error variant
+    #[must_use]
     pub fn code(&self) -> &'static str {
         match self {
             ParseError::ParseFailure { .. } => "E001",
@@ -199,6 +200,7 @@ impl ParseError {
     }
 
     /// Returns a helpful suggestion or example for this error
+    #[must_use]
     pub fn help(&self) -> Option<&'static str> {
         match self {
             ParseError::EmptyForm => Some("Example: Use 'A*B' or '*cat*' instead of empty string"),
@@ -215,6 +217,7 @@ impl ParseError {
     }
 
     /// Formats the error with code and optional help text
+    #[must_use]
     pub fn display_detailed(&self) -> String {
         format_error_with_code_and_help(&self.to_string(), self.code(), self.help())
     }
