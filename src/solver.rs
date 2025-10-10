@@ -157,6 +157,26 @@ impl SolverError {
         }
     }
 
+    /// Returns a short description of this error type (for documentation)
+    #[must_use]
+    pub fn description(&self) -> &'static str {
+        match self {
+            SolverError::ParseFailure(_) => "Pattern parsing failed",
+            SolverError::NoPatterns => "Equation has only constraints, no patterns to solve",
+            SolverError::MaterializationError { .. } => "Internal error during solution construction",
+        }
+    }
+
+    /// Returns detailed explanation of this error type (for documentation)
+    #[must_use]
+    pub fn details(&self) -> &'static str {
+        match self {
+            SolverError::ParseFailure(_) => "The input pattern could not be parsed. This wraps an underlying ParseError (see Parse Errors section for specific error codes).",
+            SolverError::NoPatterns => "The equation contains only constraints (like `|A|=3`) but no actual patterns to match against words. Add at least one pattern like `A*B` or `*cat*`.",
+            SolverError::MaterializationError { .. } => "This indicates an internal solver error where a pattern matched but constraints could not be satisfied during solution materialization. This is usually a bug in the solver logic.",
+        }
+    }
+
     /// Returns a helpful suggestion for this error
     #[must_use]
     pub fn help(&self) -> Option<&'static str> {
