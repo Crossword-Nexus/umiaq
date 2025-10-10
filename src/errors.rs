@@ -2,7 +2,7 @@
 //!
 //! # Error Codes
 //!
-//! Each error variant has a unique code (E001-E016) for documentation lookup:
+//! Each error variant has a unique code (E001–E016) for documentation lookup:
 //!
 //! - E001: `ParseFailure` (Generic parse failure)
 //! - E002: `RegexError` (Invalid regex pattern)
@@ -196,6 +196,52 @@ impl ParseError {
             ParseError::InvalidLowercaseChar { .. } => "E014",
             ParseError::InvalidAnagramChars { .. } => "E015",
             ParseError::NomError(_) => "E016",
+        }
+    }
+
+    /// Returns a short description of this error type (for documentation)
+    #[must_use]
+    pub fn description(&self) -> &'static str {
+        match self {
+            ParseError::ParseFailure { .. } => "Generic parse failure",
+            ParseError::RegexError(_) => "Invalid regex pattern",
+            ParseError::EmptyForm => "Empty form string",
+            ParseError::InvalidLengthRange { .. } => "Invalid length range format",
+            ParseError::InvalidComplexConstraint { .. } => "Invalid complex constraint",
+            ParseError::InvalidInput { .. } => "Invalid input",
+            ParseError::ParseIntError(_) => "Integer parsing error",
+            ParseError::ContradictoryBounds { .. } => "Contradictory length bounds",
+            ParseError::InvalidCharsetRange(..) => "Invalid charset range",
+            ParseError::DanglingCharsetDash => "Dangling '-' in charset",
+            ParseError::ConflictingConstraint { .. } => "Conflicting variable constraints",
+            ParseError::ClauseParseError { .. } => "Parse error in clause",
+            ParseError::InvalidVariableName { .. } => "Variable name not A-Z",
+            ParseError::InvalidLowercaseChar { .. } => "Non-lowercase character in pattern",
+            ParseError::InvalidAnagramChars { .. } => "Invalid characters in anagram",
+            ParseError::NomError(_) => "Low-level parser error",
+        }
+    }
+
+    /// Returns detailed explanation of this error type (for documentation)
+    #[must_use]
+    pub fn details(&self) -> &'static str {
+        match self {
+            ParseError::ParseFailure { .. } => "The form string could not be parsed as any recognized pattern type.",
+            ParseError::RegexError(_) => "A regular expression pattern used internally failed to compile or execute.",
+            ParseError::EmptyForm => "The pattern string is empty. At least one pattern is required.",
+            ParseError::InvalidLengthRange { .. } => "Length ranges must be in the format N-M where N ≤ M.",
+            ParseError::InvalidComplexConstraint { .. } => "The complex constraint syntax is invalid or malformed.",
+            ParseError::InvalidInput { .. } => "The input does not match any expected format for patterns or constraints.",
+            ParseError::ParseIntError(_) => "A numeric value in the pattern could not be parsed as an integer.",
+            ParseError::ContradictoryBounds { .. } => "The minimum length constraint exceeds the maximum length constraint, making it impossible to satisfy.",
+            ParseError::InvalidCharsetRange(..) => "In a charset range like `[a-z]`, the first character must come before the second in ASCII order.",
+            ParseError::DanglingCharsetDash => "A charset ends with a dash but no closing character for the range.",
+            ParseError::ConflictingConstraint { .. } => "A variable has multiple incompatible constraints that cannot both be satisfied.",
+            ParseError::ClauseParseError { .. } => "One of the clauses in a multi-clause equation could not be parsed. This wraps an underlying ParseError.",
+            ParseError::InvalidVariableName { .. } => "Variable names must be single uppercase letters from A to Z.",
+            ParseError::InvalidLowercaseChar { .. } => "Only lowercase letters a-z are allowed in this context (typically in literal strings or anagrams).",
+            ParseError::InvalidAnagramChars { .. } => "Anagram constraints must contain only lowercase letters a-z.",
+            ParseError::NomError(_) => "An error occurred in the low-level nom parser. This typically indicates malformed input at the character level.",
         }
     }
 
