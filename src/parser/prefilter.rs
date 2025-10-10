@@ -30,10 +30,8 @@ pub(crate) fn get_regex(pattern: &str) -> Result<Regex, Box<fancy_regex::Error>>
     let cache = REGEX_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
 
     // check cache first; if lock is poisoned, recover and continue
-    if let Ok(guard) = cache.lock() {
-        if let Some(re) = guard.get(pattern).cloned() {
-            return Ok(re);
-        }
+    if let Ok(guard) = cache.lock() && let Some(re) = guard.get(pattern).cloned() {
+        return Ok(re);
     }
     // if lock was poisoned, we just compile without caching
 
@@ -184,7 +182,13 @@ pub(crate) fn form_to_regex_str_with_constraints(
 }
 
 // 'A' -> 0, 'B' -> 1, ..., 'Z' -> 25
-fn uc_letter_to_num(c: char) -> Result<usize, Box<ParseError>> { letter_to_num(c, 'A' as usize) }
+fn uc_letter_to_num(c: char) -> Result<usize, Box<ParseError>> {
+    letter_to_num(c, 'A' as usize).map_err(|_| {
+        Box::new(ParseError::InvalidVariableName {
+            var: c.to_string()
+        })
+    })
+}
 
 // Count occurrences of vars and revvars to decide capture/backref scheme.
 fn get_var_and_rev_var_counts(
@@ -241,7 +245,7 @@ pub(crate) fn build_prefilter_regex(
     // fall back to the existing prefilter--this is safe because the existing prefilter
     // is less specific but still correct
     Ok(get_regex(&regex_str).unwrap_or_else(|e| {
-        debug_assert!(false, "Failed to compile upgraded prefilter regex: {}. Falling back to original.", e);
+        debug_assert!(false, "Failed to compile upgraded prefilter regex: {e}. Falling back to original.");
         parsed_form.prefilter.clone()
     }))
 }

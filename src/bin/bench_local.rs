@@ -92,7 +92,7 @@ fn median(mut xs: Vec<f64>) -> f64 {
     if xs.is_empty() {
         return 0.0;
     }
-    // Safe: f64 durations are never NaN in this context
+    // safe: f64 durations are never NaN in this context
     xs.sort_by(|a, b| a.partial_cmp(b)
         .expect("f64 durations should not be NaN"));
     let n = xs.len();
@@ -135,7 +135,7 @@ fn main() -> std::io::Result<()> {
         let _warmup = match solver::solve_equation(pattern, &words_ref, NUM_RESULTS) {
             Ok(result) => result,
             Err(e) => {
-                eprintln!("  ✗ Warm-up failed: {}", e);
+                eprintln!("  ✗ Warm-up failed: {e}");
                 continue;
             }
         };

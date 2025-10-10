@@ -62,7 +62,13 @@ pub struct Alphagram {
 }
 
 // 'a' -> 0, 'b' -> 1, ..., 'z' -> 25
-fn lc_letter_to_num(c: char) -> Result<usize, Box<ParseError>> { letter_to_num(c, 'a' as usize) }
+fn lc_letter_to_num(c: char) -> Result<usize, Box<ParseError>> {
+    letter_to_num(c, 'a' as usize).map_err(|_| {
+        Box::new(ParseError::InvalidLowercaseChar {
+            invalid_char: c
+        })
+    })
+}
 
 impl Alphagram {
     pub(crate) fn is_anagram(&self, other_word: &[char]) -> Result<bool, Box<ParseError>> {
@@ -91,7 +97,17 @@ impl FromStr for Alphagram {
         let mut len = 0;
         let mut char_counts = [0u8; ALPHABET_SIZE];
         for c in lowercase_word.chars() {
-            let c_as_num = lc_letter_to_num(c)?;
+            let c_as_num = lc_letter_to_num(c).map_err(|e| {
+                // Wrap the lower-level error with anagram context
+                if let ParseError::InvalidLowercaseChar { invalid_char } = *e {
+                    Box::new(ParseError::InvalidAnagramChars {
+                        anagram: lowercase_word.to_string(),
+                        invalid_char
+                    })
+                } else {
+                    e
+                }
+            })?;
             char_counts[c_as_num] += 1;
             len += 1;
         }
@@ -294,8 +310,12 @@ mod tests {
     }
 
     // only lowercase is allowed
-    #[test] fn test_parse_form_anagram_bad_char() {
-        assert!(FormPart::anagram_of("aBc").is_err_and(|pe| pe.to_string() == "Form parsing failed: \"Illegal char: 'B'\""));
+    #[test]
+    fn test_parse_form_anagram_bad_char() {
+        assert_eq!(
+            FormPart::anagram_of("aBc").unwrap_err().to_string(),
+            "Anagram constraint \"aBc\" contains invalid character 'B' (only a-z allowed)"
+        );
     }
 
     #[test]

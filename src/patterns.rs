@@ -24,8 +24,7 @@ const LEN_CMP_PATTERN: &str = r"^\|([A-Z])\|\s*(<=|>=|=|<|>)\s*(\d+)$";
 static LEN_CMP_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(LEN_CMP_PATTERN)
         .unwrap_or_else(|e| panic!(
-            "BUG: Failed to compile LEN_CMP_RE regex pattern '{}': {}.",
-            LEN_CMP_PATTERN, e
+            "BUG: Failed to compile LEN_CMP_RE regex pattern '{LEN_CMP_PATTERN}': {e}."
         )));
 
 /// Regex pattern for inequality constraints like `!=AB`
@@ -35,8 +34,7 @@ const NEQ_PATTERN: &str = r"^!=([A-Z]+)$";
 static NEQ_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(NEQ_PATTERN)
         .unwrap_or_else(|e| panic!(
-            "BUG: Failed to compile NEQ_RE regex pattern '{}': {}.",
-            NEQ_PATTERN, e
+            "BUG: Failed to compile NEQ_RE regex pattern '{NEQ_PATTERN}': {e}."
         )));
 
 /// Classification of a single input "form" string into one of the
@@ -98,15 +96,24 @@ impl FromStr for FormKind {
         // 1. Check for a simple length comparison constraint: |A|=5
         // NB: this assumes that any form that matches LEN_CMP_RE is either a LenConstraint or is
         // malformed (see the "?"s at the end of deriving op and bound)
-        if let Some(cap) = LEN_CMP_RE.captures(s).map_err(|e| ParseError::RegexError(e))? {
-            // Safe: regex guarantees capture group 1 contains exactly one char A-Z
+        if let Some(cap) = LEN_CMP_RE.captures(s).map_err(ParseError::RegexError)? {
+            // safe: LEN_CMP_PATTERN has 3 capture groups, all guaranteed by successful match
+            // group 1: ([A-Z]) - exactly one uppercase letter
+            // group 2: (<=|>=|=|<|>) - comparison operator
+            // group 3: (\d+) - one or more digits
+            debug_assert!(cap.get(1).is_some() && cap.get(2).is_some() && cap.get(3).is_some(),
+                "LEN_CMP_RE must have 3 capture groups");
+            debug_assert!(!cap[1].is_empty(), "LEN_CMP_RE capture group 1 must be non-empty");
             let var_char = cap[1].chars().next()
                 .expect("LEN_CMP_RE capture group 1 must contain at least one character");
             let op = ComparisonOperator::from_str(&cap[2])?;
             let bound = cap[3].parse::<usize>()?;
             Ok(FormKind::LenConstraint { var_char, op, bound })
         // 2. Check for inequality constraints: e.g., !=ABC
-        } else if let Some(cap) = NEQ_RE.captures(s).map_err(|e| ParseError::RegexError(e))? {
+        } else if let Some(cap) = NEQ_RE.captures(s).map_err(ParseError::RegexError)? {
+            // safe: NEQ_PATTERN has 1 capture group: ([A-Z]+)--one or more uppercase letters
+            debug_assert!(cap.get(1).is_some() && !cap[1].is_empty(),
+                "NEQ_RE must have 1 non-empty capture group");
             let var_chars: Vec<_> = cap[1].chars().collect();
             Ok(FormKind::NeqConstraint { var_chars })
         // 3. Complex constraints (delegate to helper)
@@ -502,7 +509,8 @@ impl EquationContext {
             };
 
             // Select the best candidate
-            // Safe: patterns is non-empty (checked by while loop condition)
+            // safe: patterns is non-empty (checked by while loop condition)
+            debug_assert!(!patterns.is_empty(), "patterns must be non-empty in while loop");
             let (ix, _) = patterns
                 .iter()
                 .enumerate()
@@ -616,10 +624,11 @@ impl FromStr for EquationContext {
 
         // Step 8: Get the joint constraints and use them to tighten per-variable constraints
         // This gets length bounds on variables (from the joint constraints)
+        // Fails fast if constraints are provably unsatisfiable
         propagate_joint_to_var_bounds(
             &mut equation_context.var_constraints,
             &equation_context.joint_constraints,
-        );
+        )?;
 
         // Step 9: Build cheap, per-form length hints (index-aligned with parsed_forms)
         // The hints are length bounds for each form

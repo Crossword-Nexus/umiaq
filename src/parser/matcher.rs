@@ -228,7 +228,7 @@ impl HelperParams<'_> {
                     .is_none_or(|c| {
                         is_valid_binding(&var_val, c, self.bindings).unwrap_or_else(|e| {
                             // This indicates a malformed constraint that should have been caught earlier
-                            debug_assert!(false, "Failed to parse constraint form: {}", e);
+                            debug_assert!(false, "Failed to parse constraint form: {e}");
                             false
                         })
                     });
@@ -275,6 +275,8 @@ impl HelperParams<'_> {
             return false;
         }
 
+        // safe: parts is non-empty (checked above), so indexing [0] and slicing [1..] are valid
+        debug_assert!(!parts.is_empty(), "parts must be non-empty after early return check");
         let (first, rest) = (&parts[0], &parts[1..]);
 
         match first {

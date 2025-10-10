@@ -1,3 +1,67 @@
+//! The main solver for pattern-matching equations against word lists.
+//!
+//! # Error Handling
+//!
+//! The solver uses [`SolverError`] with three variants:
+//!
+//! - S001: `ParseFailure` (Pattern parsing failed (wraps [`ParseError`]))
+//! - S002: `NoPatterns` (Equation has only constraints, no patterns to solve)
+//! - S003: `MaterializationError` (Internal error during solution construction)
+//!
+//! Each error has a `code()`, optional `help()`, and `display_detailed()` method.
+//!
+//! # Examples
+//!
+//! ## Basic Usage
+//!
+//! ```
+//! use umiaq::solver;
+//!
+//! let words = vec!["cat", "dog", "catalog", "dogma"];
+//! let result = solver::solve_equation("A*B", &words, 10)?;
+//!
+//! println!("Found {} solutions", result.solutions.len());
+//! for solution in result.solutions {
+//!     println!("{}", solver::solution_to_string(&solution)?);
+//! }
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
+//!
+//! ## Handling Errors with Detailed Messages
+//!
+//! ```
+//! use umiaq::solver::{self, SolverError};
+//!
+//! let words = vec!["test"];
+//! match solver::solve_equation("", &words, 10) {
+//!     Ok(result) => println!("Success: {} solutions", result.solutions.len()),
+//!     Err(e) => {
+//!         // Show detailed error with code and help
+//!         eprintln!("{}", e.display_detailed());
+//!         // Error code: S001
+//!         // Help text: Example: Use 'A*B' or '*cat*' instead of empty string
+//!     }
+//! }
+//! ```
+//!
+//! ## Checking Solve Status
+//!
+//! ```
+//! use umiaq::solver::{self, SolveStatus};
+//!
+//! let words = vec!["cat", "dog"];
+//! let result = solver::solve_equation("A*", &words, 100)?;
+//!
+//! match result.status {
+//!     SolveStatus::FoundEnough => println!("Found all requested results"),
+//!     SolveStatus::WordListExhausted => println!("Searched entire word list"),
+//!     SolveStatus::TimedOut { elapsed } => {
+//!         println!("Timed out after {:?}", elapsed);
+//!     }
+//! }
+//! # Ok::<(), Box<dyn std::error::Error>>(())
+//! ```
+
 use crate::bindings::{Bindings, WORD_SENTINEL};
 use crate::errors::ParseError;
 use crate::joint_constraints::JointConstraints;
@@ -80,6 +144,39 @@ pub enum SolverError {
     /// `recursive_join` or related routines.
     #[error("materialization error: {context}")]
     MaterializationError { context: String },
+}
+
+impl SolverError {
+    /// Returns the error code for this error variant
+    pub fn code(&self) -> &'static str {
+        match self {
+            SolverError::ParseFailure(_) => "S001",
+            SolverError::NoPatterns => "S002",
+            SolverError::MaterializationError { .. } => "S003",
+        }
+    }
+
+    /// Returns a helpful suggestion for this error
+    pub fn help(&self) -> Option<&'static str> {
+        match self {
+            SolverError::NoPatterns => Some("Add at least one pattern to solve. Example: 'A*B' or '*cat*;*dog*'"),
+            SolverError::MaterializationError { .. } => Some("This is an internal error. The pattern matched but constraints could not be satisfied."),
+            SolverError::ParseFailure(_) => None, // ParseError has its own help
+        }
+    }
+
+    /// Formats the error with code and optional help text
+    pub fn display_detailed(&self) -> String {
+        match self {
+            SolverError::ParseFailure(pe) => {
+                // delegate to ParseError's detailed display
+                format!("{}\n  caused by: {}", self.code(), pe.display_detailed())
+            }
+            _ => {
+                crate::errors::format_error_with_code_and_help(&self.to_string(), self.code(), self.help())
+            }
+        }
+    }
 }
 
 /// Bucket key for indexing candidates by the subset of variables that must agree.
@@ -223,22 +320,46 @@ fn lookup_key_for_binding(
     binding: &Bindings,
     keys: HashSet<char>,
 ) -> LookupKey {
+    debug_assert!(
+        keys.iter().all(char::is_ascii_uppercase),
+        "All key variables must be one of uppercase A-Z"
+    );
+
     let mut pairs: Vec<(char, String)> = Vec::with_capacity(keys.len());
     for var_char in keys {
         match binding.get(var_char) {
-            Some(var_val) => pairs.push((var_char, var_val.clone())),
+            Some(var_val) => {
+                debug_assert!(!var_val.is_empty(), "Variable bindings must be non-empty strings");
+                pairs.push((var_char, var_val.clone()));
+            }
             None => return Vec::new(), // required key missing
         }
     }
 
     pairs.sort_unstable_by_key(|(c, _)| *c);
+    debug_assert!(
+        pairs.windows(2).all(|w| w[0].0 < w[1].0),
+        "Sorted pairs must be strictly increasing"
+    );
     pairs
 }
 
 /// Push a binding into the appropriate bucket and bump the count.
 fn push_binding(words: &mut [CandidateBuckets], i: usize, key: LookupKey, binding: Bindings) {
+    debug_assert!(i < words.len(), "Pattern index {} out of bounds (len={})", i, words.len());
+    debug_assert!(
+        binding.get_word().is_some(),
+        "Binding must have a word set before being pushed"
+    );
+
+    let old_count = words[i].count;
     words[i].buckets.entry(key).or_default().push(binding);
     words[i].count += 1;
+
+    debug_assert_eq!(
+        words[i].count, old_count + 1,
+        "Count must increment by exactly 1"
+    );
 }
 
 /// Scan a slice of candidate words against all patterns in the equation context,
@@ -274,9 +395,26 @@ fn scan_batch(
     words: &mut [CandidateBuckets],
     budget: &TimeBudget,
 ) -> Result<usize, SolverError> {
+    // precondition checks
+    debug_assert!(
+        start_idx <= word_list.len(),
+        "start_idx ({}) must be <= word_list.len() ({})",
+        start_idx, word_list.len()
+    );
+    debug_assert_eq!(
+        words.len(), equation_context.len(),
+        "words slice length must match equation_context pattern count"
+    );
+    debug_assert!(batch_size > 0, "batch_size must be positive");
 
     let mut i_word = start_idx;
     let end = start_idx.saturating_add(batch_size).min(word_list.len());
+
+    debug_assert!(
+        end <= word_list.len(),
+        "end ({}) must be <= word_list.len() ({})",
+        end, word_list.len()
+    );
 
     while i_word < end {
         timed_stop!(budget, i_word);
@@ -339,10 +477,9 @@ struct RecursiveJoinParameters {
 /// - `selected`: the partial solution (one chosen `Bindings` per pattern so far).
 /// - `env`: the accumulated variable → value environment from earlier choices.
 /// - `results`: completed solutions (each is a `Vec<Binding>`, one per pattern).
-/// - `num_results_requested`: cap on how many full solutions to collect.
-/// - `rjp.candidate_buckets`: per-pattern candidate buckets (what you built during scanning).
-/// - `rjp.lookup_keys`: for each pattern, which variables must agree with previously chosen
-///   patterns.
+/// - `ctx`: join context containing the requested result count, word set, constraints, and budget.
+/// - `seen`: set of solution hashes to avoid duplicates.
+/// - `rjp`: remaining patterns to process (candidate buckets, lookup keys, pattern info).
 ///
 /// Return:
 /// - This function mutates `results` and stops early once `results` contains
@@ -358,6 +495,34 @@ fn recursive_join(
     seen: &mut HashSet<u64>,
     rjp: &[RecursiveJoinParameters],
 ) -> Result<(), SolverError> {
+    recursive_join_inner(
+        selected,
+        env,
+        results,
+        ctx,
+        seen,
+        rjp,
+        rjp.len(),
+    )
+}
+
+fn recursive_join_inner(
+    selected: &mut Vec<Bindings>,
+    env: &mut HashMap<char, String>,
+    results: &mut Vec<Vec<Bindings>>,
+    ctx: &JoinCtx,
+    seen: &mut HashSet<u64>,
+    rjp: &[RecursiveJoinParameters],
+    total_patterns: usize, // for debug assert
+) -> Result<(), SolverError> {
+    // Invariant: selected.len() + rjp.len() == total_patterns
+    // (we've processed 'selected' patterns and have 'rjp' remaining)
+    debug_assert_eq!(
+        selected.len() + rjp.len(), total_patterns,
+        "selected ({}) + remaining ({}) must equal total patterns ({})",
+        selected.len(), rjp.len(), total_patterns
+    );
+
     // Stop if we've met the requested quota of full solutions.
     if results.len() >= ctx.num_results_requested {
         return Ok(());
@@ -374,7 +539,15 @@ fn recursive_join(
                 .materialize_deterministic_with_env(env)
             else {
                 return Err(SolverError::MaterializationError {
-                    context: format!("failed to materialize deterministic pattern with variables: {:?}", p.variables)
+                    context: format!(
+                        "failed to materialize deterministic pattern with variables: {:?}\n  \
+                        environment: {:?}\n  \
+                        pattern depth: {}/{}",
+                        p.variables,
+                        env,
+                        selected.len() + 1,
+                        total_patterns
+                    )
                 });
             };
 
@@ -389,21 +562,20 @@ fn recursive_join(
             let mut binding = Bindings::default();
             binding.set_word(&expected);
             for &var_char in &p.variables {
-                // Safe: all vars in lookup_keys must be in env by construction
+                // safe: all vars in lookup_keys must be in env by construction
                 if let Some(var_val) = env.get(&var_char) {
                     binding.set(var_char, var_val.clone());
                 } else {
                     // this should never happen--indicates a logic error in solver
                     debug_assert!(
                         false,
-                        "Variable '{}' in lookup_keys but not in env--solver invariant violated",
-                        var_char
+                        "Variable '{var_char}' in lookup_keys but not in env--solver invariant violated"
                     );
                 }
             }
 
             selected.push(binding);
-            recursive_join(selected, env, results, ctx, seen, &rjp[1..])?;
+            recursive_join_inner(selected, env, results, ctx, seen, &rjp[1..], total_patterns)?;
             selected.pop();
             return Ok(()); // IMPORTANT: skip normal enumeration path
         }
@@ -471,7 +643,7 @@ fn recursive_join(
 
             // Choose this candidate for pattern `idx` and recurse for `idx + 1`.
             selected.push(cand.clone());
-            recursive_join(selected, env, results, ctx, seen, &rjp[1..])?;
+            recursive_join_inner(selected, env, results, ctx, seen, &rjp[1..], total_patterns)?;
             selected.pop();
 
             // Backtrack: remove only what we added at this level.
@@ -520,6 +692,19 @@ pub fn solve_equation(
     word_list: &[&str],
     num_results_requested: usize,
 ) -> Result<SolveResult, SolverError> {
+    // Precondition: validate input at API boundary
+    if input.is_empty() {
+        return Err(SolverError::ParseFailure(Box::new(ParseError::EmptyForm)));
+    }
+    debug_assert!(
+        num_results_requested > 0,
+        "num_results_requested must be positive"
+    );
+    debug_assert!(
+        word_list.iter().all(|w| !w.is_empty()),
+        "All words in word list must be non-empty"
+    );
+
     // 1. Make a hash set version of our word list
     let word_list_as_set = word_list.iter().copied().collect();
 
@@ -568,10 +753,26 @@ pub fn solve_equation(
     //   2. recursively joining those buckets into full solutions
     // Continues until either we have enough results, the word list is exhausted,
     // or the time budget expires.
+    #[cfg(debug_assertions)]
+    let mut iteration = 0;
+
     while results.len() < num_results_requested
         && scan_pos < word_list.len()
         && !budget.expired()
     {
+        #[cfg(debug_assertions)]
+        {
+            iteration += 1;
+            if iteration % 10 == 0 {
+                eprintln!(
+                    "[solver] iteration {}: scan_pos={}/{}, batch_size={}, results={}/{}, elapsed={:.2}s",
+                    iteration, scan_pos, word_list.len(), batch_size,
+                    results.len(), num_results_requested,
+                    budget.elapsed().as_secs_f64()
+                );
+            }
+        }
+
         // 1. Scan the next batch_size words into candidate buckets.
         // Each candidate binding is grouped by its lookup key so later joins are fast.
         let new_pos = scan_batch(
@@ -652,6 +853,22 @@ pub fn solve_equation(
     } else {
         SolveStatus::WordListExhausted
     };
+
+    // Postcondition: verify solution structure is consistent
+    debug_assert!(
+        reordered.len() <= num_results_requested,
+        "Number of solutions ({}) must not exceed requested ({})",
+        reordered.len(), num_results_requested
+    );
+    debug_assert!(
+        reordered.iter().all(|sol| sol.len() == equation_context.len()),
+        "Each solution must have exactly {} bindings (one per pattern)",
+        equation_context.len()
+    );
+    debug_assert!(
+        reordered.iter().all(|sol| sol.iter().all(|b| b.get_word().is_some())),
+        "All bindings in solutions must have a word set"
+    );
 
     Ok(SolveResult { solutions: reordered, status })
 }
@@ -803,9 +1020,19 @@ mod tests {
         // verify we get a parse error (could be wrapped in ClauseParseError)
         if let SolverError::ParseFailure(bpe) = solver_error {
             // accept either direct InvalidInput or wrapped in ClauseParseError
-            let is_valid = matches!(*bpe, ParseError::InvalidInput { .. }) || // TODO be more specific with both instances of "{ .. }"
-                matches!(*bpe, ParseError::ClauseParseError { .. });
-            assert!(is_valid, "Expected InvalidInput or ClauseParseError, got: {:?}", bpe);
+            match &*bpe {
+                ParseError::InvalidInput { str } if str == "BAD(PATTERN" => {
+                    // direct InvalidInput is OK
+                }
+                ParseError::ClauseParseError { clause, source } if clause == "BAD(PATTERN" => {
+                    // wrapped in ClauseParseError--verify the source is also InvalidInput
+                    assert!(
+                        matches!(**source, ParseError::InvalidInput { ref str } if str == "BAD(PATTERN"),
+                        "Expected source to be InvalidInput with 'BAD(PATTERN', got: {:?}", source
+                    );
+                }
+                other => panic!("Expected InvalidInput or ClauseParseError with 'BAD(PATTERN', got: {:?}", other)
+            }
         } else {
             panic!("Expected ParseFailure, got: {:?}", solver_error)
         }
@@ -816,6 +1043,167 @@ mod tests {
         let wl: Vec<&str> = vec!["cat", "dog"];
         let res = solve_equation("|A|=3", &wl, 10);
         assert!(matches!(res, Err(SolverError::NoPatterns)));
+    }
+
+    mod error_tests {
+        use super::*;
+
+        /// Test that all `SolverError` variants have valid error codes
+        #[test]
+        fn test_error_codes_are_valid() {
+            let parse_err = SolverError::ParseFailure(Box::new(ParseError::EmptyForm));
+            assert_eq!(parse_err.code(), "S001");
+
+            let no_patterns_err = SolverError::NoPatterns;
+            assert_eq!(no_patterns_err.code(), "S002");
+
+            let mat_err = SolverError::MaterializationError {
+                context: "test".to_string(),
+            };
+            assert_eq!(mat_err.code(), "S003");
+        }
+
+        /// Test that error help messages are helpful and non-empty
+        #[test]
+        fn test_error_help_messages_are_helpful() {
+            let no_patterns_err = SolverError::NoPatterns;
+            let help = no_patterns_err.help();
+            assert!(help.is_some(), "NoPatterns should have help text");
+            assert!(
+                help.unwrap().len() > 20,
+                "Help text should be reasonably detailed"
+            );
+            assert!(
+                help.unwrap().contains("pattern"),
+                "Help should mention 'pattern'"
+            );
+
+            let mat_err = SolverError::MaterializationError {
+                context: "test".to_string(),
+            };
+            let mat_help = mat_err.help();
+            assert!(mat_help.is_some(), "MaterializationError should have help text");
+        }
+
+        /// Test that `display_detailed` includes error code and help
+        #[test]
+        fn test_display_detailed_format() {
+            let no_patterns_err = SolverError::NoPatterns;
+            let detailed = no_patterns_err.display_detailed();
+
+            // should include error code
+            assert!(
+                detailed.contains("S002"),
+                "Detailed display should include error code"
+            );
+
+            // should include help text
+            assert!(
+                detailed.contains("pattern"),
+                "Detailed display should include help text"
+            );
+        }
+
+        /// Test that `ParseFailure` error chains are properly constructed
+        #[test]
+        fn test_parse_failure_error_chain() {
+            let words = vec!["test"];
+            let result = solve_equation("INVALID(", &words, 10);
+
+            match result {
+                Err(SolverError::ParseFailure(parse_err)) => {
+                    // Verify the error chain is accessible
+                    let detailed = SolverError::ParseFailure(parse_err).display_detailed();
+                    assert!(
+                        detailed.contains("S001"),
+                        "ParseFailure should have S001 code"
+                    );
+                    assert!(
+                        detailed.contains("caused by"),
+                        "ParseFailure should show error chain"
+                    );
+
+                    // The underlying ParseError should have its own code
+                    assert!(
+                        detailed.contains("E0"),
+                        "Should contain ParseError code (E0xx)"
+                    );
+                }
+                _ => panic!("Expected ParseFailure error"),
+            }
+        }
+
+        /// Test that `MaterializationError` includes context
+        #[test]
+        fn test_materialization_error_context() {
+            let err = SolverError::MaterializationError {
+                context: "pattern depth: 2/3, environment: {A: \"test\"}".to_string(),
+            };
+
+            let display = err.to_string();
+            assert!(
+                display.contains("pattern depth"),
+                "MaterializationError should include context"
+            );
+            assert!(
+                display.contains("environment"),
+                "MaterializationError should include environment info"
+            );
+        }
+
+        /// Test that `NoPatterns` error has correct message
+        #[test]
+        fn test_no_patterns_error_message() {
+            let err = SolverError::NoPatterns;
+            let msg = err.to_string();
+
+            assert!(
+                msg.contains("no patterns"),
+                "NoPatterns message should mention 'no patterns'"
+            );
+            assert!(
+                msg.contains("constraints"),
+                "NoPatterns message should mention 'constraints'"
+            );
+        }
+
+        /// Test that empty input returns appropriate error
+        #[test]
+        fn test_empty_input_error() {
+            let words = vec!["test"];
+            let result = solve_equation("", &words, 10);
+
+            match result {
+                Err(SolverError::ParseFailure(parse_err)) => {
+                    assert!(
+                        matches!(*parse_err, ParseError::EmptyForm),
+                        "Empty input should produce EmptyForm error"
+                    );
+                }
+                _ => panic!("Expected ParseFailure with EmptyForm"),
+            }
+        }
+
+        /// Test that error display is consistent with debug
+        #[test]
+        fn test_error_display_consistency() {
+            let err = SolverError::NoPatterns;
+
+            let display = err.to_string();
+            let debug = format!("{:?}", err);
+
+            // debug should contain the variant name
+            assert!(
+                debug.contains("NoPatterns"),
+                "Debug should show variant name"
+            );
+
+            // display should be user-friendly
+            assert!(
+                !display.contains("NoPatterns"),
+                "Display should not expose enum variant names"
+            );
+        }
     }
 
 }
