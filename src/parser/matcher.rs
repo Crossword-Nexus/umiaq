@@ -56,7 +56,7 @@ fn is_valid_binding(
         var_val,
         parsed,
         &VarConstraints::default(),
-        JointConstraints::default(),
+        &JointConstraints::default(),
     ) {
         return Ok(false);
     }
@@ -77,7 +77,7 @@ pub fn match_equation_exists(
     word: &str,
     parts: &ParsedForm,
     constraints: &VarConstraints,
-    joint_constraints: JointConstraints,
+    joint_constraints: &JointConstraints,
 ) -> bool {
     let mut results: Vec<Bindings> = Vec::new();
     match_equation_internal(word, parts, false, &mut results, constraints, joint_constraints);
@@ -90,7 +90,7 @@ pub fn match_equation_all(
     word: &str,
     parts: &ParsedForm,
     constraints: &VarConstraints,
-    joint_constraints: JointConstraints,
+    joint_constraints: &JointConstraints,
 ) -> Vec<Bindings> {
     let mut results: Vec<Bindings> = Vec::new();
     match_equation_internal(word, parts, true, &mut results, constraints, joint_constraints);
@@ -122,7 +122,7 @@ fn match_equation_internal(
     all_matches: bool,
     results: &mut Vec<Bindings>,
     constraints: &VarConstraints,
-    joint_constraints: JointConstraints,
+    joint_constraints: &JointConstraints,
 ) {
     // === PREFILTER STEP ===
     // Use the regex prefilter on the parsed form to quickly discard words
@@ -156,7 +156,7 @@ struct HelperParams<'a> {
     all_matches: bool,
     word: &'a str,
     constraints: &'a VarConstraints,
-    joint_constraints: JointConstraints,
+    joint_constraints: &'a JointConstraints,
 }
 
 impl HelperParams<'_> {
@@ -346,23 +346,23 @@ mod tests {
     #[test]
     fn test_palindrome_matching() {
         let pf = "A~A".parse::<ParsedForm>().unwrap();
-        assert!(match_equation_exists("noon", &pf, &VarConstraints::default(), JointConstraints::default()));
-        assert!(!match_equation_exists("radar", &pf, &VarConstraints::default(), JointConstraints::default()));
-        assert!(!match_equation_exists("test", &pf, &VarConstraints::default(), JointConstraints::default()));
+        assert!(match_equation_exists("noon", &pf, &VarConstraints::default(), &JointConstraints::default()));
+        assert!(!match_equation_exists("radar", &pf, &VarConstraints::default(), &JointConstraints::default()));
+        assert!(!match_equation_exists("test", &pf, &VarConstraints::default(), &JointConstraints::default()));
     }
 
     #[test]
     fn test_match_equation_exists() {
         let pf = "A~A[rstlne]/jon@#.*".parse::<ParsedForm>().unwrap();
-        assert!(match_equation_exists("aaronjudge", &pf, &VarConstraints::default(), JointConstraints::default()));
-        assert!(!match_equation_exists("noon", &pf, &VarConstraints::default(), JointConstraints::default()));
-        assert!(!match_equation_exists("toon", &pf, &VarConstraints::default(), JointConstraints::default()));
+        assert!(match_equation_exists("aaronjudge", &pf, &VarConstraints::default(), &JointConstraints::default()));
+        assert!(!match_equation_exists("noon", &pf, &VarConstraints::default(), &JointConstraints::default()));
+        assert!(!match_equation_exists("toon", &pf, &VarConstraints::default(), &JointConstraints::default()));
     }
 
     #[test]
     fn test_literal_matching() {
         let pf = "abc".parse::<ParsedForm>().unwrap();
-        assert!(match_equation_exists("abc", &pf, &VarConstraints::default(), JointConstraints::default()));
-        assert!(!match_equation_exists("xyz", &pf, &VarConstraints::default(), JointConstraints::default()));
+        assert!(match_equation_exists("abc", &pf, &VarConstraints::default(), &JointConstraints::default()));
+        assert!(!match_equation_exists("xyz", &pf, &VarConstraints::default(), &JointConstraints::default()));
     }
 }

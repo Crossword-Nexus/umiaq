@@ -265,7 +265,7 @@ impl JointConstraints {
         &self,
         map: &HashMap<char, String>
     ) -> bool {
-        self.clone().into_iter().all(|jc| jc.is_satisfied_by_map(map))
+        self.as_vec.iter().all(|jc| jc.is_satisfied_by_map(map))
     }
 
     #[cfg(test)]

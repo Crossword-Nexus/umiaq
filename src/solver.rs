@@ -493,7 +493,7 @@ fn scan_batch(
                 word,
                 &equation_context.parsed_forms[i],
                 &equation_context.var_constraints,
-                equation_context.joint_constraints.clone(),
+                &equation_context.joint_constraints,
             );
 
             for binding in matches {
@@ -506,7 +506,7 @@ fn scan_batch(
                     continue;
                 }
 
-                push_binding(words, i, key, binding.clone());
+                push_binding(words, i, key, binding);
             }
         }
 
@@ -516,11 +516,11 @@ fn scan_batch(
     Ok(i_word)
 }
 
-struct RecursiveJoinParameters {
-    candidate_buckets: CandidateBuckets,
-    lookup_keys: HashSet<char>,
-    pattern: Pattern,
-    parsed_form: ParsedForm,
+struct RecursiveJoinParameters<'a> {
+    candidate_buckets: &'a CandidateBuckets,
+    lookup_keys: &'a HashSet<char>,
+    pattern: &'a Pattern,
+    parsed_form: &'a ParsedForm,
 }
 
 /// Depth-first recursive join of per-pattern candidate buckets into full solutions.
@@ -645,7 +645,7 @@ fn recursive_join_inner(
         let bucket_candidates_opt: Option<&Vec<Bindings>> = {
             timed_stop!(ctx.budget);
             // Build lookup key from current environment
-            let Some(key) = lookup_key_from_env(env, &rjp_cur.lookup_keys) else {
+            let Some(key) = lookup_key_from_env(env, rjp_cur.lookup_keys) else {
                 // If any required var isn't bound yet, there can be no matches for this branch.
                 return Ok(());
             };
@@ -776,7 +776,7 @@ pub fn solve_equation(
     // 4. Pull out some data from equation_context
     let lookup_keys = &equation_context.lookup_keys;
     let parsed_forms = &equation_context.parsed_forms;
-    let joint_constraints = equation_context.joint_constraints.clone();
+    let joint_constraints = &equation_context.joint_constraints;
 
     // 5. Iterate through every candidate word.
     let budget = TimeBudget::new(Duration::from_secs(TIME_BUDGET));
@@ -842,10 +842,10 @@ pub fn solve_equation(
         let rjp = words.iter().zip(lookup_keys.iter()).zip(equation_context.ordered_list.iter()).zip(parsed_forms.iter())
             .map(|(((candidate_buckets, lookup_keys), p), parsed_form)| {
                 RecursiveJoinParameters {
-                    candidate_buckets: candidate_buckets.clone(),
-                    lookup_keys: lookup_keys.clone(),
-                    pattern: p.clone(),
-                    parsed_form: parsed_form.clone(),
+                    candidate_buckets,
+                    lookup_keys,
+                    pattern: p,
+                    parsed_form,
                 }
             }).collect::<Vec<_>>();
 
@@ -853,7 +853,7 @@ pub fn solve_equation(
         let ctx = JoinCtx {
             num_results_requested,
             word_set: &word_list_as_set,
-            joint_constraints: &joint_constraints,
+            joint_constraints,
             budget: &budget,
         };
 
