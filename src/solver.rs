@@ -69,7 +69,7 @@ use crate::parser::{match_equation_all, ParsedForm};
 use crate::patterns::{Pattern, EquationContext};
 use crate::errors::ParseError::ParseFailure;
 use instant::Instant;
-use std::collections::hash_map::DefaultHasher;
+use std::collections::hash_map::{DefaultHasher, Entry};
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
@@ -671,7 +671,7 @@ fn recursive_join_inner(
             // its value must match the candidate. This *should* already be true
             // because we selected the bucket using the shared vars—but keep this
             // in case upstream bucketing logic ever changes.
-            if cand.iter().filter(|(var_char, _)| **var_char != WORD_SENTINEL).any(|(var_char, var_val)| env.get(var_char).is_some_and(|prev| prev != var_val)) {
+            if cand.iter().filter(|(var_char, _)| *var_char != WORD_SENTINEL).any(|(var_char, var_val)| env.get(&var_char).is_some_and(|prev| prev != var_val)) {
                 continue;
             }
 
@@ -679,12 +679,12 @@ fn recursive_join_inner(
             // Track what we added so we can backtrack cleanly.
             let mut added_vars: Vec<char> = vec![];
             for (var_char, var_val) in cand.iter() {
-                if *var_char == WORD_SENTINEL {
+                if var_char == WORD_SENTINEL {
                     continue;
                 }
-                if !env.contains_key(var_char) {
-                    env.insert(*var_char, Rc::clone(var_val));
-                    added_vars.push(*var_char);
+                if let Entry::Vacant(e) = env.entry(var_char) {
+                    e.insert(Rc::clone(var_val));
+                    added_vars.push(var_char);
                 }
             }
 
