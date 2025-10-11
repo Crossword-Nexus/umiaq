@@ -412,7 +412,7 @@ fn group_constraints_for_form(form: &ParsedForm, jcs: &JointConstraints) -> Vec<
         jcs.iter()
             // ← revert to ANY overlap so constraints like |AB|=6 still inform A-only forms
             .filter(|jc| jc.vars.iter().any(|var_char| present.contains(var_char)))
-            .filter_map(|jc| group_from_joint(jc))
+            .filter_map(group_from_joint)
             .collect()
     }
 }
