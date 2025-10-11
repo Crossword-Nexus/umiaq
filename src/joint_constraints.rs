@@ -159,7 +159,7 @@ impl JointConstraint {
 /// Returns `None` if `var_char` is unbound in all Bindings in `parts`.
 #[inline]
 fn resolve_var_len(parts: &[Bindings], var_char: char) -> Option<usize> {
-    parts.iter().find_map(|bindings| bindings.get(var_char).map(String::len))
+    parts.iter().find_map(|bindings| bindings.get(var_char).map(|s| s.len()))
 }
 
 // TODO derive "=|!=|<=|>=|<|>" from a single source (e.g., COMPARISON_OPERATORS)
@@ -217,6 +217,11 @@ impl IntoIterator for JointConstraints {
 }
 
 impl JointConstraints {
+    /// Return an iterator over the joint constraints
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &JointConstraint> {
+        self.as_vec.iter()
+    }
+
     /// Parse all joint constraints from an equation string by splitting on your
     /// `FORM_SEPARATOR` (i.e., ';'), feeding each part through `parse_joint_len`.
     #[cfg(test)]
@@ -265,7 +270,7 @@ impl JointConstraints {
         &self,
         map: &HashMap<char, String>
     ) -> bool {
-        self.clone().into_iter().all(|jc| jc.is_satisfied_by_map(map))
+        self.as_vec.iter().all(|jc| jc.is_satisfied_by_map(map))
     }
 
     #[cfg(test)]
@@ -305,7 +310,7 @@ impl JointConstraints {
 ///
 /// Returns `Err(ContradictoryBounds)` if the constraints are provably unsatisfiable.
 pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstraints) -> Result<(), Box<ParseError>> {
-    for jc in jcs.clone() {
+    for jc in jcs.iter() {
         if jc.rel != RelMask::EQ { continue; }
 
         // Cache per-var (min,max) and aggregate sums

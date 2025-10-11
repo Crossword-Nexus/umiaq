@@ -4,6 +4,7 @@ use crate::errors::ParseError::ParseFailure;
 use crate::parser::utils::letter_to_num;
 use crate::umiaq_char::{ALPHABET_SIZE, LITERAL_CHARS, VARIABLE_CHARS};
 use fancy_regex::Regex;
+use std::rc::Rc;
 use nom::{
     branch::alt,
     bytes::complete::{is_not, tag},
@@ -142,12 +143,12 @@ impl ParsedForm {
     /// Returns `None` if any required var is unbound or if a nondeterministic part is present.
     pub(crate) fn materialize_deterministic_with_env(
         &self,
-        env: &HashMap<char, String>,
+        env: &HashMap<char, Rc<str>>,
     ) -> Option<String> {
         self.iter()
             .map(|part| match part {
                 FormPart::Lit(s) => Some(s.clone()),
-                FormPart::Var(var_char) => Some(env.get(var_char)?.clone()),
+                FormPart::Var(var_char) => Some(env.get(var_char)?.as_ref().to_string()),
                 FormPart::RevVar(var_char) => Some(env.get(var_char)?.chars().rev().collect()),
                 _ => None, // stop at first nondeterministic token
             })
