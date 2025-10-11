@@ -74,6 +74,7 @@
 pub mod bindings;
 pub mod constraints;
 pub mod errors;
+mod interner;
 mod joint_constraints;
 pub mod parser;
 pub mod patterns;

@@ -46,12 +46,6 @@ impl Display for Bindings {
 }
 
 impl Bindings {
-    /// Bind a variable to a value (takes ownership and converts to Rc<str>)
-    pub(crate) fn set(&mut self, var_char: char, var_val: impl Into<Rc<str>>) {
-        let i = char_to_index(var_char);
-        self.slots[i] = Some(var_val.into());
-    }
-
     /// Bind a variable to an already-interned value (cheap clone of Rc)
     pub(crate) fn set_rc(&mut self, var_char: char, var_val: Rc<str>) {
         let i = char_to_index(var_char);

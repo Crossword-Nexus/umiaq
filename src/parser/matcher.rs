@@ -1,6 +1,7 @@
 use crate::bindings::Bindings;
 use crate::constraints::{VarConstraint, VarConstraints};
 use crate::errors::ParseError;
+use crate::interner;
 use crate::joint_constraints::JointConstraints;
 use crate::umiaq_char::UmiaqChar;
 
@@ -213,11 +214,14 @@ impl HelperParams<'_> {
                 let candidate_chars = &chars[..l];
 
                 // Reverse if this is a RevVar; otherwise leave as-is.
-                let var_val: String = if matches!(first, FormPart::RevVar(_)) {
+                let var_val_string: String = if matches!(first, FormPart::RevVar(_)) {
                     candidate_chars.iter().rev().collect()
                 } else {
                     candidate_chars.iter().collect()
                 };
+
+                // Intern the string to avoid duplicate allocations
+                let var_val = interner::intern(var_val_string);
 
                 // Apply any variable-specific constraint.
                 // If there's a parse error in the constraint form, treat the binding as invalid
@@ -226,7 +230,7 @@ impl HelperParams<'_> {
                     .constraints
                     .get(var_name)
                     .is_none_or(|c| {
-                        is_valid_binding(&var_val, c, self.bindings).unwrap_or_else(|e| {
+                        is_valid_binding(var_val.as_ref(), c, self.bindings).unwrap_or_else(|e| {
                             // This indicates a malformed constraint that should have been caught earlier
                             debug_assert!(false, "Failed to parse constraint form: {e}");
                             false
@@ -237,8 +241,8 @@ impl HelperParams<'_> {
                     return false;
                 }
 
-                // Tentatively record the binding.
-                self.bindings.set(var_name, var_val);
+                // Tentatively record the binding (using interned Rc).
+                self.bindings.set_rc(var_name, var_val);
 
                 // Recurse on the remaining characters.
                 // If `all_matches` is false, stop once we’ve found one match.
