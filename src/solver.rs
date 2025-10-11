@@ -72,6 +72,7 @@ use instant::Instant;
 use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
+use std::rc::Rc;
 use std::time::Duration;
 
 // The amount of time (in seconds) we allow the query to run
@@ -208,7 +209,7 @@ impl SolverError {
 ///   and implements `Eq`/`Hash` naturally. This mirrors Python's
 ///   `frozenset(dict(...).items())`, but with a stable order.
 /// - The sort happens once when we construct the key, not on hash/compare.
-pub type LookupKey = Vec<(char, String)>;
+pub type LookupKey = Vec<(char, Rc<str>)>;
 
 /// Context for a `recursive_join` call
 struct JoinCtx<'a> {
@@ -348,12 +349,12 @@ fn lookup_key_for_binding(
         "All key variables must be one of uppercase A-Z"
     );
 
-    let mut pairs: Vec<(char, String)> = Vec::with_capacity(keys.len());
+    let mut pairs: Vec<(char, Rc<str>)> = Vec::with_capacity(keys.len());
     for var_char in keys {
         match binding.get(var_char) {
             Some(var_val) => {
                 debug_assert!(!var_val.is_empty(), "Variable bindings must be non-empty strings");
-                pairs.push((var_char, var_val.clone()));
+                pairs.push((var_char, Rc::clone(var_val)));
             }
             None => return Vec::new(), // required key missing
         }
@@ -512,7 +513,7 @@ struct RecursiveJoinParameters {
 /// In that case, partial solutions already found remain in `results`.
 fn recursive_join(
     selected: &mut Vec<Bindings>,
-    env: &mut HashMap<char, String>,
+    env: &mut HashMap<char, Rc<str>>,
     results: &mut Vec<Vec<Bindings>>,
     ctx: &JoinCtx,
     seen: &mut HashSet<u64>,
@@ -531,7 +532,7 @@ fn recursive_join(
 
 fn recursive_join_inner(
     selected: &mut Vec<Bindings>,
-    env: &mut HashMap<char, String>,
+    env: &mut HashMap<char, Rc<str>>,
     results: &mut Vec<Vec<Bindings>>,
     ctx: &JoinCtx,
     seen: &mut HashSet<u64>,
@@ -587,7 +588,7 @@ fn recursive_join_inner(
             for &var_char in &p.variables {
                 // safe: all vars in lookup_keys must be in env by construction
                 if let Some(var_val) = env.get(&var_char) {
-                    binding.set(var_char, var_val.clone());
+                    binding.set_rc(var_char, Rc::clone(var_val));
                 } else {
                     // this should never happen--indicates a logic error in solver
                     debug_assert!(
@@ -613,11 +614,11 @@ fn recursive_join_inner(
             // Build (var_char, var_val) pairs from env using the set of shared vars.
             // NOTE: HashSet iteration order is arbitrary — we sort the pairs below
             // so the final key is stable/deterministic.
-            let mut pairs: Vec<(char, String)> = Vec::with_capacity(rjp_cur.lookup_keys.len());
+            let mut pairs: Vec<(char, Rc<str>)> = Vec::with_capacity(rjp_cur.lookup_keys.len());
             for &var_char in &rjp_cur.lookup_keys {
                 timed_stop!(ctx.budget);
                 if let Some(var_val) = env.get(&var_char) {
-                    pairs.push((var_char, var_val.clone()));
+                    pairs.push((var_char, Rc::clone(var_val)));
                 } else {
                     // If any required var isn't bound yet, there can be no matches for this branch.
                     return Ok(());
@@ -659,7 +660,7 @@ fn recursive_join_inner(
                     continue;
                 }
                 if !env.contains_key(var_char) {
-                    env.insert(*var_char, var_val.clone());
+                    env.insert(*var_char, Rc::clone(var_val));
                     added_vars.push(*var_char);
                 }
             }
@@ -759,7 +760,7 @@ pub fn solve_equation(
 
     let mut results: Vec<Vec<Bindings>> = vec![];
     let mut selected: Vec<Bindings> = vec![];
-    let mut env: HashMap<char, String> = HashMap::new();
+    let mut env: HashMap<char, Rc<str>> = HashMap::new();
 
     // scan_pos tracks how far into the word list we've scanned.
     let mut scan_pos = 0;

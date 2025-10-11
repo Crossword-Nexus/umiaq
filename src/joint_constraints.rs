@@ -159,7 +159,7 @@ impl JointConstraint {
 /// Returns `None` if `var_char` is unbound in all Bindings in `parts`.
 #[inline]
 fn resolve_var_len(parts: &[Bindings], var_char: char) -> Option<usize> {
-    parts.iter().find_map(|bindings| bindings.get(var_char).map(String::len))
+    parts.iter().find_map(|bindings| bindings.get(var_char).map(|s| s.len()))
 }
 
 // TODO derive "=|!=|<=|>=|<|>" from a single source (e.g., COMPARISON_OPERATORS)

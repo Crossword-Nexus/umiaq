@@ -62,7 +62,7 @@ fn is_valid_binding(
 
     // 3. Check "not equal" constraints
     for &other in &constraints.not_equal {
-        if let Some(existing) = bindings.get(other) && existing == var_val {
+        if let Some(existing) = bindings.get(other) && existing.as_ref() == var_val {
             return Ok(false)
         }
     }
