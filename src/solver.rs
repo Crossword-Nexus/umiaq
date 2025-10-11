@@ -330,9 +330,41 @@ macro_rules! timed_stop {
     };
 }
 
+/// Build a lookup key from an environment (`HashMap`) given a set of key variables.
+///
+/// Returns `None` if any required key variable is missing in `env`.
+/// Otherwise returns a sorted `LookupKey`.
+fn lookup_key_from_env(
+    env: &HashMap<char, Rc<str>>,
+    keys: &HashSet<char>,
+) -> Option<LookupKey> {
+    debug_assert!(
+        keys.iter().all(char::is_ascii_uppercase),
+        "All key variables must be one of uppercase A-Z"
+    );
+
+    let mut pairs: Vec<(char, Rc<str>)> = Vec::with_capacity(keys.len());
+    for &var_char in keys {
+        match env.get(&var_char) {
+            Some(var_val) => {
+                debug_assert!(!var_val.is_empty(), "Variable bindings must be non-empty strings");
+                pairs.push((var_char, Rc::clone(var_val)));
+            }
+            None => return None, // required key missing
+        }
+    }
+
+    pairs.sort_unstable_by_key(|(c, _)| *c);
+    debug_assert!(
+        pairs.windows(2).all(|w| w[0].0 < w[1].0),
+        "Sorted pairs must be strictly increasing"
+    );
+    Some(pairs)
+}
+
 /// Build the deterministic lookup key for a binding given the pattern's lookup vars.
 ///
-/// Returns a `LookupKey` (alias for `Vec<(char, String)>`) sorted by `var_char`.
+/// Returns a `LookupKey` (alias for `Vec<(char, Rc<str>)>`) sorted by `var_char`.
 ///
 /// Conventions:
 /// - If `keys` is empty, returns an empty `LookupKey` (unkeyed bucket).
@@ -611,23 +643,14 @@ fn recursive_join_inner(
         //   `Some(sorted_pairs)` using the current `env` and fetch that bucket.
         //   (This includes the case keys.is_empty() → key is `Some([])`.)
         let bucket_candidates_opt: Option<&Vec<Bindings>> = {
-            // Build (var_char, var_val) pairs from env using the set of shared vars.
-            // NOTE: HashSet iteration order is arbitrary — we sort the pairs below
-            // so the final key is stable/deterministic.
-            let mut pairs: Vec<(char, Rc<str>)> = Vec::with_capacity(rjp_cur.lookup_keys.len());
-            for &var_char in &rjp_cur.lookup_keys {
-                timed_stop!(ctx.budget);
-                if let Some(var_val) = env.get(&var_char) {
-                    pairs.push((var_char, Rc::clone(var_val)));
-                } else {
-                    // If any required var isn't bound yet, there can be no matches for this branch.
-                    return Ok(());
-                }
-            }
-            // Deterministic key: sort by the variable name.
-            pairs.sort_unstable_by_key(|(c, _)| *c);
+            timed_stop!(ctx.budget);
+            // Build lookup key from current environment
+            let Some(key) = lookup_key_from_env(env, &rjp_cur.lookup_keys) else {
+                // If any required var isn't bound yet, there can be no matches for this branch.
+                return Ok(());
+            };
 
-            rjp_cur.candidate_buckets.buckets.get(&pairs)
+            rjp_cur.candidate_buckets.buckets.get(&key)
         };
 
         // If there are no candidates in that bucket, dead-end this branch.
