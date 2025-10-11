@@ -374,7 +374,7 @@ fn lookup_key_from_env(
 /// - Otherwise, returns the full normalized key.
 fn lookup_key_for_binding(
     binding: &Bindings,
-    keys: HashSet<char>,
+    keys: &HashSet<char>,
 ) -> LookupKey {
     debug_assert!(
         keys.iter().all(char::is_ascii_uppercase),
@@ -382,7 +382,7 @@ fn lookup_key_for_binding(
     );
 
     let mut pairs: Vec<(char, Rc<str>)> = Vec::with_capacity(keys.len());
-    for var_char in keys {
+    for &var_char in keys {
         match binding.get(var_char) {
             Some(var_val) => {
                 debug_assert!(!var_val.is_empty(), "Variable bindings must be non-empty strings");
@@ -498,8 +498,8 @@ fn scan_batch(
 
             for binding in matches {
                 timed_stop!(budget, i_word);
-              
-                let key = lookup_key_for_binding(&binding, p.lookup_keys.clone());
+
+                let key = lookup_key_for_binding(&binding, &p.lookup_keys);
 
                 // If a required key is missing, skip
                 if key.is_empty() && !p.lookup_keys.is_empty() {
@@ -888,7 +888,7 @@ pub fn solve_equation(
     // ---- Reorder solutions back to original form order ----
     let reordered = results.iter().map(|solution| {
         (0..solution.len()).map(|original_i| {
-            solution.clone()[equation_context.original_to_ordered[original_i]].clone()
+            solution[equation_context.original_to_ordered[original_i]].clone()
         }).collect::<Vec<_>>()
     }).collect::<Vec<_>>();
 
@@ -958,14 +958,14 @@ mod tests {
         let results = solve_equation(&input, &word_list, 5).unwrap();
 
         let mut sky_bindings = Bindings::default();
-        sky_bindings.set('A', "s".to_string());
-        sky_bindings.set('B', "y".to_string());
-        sky_bindings.set_word("sky".to_string().as_ref());
+        sky_bindings.set_rc('A', Rc::from("s"));
+        sky_bindings.set_rc('B', Rc::from("y"));
+        sky_bindings.set_word("sky");
 
         let mut sly_bindings = Bindings::default();
-        sly_bindings.set('A', "s".to_string());
-        sly_bindings.set('B', "y".to_string());
-        sly_bindings.set_word("sly".to_string().as_ref());
+        sly_bindings.set_rc('A', Rc::from("s"));
+        sly_bindings.set_rc('B', Rc::from("y"));
+        sly_bindings.set_word("sly");
         // NB: this could give a false negative if SLY comes out before SKY (since we presumably shouldn't care about the order), so...
         // TODO allow order independence for equality... perhaps create a richer struct than just Vec<Bindings> that has a notion of order-independent equality
         let expected = vec![vec![sky_bindings, sly_bindings]];
@@ -979,15 +979,15 @@ mod tests {
         let results = solve_equation(&input, &word_list, 5).unwrap();
         println!("{results:?}");
         let mut inch_bindings = Bindings::default();
-        inch_bindings.set('A', "i".to_string());
-        inch_bindings.set('B', "n".to_string());
-        inch_bindings.set('C', "ch".to_string());
-        inch_bindings.set_word("inch".to_string().as_ref());
+        inch_bindings.set_rc('A', Rc::from("i"));
+        inch_bindings.set_rc('B', Rc::from("n"));
+        inch_bindings.set_rc('C', Rc::from("ch"));
+        inch_bindings.set_word("inch");
 
         let mut chess_bindings = Bindings::default();
-        chess_bindings.set('C', "ch".to_string());
-        chess_bindings.set('D', "ess".to_string());
-        chess_bindings.set_word("chess".to_string().as_ref());
+        chess_bindings.set_rc('C', Rc::from("ch"));
+        chess_bindings.set_rc('D', Rc::from("ess"));
+        chess_bindings.set_word("chess");
         let expected = vec![vec![inch_bindings, chess_bindings]];
         assert_eq!(expected, results.solutions);
     }
@@ -1010,7 +1010,7 @@ mod tests {
         let mut b1 = Bindings::default();
         b1.set_word("CC");
         let mut b2 = Bindings::default();
-        b2.set('A', 'a'.to_string());
+        b2.set_rc('A', Rc::from("a"));
 
         let bindings_list = vec![b1, b2];
         let actual = solution_to_string(&bindings_list);
@@ -1031,17 +1031,17 @@ mod tests {
             .expect("equation should not trigger MaterializationError");
 
         let mut expected_atime_bindings = Bindings::default();
-        expected_atime_bindings.set('A', "a".to_string());
-        expected_atime_bindings.set_word("atime".to_string().as_ref());
+        expected_atime_bindings.set_rc('A', Rc::from("a"));
+        expected_atime_bindings.set_word("atime");
 
         let mut expected_btime_bindings = Bindings::default();
-        expected_btime_bindings.set('B', "b".to_string());
-        expected_btime_bindings.set_word("btime".to_string().as_ref());
+        expected_btime_bindings.set_rc('B', Rc::from("b"));
+        expected_btime_bindings.set_word("btime");
 
         let mut expected_ab_bindings = Bindings::default();
-        expected_ab_bindings.set('A', "a".to_string());
-        expected_ab_bindings.set('B', "b".to_string());
-        expected_ab_bindings.set_word("ab".to_string().as_ref());
+        expected_ab_bindings.set_rc('A', Rc::from("a"));
+        expected_ab_bindings.set_rc('B', Rc::from("b"));
+        expected_ab_bindings.set_word("ab");
 
         let expected_bindings_list = vec![expected_atime_bindings, expected_btime_bindings, expected_ab_bindings];
 
