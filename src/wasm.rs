@@ -18,7 +18,7 @@ fn init_panic_hook() {
 
 // Pull just the bound word ("*") out of a Bindings
 fn binding_to_word(b: &Bindings) -> Option<String> {
-    b.get_word().cloned()
+    b.get_word().map(|rc| rc.to_string())
 }
 
 #[derive(serde::Serialize)]
