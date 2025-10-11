@@ -885,14 +885,7 @@ pub fn solve_equation(
         batch_size = batch_size.saturating_mul(2);
     }
 
-    // ---- Reorder solutions back to original form order ----
-    let reordered = results.iter().map(|solution| {
-        (0..solution.len()).map(|original_i| {
-            solution[equation_context.original_to_ordered[original_i]].clone()
-        }).collect::<Vec<_>>()
-    }).collect::<Vec<_>>();
-
-    // Return up to `num_results_requested` reordered solutions
+    // Determine status before consuming results
     let status = if budget.expired() {
         SolveStatus::TimedOut { elapsed: budget.elapsed() }
     } else if results.len() >= num_results_requested {
@@ -900,6 +893,17 @@ pub fn solve_equation(
     } else {
         SolveStatus::WordListExhausted
     };
+
+    // ---- Reorder solutions back to original form order ----
+    let reordered = results.into_iter().map(|mut solution| {
+        let mut reordered_solution = Vec::with_capacity(solution.len());
+        for original_i in 0..solution.len() {
+            let ordered_i = equation_context.original_to_ordered[original_i];
+            // Move elements by swapping with default values
+            reordered_solution.push(std::mem::take(&mut solution[ordered_i]));
+        }
+        reordered_solution
+    }).collect::<Vec<_>>();
 
     // Postcondition: verify solution structure is consistent
     debug_assert!(
