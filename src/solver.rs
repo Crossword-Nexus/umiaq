@@ -677,7 +677,7 @@ fn recursive_join_inner(
 
             // Extend `env` with any *new* bindings from this candidate (don't overwrite).
             // Track what we added so we can backtrack cleanly.
-            let mut added_vars: Vec<char> = vec![];
+            let mut added_vars: Vec<char> = Vec::with_capacity(10); // typically few vars per pattern
             for (var_char, var_val) in cand.iter() {
                 if var_char == WORD_SENTINEL {
                     continue;
@@ -781,16 +781,16 @@ pub fn solve_equation(
     // 5. Iterate through every candidate word.
     let budget = TimeBudget::new(Duration::from_secs(TIME_BUDGET));
 
-    let mut results: Vec<Vec<Bindings>> = vec![];
-    let mut selected: Vec<Bindings> = vec![];
-    let mut env: HashMap<char, Rc<str>> = HashMap::new();
+    let mut results: Vec<Vec<Bindings>> = Vec::with_capacity(num_results_requested.min(1000));
+    let mut selected: Vec<Bindings> = Vec::with_capacity(equation_context.len());
+    let mut env: HashMap<char, Rc<str>> = HashMap::with_capacity(26); // max 26 variables A-Z
 
     // scan_pos tracks how far into the word list we've scanned.
     let mut scan_pos = 0;
 
     // Global set of fingerprints for already-emitted solutions.
     // Ensures we don't return duplicate solutions across scan/join rounds.
-    let mut seen: HashSet<u64> = HashSet::new();
+    let mut seen: HashSet<u64> = HashSet::with_capacity(num_results_requested.min(1000));
 
     // batch_size controls how many words to scan this round (adaptive).
     let mut batch_size = DEFAULT_BATCH_SIZE;

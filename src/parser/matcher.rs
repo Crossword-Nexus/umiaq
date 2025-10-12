@@ -79,9 +79,9 @@ pub fn match_equation_exists(
     constraints: &VarConstraints,
     joint_constraints: &JointConstraints,
 ) -> bool {
-    let mut results: Vec<Bindings> = Vec::new();
+    let mut results: Vec<Bindings> = Vec::with_capacity(1); // at most 1 result when all_matches=false
     match_equation_internal(word, parts, false, &mut results, constraints, joint_constraints);
-    results.into_iter().next().is_some()
+    !results.is_empty()
 }
 
 /// Return all bindings that satisfy the equation.
