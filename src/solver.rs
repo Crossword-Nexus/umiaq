@@ -1025,13 +1025,13 @@ mod tests {
     #[test]
     fn test_fully_bound() {
         // Toy word list: short, predictable words
-        let wl = vec!["atime", "btime", "ab"];
+        let word_list = vec!["atime", "btime", "ab"];
 
         // Equation has two deterministic patterns Atime, Btime, and then AB
         let eq = "Atime;Btime;AB";
 
         // Solve with a small limit to ensure it runs to completion
-        let solve_result = solve_equation(eq, &wl, 5)
+        let solve_result = solve_equation(eq, &word_list, 5)
             .expect("equation should not trigger MaterializationError");
 
         let mut expected_atime_bindings = Bindings::default();

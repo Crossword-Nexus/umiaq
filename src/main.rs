@@ -68,11 +68,11 @@ fn try_main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 1. Load the word list from disk, filtering out low-score entries
     let t_load = Instant::now();
-    let wl = word_list::WordList::load_from_path(&cli.word_list, cli.min_score)?;
+    let word_list = word_list::WordList::load_from_path(&cli.word_list, cli.min_score)?;
     let load_secs = t_load.elapsed().as_secs_f64();
 
     // Build a Vec<&str> of word references for the solver
-    let words_ref: Vec<_> = wl.entries.iter().map(String::as_str).collect();
+    let words_ref: Vec<_> = word_list.entries.iter().map(String::as_str).collect();
 
     // 2. Solve the pattern against the word list
     let t_solve = Instant::now();
@@ -99,7 +99,7 @@ fn try_main() -> Result<(), Box<dyn std::error::Error>> {
     // 4. Print diagnostics (word list size, timings, number of results) to stderr
     eprintln!(
         "Loaded {} words in {:.3}s; solved in {:.3}s ({} tuples).",
-        wl.entries.len(),
+        word_list.entries.len(),
         load_secs,
         solve_secs,
         solve_result.solutions.len()

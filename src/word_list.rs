@@ -131,7 +131,7 @@ impl WordList {
     /// cannot read files from arbitrary paths.
     ///
     /// # Example:
-    /// `let wl = WordList::load_from_path("xwordlist.txt", 50, 21)?;`
+    /// `let word_list = WordList::load_from_path("xwordlist.txt", 50, 21)?;`
     /// `println!("Loaded {} words", wl.entries.len());`
     ///
     /// # Errors
@@ -155,5 +155,101 @@ impl WordList {
 
         // Pass the file contents to the WASM-safe parsing method.
         Ok(Self::parse_from_str(&data, min_score))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_basic() {
+        let input = "cat;50\ndog;60\nbird;40";
+        let word_list = WordList::parse_from_str(input, 45);
+
+        assert_eq!(word_list.entries, vec!["cat", "dog"]);
+    }
+
+    #[test]
+    fn test_parse_filters_low_scores() {
+        let input = "apple;100\nbanana;20\ncherry;80";
+        let word_list = WordList::parse_from_str(input, 50);
+
+        assert_eq!(word_list.entries.len(), 2);
+        assert_eq!(word_list.entries, vec!["apple", "cherry"]);
+    }
+
+    #[test]
+    fn test_parse_deduplicates() {
+        let input = "cat;50\ndog;60\ncat;70\ncat;80";
+        let word_list = WordList::parse_from_str(input, 45);
+
+        // assert_eq!(word_list.entries.len(), 2);
+        // assert_eq!(word_list.entries.iter().filter(|w| *w == "cat").count(), 1);
+        assert_eq!(word_list.entries, vec!["cat", "dog"]);
+    }
+
+    #[test]
+    fn test_parse_sorts_by_length_then_alpha() {
+        let input = "dog;50\napple;50\ncat;50\nab;50\nzebra;50";
+        let word_list = WordList::parse_from_str(input, 45);
+
+        assert_eq!(word_list.entries, vec!["ab", "cat", "dog", "apple", "zebra"]);
+    }
+
+    #[test]
+    fn test_parse_normalizes_to_lowercase() {
+        let input = "CAT;50\nDog;60\nBIRD;70";
+        let word_list = WordList::parse_from_str(input, 45);
+
+        assert_eq!(word_list.entries, vec!["cat", "dog", "bird"]);
+    }
+
+    #[test]
+    fn test_parse_skips_empty_lines() {
+        let input = "cat;50\n\n\ndog;60\n\n";
+        let word_list = WordList::parse_from_str(input, 45);
+
+        assert_eq!(word_list.entries, vec!["cat", "dog"]);
+    }
+
+    #[test]
+    fn test_parse_skips_malformed_lines() {
+        let input = "cat;50\ninvalid_line\ndog;60\nno_semicolon\napple;bad_score";
+        let word_list = WordList::parse_from_str(input, 45);
+
+        assert_eq!(word_list.entries, vec!["cat", "dog"]);
+    }
+
+    #[test]
+    fn test_parse_empty_input() {
+        let input = "";
+        let word_list = WordList::parse_from_str(input, 45);
+
+        assert_eq!(word_list.entries.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_handles_whitespace() {
+        let input = "  cat  ;  50  \n  dog  ;  60  ";
+        let word_list = WordList::parse_from_str(input, 45);
+
+        assert_eq!(word_list.entries, vec!["cat", "dog"]);
+    }
+
+    #[test]
+    fn test_parse_negative_scores() {
+        let input = "cat;-10\ndog;60\nbird;-5";
+        let word_list = WordList::parse_from_str(input, 0);
+
+        assert_eq!(word_list.entries, vec!["dog"]);
+    }
+
+    #[test]
+    fn test_parse_zero_min_score() {
+        let input = "cat;0\ndog;10\nbird;-5";
+        let word_list = WordList::parse_from_str(input, 0);
+
+        assert_eq!(word_list.entries, vec!["cat", "dog"]);
     }
 }
