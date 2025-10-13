@@ -69,9 +69,10 @@ use crate::parser::{match_equation_all, ParsedForm};
 use crate::patterns::{Pattern, EquationContext};
 use crate::errors::ParseError::ParseFailure;
 use instant::Instant;
-use std::collections::hash_map::DefaultHasher;
+use std::collections::hash_map::{DefaultHasher, Entry};
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
+use std::rc::Rc;
 use std::time::Duration;
 
 // The amount of time (in seconds) we allow the query to run
@@ -208,7 +209,7 @@ impl SolverError {
 ///   and implements `Eq`/`Hash` naturally. This mirrors Python's
 ///   `frozenset(dict(...).items())`, but with a stable order.
 /// - The sort happens once when we construct the key, not on hash/compare.
-pub type LookupKey = Vec<(char, String)>;
+pub type LookupKey = Vec<(char, Rc<str>)>;
 
 /// Context for a `recursive_join` call
 struct JoinCtx<'a> {
@@ -329,9 +330,41 @@ macro_rules! timed_stop {
     };
 }
 
+/// Build a lookup key from an environment (`HashMap`) given a set of key variables.
+///
+/// Returns `None` if any required key variable is missing in `env`.
+/// Otherwise returns a sorted `LookupKey`.
+fn lookup_key_from_env(
+    env: &HashMap<char, Rc<str>>,
+    keys: &HashSet<char>,
+) -> Option<LookupKey> {
+    debug_assert!(
+        keys.iter().all(char::is_ascii_uppercase),
+        "All key variables must be one of uppercase A-Z"
+    );
+
+    let mut pairs: Vec<(char, Rc<str>)> = Vec::with_capacity(keys.len());
+    for &var_char in keys {
+        match env.get(&var_char) {
+            Some(var_val) => {
+                debug_assert!(!var_val.is_empty(), "Variable bindings must be non-empty strings");
+                pairs.push((var_char, Rc::clone(var_val)));
+            }
+            None => return None, // required key missing
+        }
+    }
+
+    pairs.sort_unstable_by_key(|(c, _)| *c);
+    debug_assert!(
+        pairs.windows(2).all(|w| w[0].0 < w[1].0),
+        "Sorted pairs must be strictly increasing"
+    );
+    Some(pairs)
+}
+
 /// Build the deterministic lookup key for a binding given the pattern's lookup vars.
 ///
-/// Returns a `LookupKey` (alias for `Vec<(char, String)>`) sorted by `var_char`.
+/// Returns a `LookupKey` (alias for `Vec<(char, Rc<str>)>`) sorted by `var_char`.
 ///
 /// Conventions:
 /// - If `keys` is empty, returns an empty `LookupKey` (unkeyed bucket).
@@ -341,19 +374,19 @@ macro_rules! timed_stop {
 /// - Otherwise, returns the full normalized key.
 fn lookup_key_for_binding(
     binding: &Bindings,
-    keys: HashSet<char>,
+    keys: &HashSet<char>,
 ) -> LookupKey {
     debug_assert!(
         keys.iter().all(char::is_ascii_uppercase),
         "All key variables must be one of uppercase A-Z"
     );
 
-    let mut pairs: Vec<(char, String)> = Vec::with_capacity(keys.len());
-    for var_char in keys {
+    let mut pairs: Vec<(char, Rc<str>)> = Vec::with_capacity(keys.len());
+    for &var_char in keys {
         match binding.get(var_char) {
             Some(var_val) => {
                 debug_assert!(!var_val.is_empty(), "Variable bindings must be non-empty strings");
-                pairs.push((var_char, var_val.clone()));
+                pairs.push((var_char, Rc::clone(var_val)));
             }
             None => return Vec::new(), // required key missing
         }
@@ -460,20 +493,20 @@ fn scan_batch(
                 word,
                 &equation_context.parsed_forms[i],
                 &equation_context.var_constraints,
-                equation_context.joint_constraints.clone(),
+                &equation_context.joint_constraints,
             );
 
             for binding in matches {
                 timed_stop!(budget, i_word);
-              
-                let key = lookup_key_for_binding(&binding, p.lookup_keys.clone());
+
+                let key = lookup_key_for_binding(&binding, &p.lookup_keys);
 
                 // If a required key is missing, skip
                 if key.is_empty() && !p.lookup_keys.is_empty() {
                     continue;
                 }
 
-                push_binding(words, i, key, binding.clone());
+                push_binding(words, i, key, binding);
             }
         }
 
@@ -483,11 +516,11 @@ fn scan_batch(
     Ok(i_word)
 }
 
-struct RecursiveJoinParameters {
-    candidate_buckets: CandidateBuckets,
-    lookup_keys: HashSet<char>,
-    pattern: Pattern,
-    parsed_form: ParsedForm,
+struct RecursiveJoinParameters<'a> {
+    candidate_buckets: &'a CandidateBuckets,
+    lookup_keys: &'a HashSet<char>,
+    pattern: &'a Pattern,
+    parsed_form: &'a ParsedForm,
 }
 
 /// Depth-first recursive join of per-pattern candidate buckets into full solutions.
@@ -512,7 +545,7 @@ struct RecursiveJoinParameters {
 /// In that case, partial solutions already found remain in `results`.
 fn recursive_join(
     selected: &mut Vec<Bindings>,
-    env: &mut HashMap<char, String>,
+    env: &mut HashMap<char, Rc<str>>,
     results: &mut Vec<Vec<Bindings>>,
     ctx: &JoinCtx,
     seen: &mut HashSet<u64>,
@@ -531,7 +564,7 @@ fn recursive_join(
 
 fn recursive_join_inner(
     selected: &mut Vec<Bindings>,
-    env: &mut HashMap<char, String>,
+    env: &mut HashMap<char, Rc<str>>,
     results: &mut Vec<Vec<Bindings>>,
     ctx: &JoinCtx,
     seen: &mut HashSet<u64>,
@@ -587,7 +620,7 @@ fn recursive_join_inner(
             for &var_char in &p.variables {
                 // safe: all vars in lookup_keys must be in env by construction
                 if let Some(var_val) = env.get(&var_char) {
-                    binding.set(var_char, var_val.clone());
+                    binding.set_rc(var_char, Rc::clone(var_val));
                 } else {
                     // this should never happen--indicates a logic error in solver
                     debug_assert!(
@@ -610,23 +643,14 @@ fn recursive_join_inner(
         //   `Some(sorted_pairs)` using the current `env` and fetch that bucket.
         //   (This includes the case keys.is_empty() → key is `Some([])`.)
         let bucket_candidates_opt: Option<&Vec<Bindings>> = {
-            // Build (var_char, var_val) pairs from env using the set of shared vars.
-            // NOTE: HashSet iteration order is arbitrary — we sort the pairs below
-            // so the final key is stable/deterministic.
-            let mut pairs: Vec<(char, String)> = Vec::with_capacity(rjp_cur.lookup_keys.len());
-            for &var_char in &rjp_cur.lookup_keys {
-                timed_stop!(ctx.budget);
-                if let Some(var_val) = env.get(&var_char) {
-                    pairs.push((var_char, var_val.clone()));
-                } else {
-                    // If any required var isn't bound yet, there can be no matches for this branch.
-                    return Ok(());
-                }
-            }
-            // Deterministic key: sort by the variable name.
-            pairs.sort_unstable_by_key(|(c, _)| *c);
+            timed_stop!(ctx.budget);
+            // Build lookup key from current environment
+            let Some(key) = lookup_key_from_env(env, rjp_cur.lookup_keys) else {
+                // If any required var isn't bound yet, there can be no matches for this branch.
+                return Ok(());
+            };
 
-            rjp_cur.candidate_buckets.buckets.get(&pairs)
+            rjp_cur.candidate_buckets.buckets.get(&key)
         };
 
         // If there are no candidates in that bucket, dead-end this branch.
@@ -647,20 +671,20 @@ fn recursive_join_inner(
             // its value must match the candidate. This *should* already be true
             // because we selected the bucket using the shared vars—but keep this
             // in case upstream bucketing logic ever changes.
-            if cand.iter().filter(|(var_char, _)| **var_char != WORD_SENTINEL).any(|(var_char, var_val)| env.get(var_char).is_some_and(|prev| prev != var_val)) {
+            if cand.iter().filter(|(var_char, _)| *var_char != WORD_SENTINEL).any(|(var_char, var_val)| env.get(&var_char).is_some_and(|prev| prev != var_val)) {
                 continue;
             }
 
             // Extend `env` with any *new* bindings from this candidate (don't overwrite).
             // Track what we added so we can backtrack cleanly.
-            let mut added_vars: Vec<char> = vec![];
+            let mut added_vars: Vec<char> = Vec::with_capacity(10); // typically few vars per pattern
             for (var_char, var_val) in cand.iter() {
-                if *var_char == WORD_SENTINEL {
+                if var_char == WORD_SENTINEL {
                     continue;
                 }
-                if !env.contains_key(var_char) {
-                    env.insert(*var_char, var_val.clone());
-                    added_vars.push(*var_char);
+                if let Entry::Vacant(e) = env.entry(var_char) {
+                    e.insert(Rc::clone(var_val));
+                    added_vars.push(var_char);
                 }
             }
 
@@ -752,21 +776,21 @@ pub fn solve_equation(
     // 4. Pull out some data from equation_context
     let lookup_keys = &equation_context.lookup_keys;
     let parsed_forms = &equation_context.parsed_forms;
-    let joint_constraints = equation_context.joint_constraints.clone();
+    let joint_constraints = &equation_context.joint_constraints;
 
     // 5. Iterate through every candidate word.
     let budget = TimeBudget::new(Duration::from_secs(TIME_BUDGET));
 
-    let mut results: Vec<Vec<Bindings>> = vec![];
-    let mut selected: Vec<Bindings> = vec![];
-    let mut env: HashMap<char, String> = HashMap::new();
+    let mut results: Vec<Vec<Bindings>> = Vec::with_capacity(num_results_requested.min(1000));
+    let mut selected: Vec<Bindings> = Vec::with_capacity(equation_context.len());
+    let mut env: HashMap<char, Rc<str>> = HashMap::with_capacity(26); // max 26 variables A-Z
 
     // scan_pos tracks how far into the word list we've scanned.
     let mut scan_pos = 0;
 
     // Global set of fingerprints for already-emitted solutions.
     // Ensures we don't return duplicate solutions across scan/join rounds.
-    let mut seen: HashSet<u64> = HashSet::new();
+    let mut seen: HashSet<u64> = HashSet::with_capacity(num_results_requested.min(1000));
 
     // batch_size controls how many words to scan this round (adaptive).
     let mut batch_size = DEFAULT_BATCH_SIZE;
@@ -818,10 +842,10 @@ pub fn solve_equation(
         let rjp = words.iter().zip(lookup_keys.iter()).zip(equation_context.ordered_list.iter()).zip(parsed_forms.iter())
             .map(|(((candidate_buckets, lookup_keys), p), parsed_form)| {
                 RecursiveJoinParameters {
-                    candidate_buckets: candidate_buckets.clone(),
-                    lookup_keys: lookup_keys.clone(),
-                    pattern: p.clone(),
-                    parsed_form: parsed_form.clone(),
+                    candidate_buckets,
+                    lookup_keys,
+                    pattern: p,
+                    parsed_form,
                 }
             }).collect::<Vec<_>>();
 
@@ -829,7 +853,7 @@ pub fn solve_equation(
         let ctx = JoinCtx {
             num_results_requested,
             word_set: &word_list_as_set,
-            joint_constraints: &joint_constraints,
+            joint_constraints,
             budget: &budget,
         };
 
@@ -861,14 +885,7 @@ pub fn solve_equation(
         batch_size = batch_size.saturating_mul(2);
     }
 
-    // ---- Reorder solutions back to original form order ----
-    let reordered = results.iter().map(|solution| {
-        (0..solution.len()).map(|original_i| {
-            solution.clone()[equation_context.original_to_ordered[original_i]].clone()
-        }).collect::<Vec<_>>()
-    }).collect::<Vec<_>>();
-
-    // Return up to `num_results_requested` reordered solutions
+    // Determine status before consuming results
     let status = if budget.expired() {
         SolveStatus::TimedOut { elapsed: budget.elapsed() }
     } else if results.len() >= num_results_requested {
@@ -876,6 +893,17 @@ pub fn solve_equation(
     } else {
         SolveStatus::WordListExhausted
     };
+
+    // ---- Reorder solutions back to original form order ----
+    let reordered = results.into_iter().map(|mut solution| {
+        let mut reordered_solution = Vec::with_capacity(solution.len());
+        for original_i in 0..solution.len() {
+            let ordered_i = equation_context.original_to_ordered[original_i];
+            // Move elements by swapping with default values
+            reordered_solution.push(std::mem::take(&mut solution[ordered_i]));
+        }
+        reordered_solution
+    }).collect::<Vec<_>>();
 
     // Postcondition: verify solution structure is consistent
     debug_assert!(
@@ -934,14 +962,14 @@ mod tests {
         let results = solve_equation(&input, &word_list, 5).unwrap();
 
         let mut sky_bindings = Bindings::default();
-        sky_bindings.set('A', "s".to_string());
-        sky_bindings.set('B', "y".to_string());
-        sky_bindings.set_word("sky".to_string().as_ref());
+        sky_bindings.set_rc('A', Rc::from("s"));
+        sky_bindings.set_rc('B', Rc::from("y"));
+        sky_bindings.set_word("sky");
 
         let mut sly_bindings = Bindings::default();
-        sly_bindings.set('A', "s".to_string());
-        sly_bindings.set('B', "y".to_string());
-        sly_bindings.set_word("sly".to_string().as_ref());
+        sly_bindings.set_rc('A', Rc::from("s"));
+        sly_bindings.set_rc('B', Rc::from("y"));
+        sly_bindings.set_word("sly");
         // NB: this could give a false negative if SLY comes out before SKY (since we presumably shouldn't care about the order), so...
         // TODO allow order independence for equality... perhaps create a richer struct than just Vec<Bindings> that has a notion of order-independent equality
         let expected = vec![vec![sky_bindings, sly_bindings]];
@@ -955,15 +983,15 @@ mod tests {
         let results = solve_equation(&input, &word_list, 5).unwrap();
         println!("{results:?}");
         let mut inch_bindings = Bindings::default();
-        inch_bindings.set('A', "i".to_string());
-        inch_bindings.set('B', "n".to_string());
-        inch_bindings.set('C', "ch".to_string());
-        inch_bindings.set_word("inch".to_string().as_ref());
+        inch_bindings.set_rc('A', Rc::from("i"));
+        inch_bindings.set_rc('B', Rc::from("n"));
+        inch_bindings.set_rc('C', Rc::from("ch"));
+        inch_bindings.set_word("inch");
 
         let mut chess_bindings = Bindings::default();
-        chess_bindings.set('C', "ch".to_string());
-        chess_bindings.set('D', "ess".to_string());
-        chess_bindings.set_word("chess".to_string().as_ref());
+        chess_bindings.set_rc('C', Rc::from("ch"));
+        chess_bindings.set_rc('D', Rc::from("ess"));
+        chess_bindings.set_word("chess");
         let expected = vec![vec![inch_bindings, chess_bindings]];
         assert_eq!(expected, results.solutions);
     }
@@ -986,7 +1014,7 @@ mod tests {
         let mut b1 = Bindings::default();
         b1.set_word("CC");
         let mut b2 = Bindings::default();
-        b2.set('A', 'a'.to_string());
+        b2.set_rc('A', Rc::from("a"));
 
         let bindings_list = vec![b1, b2];
         let actual = solution_to_string(&bindings_list);
@@ -1007,17 +1035,17 @@ mod tests {
             .expect("equation should not trigger MaterializationError");
 
         let mut expected_atime_bindings = Bindings::default();
-        expected_atime_bindings.set('A', "a".to_string());
-        expected_atime_bindings.set_word("atime".to_string().as_ref());
+        expected_atime_bindings.set_rc('A', Rc::from("a"));
+        expected_atime_bindings.set_word("atime");
 
         let mut expected_btime_bindings = Bindings::default();
-        expected_btime_bindings.set('B', "b".to_string());
-        expected_btime_bindings.set_word("btime".to_string().as_ref());
+        expected_btime_bindings.set_rc('B', Rc::from("b"));
+        expected_btime_bindings.set_word("btime");
 
         let mut expected_ab_bindings = Bindings::default();
-        expected_ab_bindings.set('A', "a".to_string());
-        expected_ab_bindings.set('B', "b".to_string());
-        expected_ab_bindings.set_word("ab".to_string().as_ref());
+        expected_ab_bindings.set_rc('A', Rc::from("a"));
+        expected_ab_bindings.set_rc('B', Rc::from("b"));
+        expected_ab_bindings.set_word("ab");
 
         let expected_bindings_list = vec![expected_atime_bindings, expected_btime_bindings, expected_ab_bindings];
 
