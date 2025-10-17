@@ -1257,4 +1257,130 @@ mod tests {
         }
     }
 
+    mod edge_cases {
+        use super::*;
+
+        #[test]
+        fn test_solve_empty_word_list() {
+            let result = solve_equation("A", &[], 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+            assert!(solve_result.solutions.is_empty());
+            assert_eq!(solve_result.status, SolveStatus::WordListExhausted);
+        }
+
+        #[test]
+        fn test_solve_very_large_num_results_requested() {
+            let words = vec!["cat", "dog", "bat"];
+            let result = solve_equation("A", &words, 1_000_000);
+            assert!(result.is_ok());
+            // should return all available solutions (3) (and not panic)
+            let solve_result = result.unwrap();
+            assert_eq!(solve_result.solutions.len(), 3);
+            assert_eq!(solve_result.status, SolveStatus::WordListExhausted);
+        }
+
+        #[test]
+        fn test_solve_single_word_list() {
+            let words = vec!["cat"];
+            let result = solve_equation("A", &words, 10);
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap().solutions.len(), 1);
+        }
+
+        #[test]
+        fn test_solve_pattern_with_many_variables() {
+            // test pattern using multiple variables (10... but not all 26 possible)
+            let words = vec!["abcdefghij"];
+            let result = solve_equation("ABCDEFGHIJ", &words, 10);
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap().solutions.len(), 1);
+        }
+
+        #[test]
+        fn test_solve_very_long_word() {
+            let long_word = "a".repeat(100);
+            let words = vec![long_word.as_str()];
+            let result = solve_equation("A", &words, 10);
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap().solutions.len(), 1);
+        }
+
+        #[test]
+        fn test_solve_no_matches() {
+            let words = vec!["cat", "dog", "bat"];
+            let result = solve_equation("xyz", &words, 10);
+            assert!(result.is_ok());
+            assert!(result.unwrap().solutions.is_empty());
+        }
+
+        #[test]
+        fn test_solve_wildcard_only() {
+            let words = vec!["cat", "dog", "elephant"];
+            let result = solve_equation("*", &words, 5);
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap().solutions.len(), 3);
+        }
+
+        #[test]
+        fn test_solve_multiple_wildcards() {
+            let words = vec!["cat", "dog", "bird"];
+            let result = solve_equation("*.*", &words, 5);
+            assert!(result.is_ok());
+            // should match all words (each can be split in multiple ways)
+            assert!(!result.unwrap().solutions.is_empty());
+        }
+
+        #[test]
+        fn test_solve_num_results_requested_one() {
+            let words = vec!["cat", "dog", "bat", "rat", "mat"];
+            let result = solve_equation("A", &words, 1);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+            assert_eq!(solve_result.solutions.len(), 1);
+            assert_eq!(solve_result.status, SolveStatus::FoundEnough);
+        }
+
+        #[test]
+        fn test_solve_duplicate_words_in_list() {
+            let words = vec!["cat", "cat", "dog", "cat"];
+            let result = solve_equation("A", &words, 10);
+            assert!(result.is_ok());
+            // return 2 unique solutions from deduplicated word list
+            assert_eq!(result.unwrap().solutions.len(), 2);
+        }
+
+        #[test]
+        fn test_solve_case_sensitivity() {
+            // solver expects lowercase words; verify behavior
+            let words = vec!["cat", "dog"];
+            let result = solve_equation("A", &words, 10);
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap().solutions.len(), 2);
+        }
+
+        #[test]
+        fn test_solve_pattern_longer_than_words() {
+            let words = vec!["cat", "dog"];
+            let result = solve_equation("ABCDEFGHIJ", &words, 10);
+            assert!(result.is_ok());
+            // No 10-character words, so no matches
+            assert!(result.unwrap().solutions.is_empty());
+        }
+
+        #[test]
+        fn test_solve_pattern_with_repeated_variable() {
+            let words = vec!["noon", "deed", "test", "papa", "mama"];
+            let result = solve_equation("AA", &words, 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+            // "papa", "mama"
+            assert_eq!(solve_result.solutions.len(), 2);
+            let words: Vec<String> = solve_result.solutions.iter()
+                .filter_map(|row| row.first().and_then(|b| b.get_word().map(|w| w.to_string())))
+                .collect();
+            assert!(words.contains(&"papa".to_string()));
+            assert!(words.contains(&"mama".to_string()));
+        }
+    }
 }

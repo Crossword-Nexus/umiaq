@@ -226,7 +226,7 @@ mod tests {
         let input = "";
         let word_list = WordList::parse_from_str(input, 45);
 
-        assert_eq!(word_list.entries.len(), 0);
+        assert!(word_list.entries.is_empty());
     }
 
     #[test]
