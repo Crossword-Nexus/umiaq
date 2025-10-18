@@ -1382,6 +1382,51 @@ mod tests {
             assert!(words.contains(&"papa".to_string()));
             assert!(words.contains(&"mama".to_string()));
         }
+
+        // TODO? handle 26 variables (seems to cause test timeout)
+        #[test]
+        fn test_pattern_with_many_variables() {
+            let word = "abcdefghijklmno";
+            let words = vec![word];
+            let result = solve_equation("ABCDEFGHIJKLMNO", &words, 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+            assert_eq!(solve_result.solutions.len(), 1, "should find exactly 1 solution");
+
+            let solution = &solve_result.solutions[0][0];
+            for (i, var) in (b'A'..=b'O').enumerate() {
+                let expected = &word[i..i+1];
+                assert_eq!(solution.get(var as char).map(|s| s.as_ref()), Some(expected),
+                    "variable {} should be '{}'", var as char, expected);
+            }
+        }
+
+        #[test]
+        fn test_deeply_nested_recursive_pattern() {
+            let words = vec!["abbabababa"];
+            let result = solve_equation("A~A~A~A~A", &words, 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+            assert_eq!(solve_result.solutions.len(), 1);
+            assert_eq!(solve_result.solutions[0][0].get('A').map(|s| s.as_ref()), Some("ab"));
+        }
+
+        #[test]
+        fn test_very_long_word_stress_test() {
+            let long_word = "a".repeat(150);
+            let words = vec![long_word.as_str()];
+
+            let result = solve_equation("A*B", &words, 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+            assert!(!solve_result.solutions.is_empty(), "should match very long words");
+
+            assert!(!&solve_result.solutions.is_empty());
+            for solution in &solve_result.solutions {
+                let word = solution[0].get_word();
+                assert_eq!(word.map(|s| s.as_ref()), Some(long_word.as_str()));
+            }
+        }
     }
 
     mod integration {
