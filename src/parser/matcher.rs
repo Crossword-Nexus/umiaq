@@ -365,4 +365,112 @@ mod tests {
         assert!(match_equation_exists("abc", &pf, &VarConstraints::default(), &JointConstraints::default()));
         assert!(!match_equation_exists("xyz", &pf, &VarConstraints::default(), &JointConstraints::default()));
     }
+
+    mod edge_cases {
+        use super::*;
+
+        #[test]
+        fn test_many_consecutive_wildcards() {
+            // min len: 7 (1+5+1)
+            let pf = "A.....B".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists("testing", &pf, &VarConstraints::default(), &JointConstraints::default()));
+            assert!(!match_equation_exists("test", &pf, &VarConstraints::default(), &JointConstraints::default())); // only 4 chars, need 7+
+        }
+
+        #[test]
+        fn test_multiple_variable_wildcards() {
+            let pf = "A*B*C*D".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists("abcd", &pf, &VarConstraints::default(), &JointConstraints::default())); // min case: each var is 1 char
+            assert!(match_equation_exists("testing", &pf, &VarConstraints::default(), &JointConstraints::default()));
+        }
+
+        #[test]
+        fn test_pattern_longer_than_word() {
+            // min len: 10
+            let pf = "ABCDEFGHIJ".parse::<ParsedForm>().unwrap();
+            assert!(!match_equation_exists("cat", &pf, &VarConstraints::default(), &JointConstraints::default()));
+        }
+
+        #[test]
+        fn test_all_wildcards_pattern() {
+            let pf = "*****".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists("test", &pf, &VarConstraints::default(), &JointConstraints::default()));
+            assert!(match_equation_exists("a", &pf, &VarConstraints::default(), &JointConstraints::default()));
+            assert!(match_equation_exists("", &pf, &VarConstraints::default(), &JointConstraints::default())); // all wildcards empty
+        }
+
+        #[test]
+        fn test_alternating_vars_and_wildcards() {
+            // min len: 5
+            let pf = "A.B.C".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists("abcde", &pf, &VarConstraints::default(), &JointConstraints::default()));
+            assert!(!match_equation_exists("abcd", &pf, &VarConstraints::default(), &JointConstraints::default())); // only 4 chars
+        }
+
+        #[test]
+        fn test_reverse_operator() {
+            let pf = "~A".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists("test", &pf, &VarConstraints::default(), &JointConstraints::default())); // A = "tset"
+
+            let pf2 = "A~B".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists("testing", &pf2, &VarConstraints::default(), &JointConstraints::default()));
+        }
+
+        #[test]
+        fn test_palindrome_structure() {
+            let pf = "A~A~B".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists("abbac", &pf, &VarConstraints::default(), &JointConstraints::default())); // A="ab", ~A="ba", ~B="c" (so B="c")
+            assert!(!match_equation_exists("test", &pf, &VarConstraints::default(), &JointConstraints::default()));
+        }
+
+        #[test]
+        fn test_single_char_word() {
+            let pf = "A".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists("a", &pf, &VarConstraints::default(), &JointConstraints::default()));
+
+            let pf2 = "A*".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists("a", &pf2, &VarConstraints::default(), &JointConstraints::default())); // A="a", wildcard empty
+        }
+
+        #[test]
+        fn test_very_long_word() {
+            let long_word = "a".repeat(1000);
+            let pf = "A".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists(&long_word, &pf, &VarConstraints::default(), &JointConstraints::default()));
+
+            let pf2 = "A*B".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists(&long_word, &pf2, &VarConstraints::default(), &JointConstraints::default()));
+        }
+
+        #[test]
+        fn test_backtracking_intensive_pattern() {
+            let pf = "A*B*C".parse::<ParsedForm>().unwrap();
+            let all_matches = match_equation_all("aaaa", &pf, &VarConstraints::default(), &JointConstraints::default());
+            // TODO? count?
+            assert!(!all_matches.is_empty());
+        }
+
+        #[test]
+        fn test_repeated_variable_same_value() {
+            let pf = "ABA".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists("catc", &pf, &VarConstraints::default(), &JointConstraints::default())); // A="c", B="at"
+            assert!(!match_equation_exists("catd", &pf, &VarConstraints::default(), &JointConstraints::default()));
+        }
+
+        #[test]
+        fn test_minimum_length_patterns() {
+            let pf = "ABCD".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists("abcd", &pf, &VarConstraints::default(), &JointConstraints::default())); // exact minimum
+            assert!(!match_equation_exists("abc", &pf, &VarConstraints::default(), &JointConstraints::default())); // too short
+        }
+
+        #[test]
+        fn test_wildcard_at_boundaries() {
+            let pf = "*A".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists("test", &pf, &VarConstraints::default(), &JointConstraints::default()));
+
+            let pf2 = "A*".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists("test", &pf2, &VarConstraints::default(), &JointConstraints::default()));
+        }
+    }
 }

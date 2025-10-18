@@ -96,3 +96,156 @@ impl Bindings {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_bindings_set_and_get() {
+        let mut b = Bindings::default();
+        let val = Rc::from("test");
+        b.set_rc('A', Rc::clone(&val));
+
+        assert_eq!(b.get('A'), Some(&val));
+        assert_eq!(b.get('B'), None);
+    }
+
+    #[test]
+    fn test_bindings_remove() {
+        let mut b = Bindings::default();
+        b.set_rc('A', Rc::from("test"));
+        assert!(b.get('A').is_some());
+
+        b.remove('A');
+        assert!(b.get('A').is_none());
+    }
+
+    #[test]
+    fn test_bindings_word_sentinel() {
+        let mut b = Bindings::default();
+        b.set_word("hello");
+
+        assert_eq!(b.get_word().map(|s| s.as_ref()), Some("hello"));
+    }
+
+    #[test]
+    fn test_bindings_iter() {
+        let mut b = Bindings::default();
+        b.set_rc('A', Rc::from("alpha"));
+        b.set_rc('B', Rc::from("beta"));
+        b.set_word("word");
+
+        let items: Vec<_> = b.iter().collect();
+        assert_eq!(items.len(), 3); // A, B, and * (word sentinel)
+
+        let has_a = items.iter().any(|(c, v)| *c == 'A' && v.as_ref() == "alpha");
+        let has_b = items.iter().any(|(c, v)| *c == 'B' && v.as_ref() == "beta");
+        let has_word = items.iter().any(|(c, v)| *c == WORD_SENTINEL && v.as_ref() == "word");
+
+        assert!(has_a);
+        assert!(has_b);
+        assert!(has_word);
+    }
+
+    #[test]
+    fn test_bindings_iter_empty() {
+        let b = Bindings::default();
+        let items: Vec<_> = b.iter().collect();
+        assert!(items.is_empty());
+    }
+
+    #[test]
+    fn test_contains_all_vars_true() {
+        let mut b = Bindings::default();
+        b.set_rc('A', Rc::from("a"));
+        b.set_rc('B', Rc::from("b"));
+        b.set_rc('C', Rc::from("c"));
+
+        assert!(b.contains_all_vars(&['A', 'B']));
+        assert!(b.contains_all_vars(&['A', 'B', 'C']));
+        assert!(b.contains_all_vars(&['A']));
+        assert!(b.contains_all_vars(&[]));
+    }
+
+    #[test]
+    fn test_contains_all_vars_false() {
+        let mut b = Bindings::default();
+        b.set_rc('A', Rc::from("a"));
+        b.set_rc('B', Rc::from("b"));
+
+        assert!(!b.contains_all_vars(&['A', 'B', 'C']));
+        assert!(!b.contains_all_vars(&['D']));
+        assert!(!b.contains_all_vars(&['A', 'Z']));
+    }
+
+    #[test]
+    fn test_bindings_all_26_variables() {
+        let mut b = Bindings::default();
+
+        for c in 'A'..='Z' {
+            b.set_rc(c, Rc::from(c.to_string().to_lowercase()));
+        }
+
+        for c in 'A'..='Z' {
+            assert_eq!(Some(Rc::from(c.to_string().to_lowercase())), b.get(c).cloned());
+        }
+
+        let items: Vec<_> = b.iter().collect();
+        assert_eq!(items.len(), 26);
+    }
+
+    #[test]
+    fn test_bindings_display() {
+        let mut b = Bindings::default();
+        b.set_rc('A', Rc::from("alpha"));
+        b.set_rc('Z', Rc::from("zeta"));
+
+        let display = format!("{}", b);
+        assert!(display.contains("A→alpha"));
+        assert!(display.contains("Z→zeta"));
+    }
+
+    #[test]
+    fn test_bindings_clone() {
+        let mut b1 = Bindings::default();
+        b1.set_rc('A', Rc::from("test"));
+        b1.set_word("word");
+
+        let b2 = b1.clone();
+
+        assert_eq!(b1.get('A'), b2.get('A'));
+        assert_eq!(b1.get_word(), b2.get_word());
+
+        // should share same Rc
+        assert!(Rc::ptr_eq(b1.get('A').unwrap(), b2.get('A').unwrap()));
+    }
+
+    #[test]
+    fn test_bindings_equality() {
+        let mut b1 = Bindings::default();
+        b1.set_rc('A', Rc::from("test"));
+
+        let mut b2 = Bindings::default();
+        b2.set_rc('A', Rc::from("test"));
+
+        assert_eq!(b1, b2);
+    }
+
+    #[test]
+    fn test_char_to_index_bounds() {
+        // test that all valid chars map to valid indices
+        for c in 'A'..='Z' {
+            let i = char_to_index(c);
+            assert!(i < 26, "Index {} for '{}' should be < 26", i, c);
+        }
+
+        assert_eq!(char_to_index(WORD_SENTINEL), WORD_SENTINEL_INDEX);
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid variable character")]
+    fn test_char_to_index_invalid() {
+        char_to_index('a'); // lowercase should cause panic
+    }
+}

@@ -694,4 +694,170 @@ mod tests {
         let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);
         assert!(result.is_err(), "Should fail when sum of maxes < target");
     }
+
+    mod edge_cases {
+        use super::*;
+
+        #[test]
+        fn test_very_large_target_value() {
+            let mut vcs = VarConstraints::default();
+            vcs.ensure_entry_mut('A').bounds = Bounds::of_unbounded(1);
+            vcs.ensure_entry_mut('B').bounds = Bounds::of_unbounded(1);
+
+            let jc = JointConstraint {
+                vars: vec!['A', 'B'],
+                rel: RelMask::EQ,
+                target: 1000,
+            };
+            let jcs = JointConstraints::of(vec![jc]);
+
+            let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);
+            assert!(result.is_ok(), "large target values should be handled");
+        }
+
+        #[test]
+        fn test_multiple_overlapping_constraints() {
+            // |AB|=5, |BC|=6, |AC|=7
+            // TODO would be nice to reduce to |A|=3,|B|=2,|C|=4 as soon as possible...
+            let mut vcs = VarConstraints::default();
+
+            let jcs = JointConstraints::of(vec![
+                JointConstraint { vars: vec!['A', 'B'], rel: RelMask::EQ, target: 5 },
+                JointConstraint { vars: vec!['B', 'C'], rel: RelMask::EQ, target: 6 },
+                JointConstraint { vars: vec!['A', 'C'], rel: RelMask::EQ, target: 7 },
+            ]);
+
+            let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);
+            assert!(result.is_ok(), "overlapping constraints should be handled");
+        }
+
+        #[test]
+        fn test_inequality_greater_than() {
+            let mut vcs = VarConstraints::default();
+            vcs.ensure_entry_mut('A').bounds = Bounds::of(1, 10);
+            vcs.ensure_entry_mut('B').bounds = Bounds::of(1, 10);
+
+            let jc = JointConstraint {
+                vars: vec!['A', 'B'],
+                rel: RelMask::GT,
+                target: 5,
+            };
+            let jcs = JointConstraints::of(vec![jc]);
+
+            let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn test_inequality_less_than() {
+            let mut vcs = VarConstraints::default();
+            vcs.ensure_entry_mut('A').bounds = Bounds::of(1, 10);
+            vcs.ensure_entry_mut('B').bounds = Bounds::of(1, 10);
+
+            let jc = JointConstraint {
+                vars: vec!['A', 'B'],
+                rel: RelMask::LT,
+                target: 10,
+            };
+            let jcs = JointConstraints::of(vec![jc]);
+
+            let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn test_constraint_with_many_variables() {
+            // Constraint spanning many variables: |ABCDEFGH|=20
+            let mut vcs = VarConstraints::default();
+            let vars = vec!['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+
+            let jc = JointConstraint {
+                vars: vars.clone(),
+                rel: RelMask::EQ,
+                target: 20,
+            };
+            let jcs = JointConstraints::of(vec![jc]);
+
+            let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);
+            assert!(result.is_ok(), "many-variable constraints should be handled");
+        }
+
+        #[test]
+        fn test_constraint_on_single_variable() {
+            let mut vcs = VarConstraints::default();
+
+            let jc = JointConstraint {
+                vars: vec!['A'],
+                rel: RelMask::EQ,
+                target: 5,
+            };
+            let jcs = JointConstraints::of(vec![jc]);
+
+            let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);
+            assert!(result.is_ok());
+
+            assert_eq!(vcs.bounds('A'), Bounds::of(5, 5));
+        }
+
+        // TODO? have propagate_joint_to_var_bounds catch contradictions like these?
+        // #[test]
+        // fn test_contradictory_constraints_on_same_vars() {
+        //     // |AB|=5 and |AB|=7 are contradictory
+        //     let mut vcs = VarConstraints::default();
+        //     vcs.ensure_entry_mut('A').bounds = Bounds::of(1, 10);
+        //     vcs.ensure_entry_mut('B').bounds = Bounds::of(1, 10);
+        //
+        //     let jcs = JointConstraints::of(vec![
+        //         JointConstraint { vars: vec!['A', 'B'], rel: RelMask::EQ, target: 5 },
+        //         JointConstraint { vars: vec!['A', 'B'], rel: RelMask::EQ, target: 7 },
+        //     ]);
+        //
+        //     let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);
+        //     assert!(result.is_err());
+        // }
+
+        #[test]
+        fn test_redundant_consistent_constraints() {
+            let mut vcs = VarConstraints::default();
+
+            let jcs = JointConstraints::of(vec![
+                JointConstraint { vars: vec!['A', 'B'], rel: RelMask::EQ, target: 5 },
+                JointConstraint { vars: vec!['A', 'B'], rel: RelMask::EQ, target: 5 },
+            ]);
+
+            let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);
+            assert!(result.is_ok(), "redundant but consistent constraints should succeed");
+        }
+
+        #[test]
+        fn test_constraint_with_zero_target() {
+            // |AB|=0 is impossible (variables must be nonempty)
+            let mut vcs = VarConstraints::default();
+
+            let jc = JointConstraint {
+                vars: vec!['A', 'B'],
+                rel: RelMask::EQ,
+                target: 0,
+            };
+            let jcs = JointConstraints::of(vec![jc]);
+
+            let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);
+            assert!(result.is_err(), "zero target with nonempty variables should fail");
+        }
+
+        #[test]
+        fn test_not_equal_constraint() {
+            let mut vcs = VarConstraints::default();
+
+            let jc = JointConstraint {
+                vars: vec!['A', 'B'],
+                rel: RelMask::NE,
+                target: 5,
+            };
+            let jcs = JointConstraints::of(vec![jc]);
+
+            let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);
+            assert!(result.is_ok());
+        }
+    }
 }
