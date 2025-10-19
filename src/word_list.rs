@@ -132,7 +132,7 @@ impl WordList {
     ///
     /// # Example:
     /// `let word_list = WordList::load_from_path("xwordlist.txt", 50, 21)?;`
-    /// `println!("Loaded {} words", wl.entries.len());`
+    /// `println!("Loaded {} words", word_list.entries.len());`
     ///
     /// # Errors
     ///
