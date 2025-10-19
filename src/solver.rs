@@ -1025,13 +1025,13 @@ mod tests {
     #[test]
     fn test_fully_bound() {
         // Toy word list: short, predictable words
-        let wl = vec!["atime", "btime", "ab"];
+        let word_list = vec!["atime", "btime", "ab"];
 
         // Equation has two deterministic patterns Atime, Btime, and then AB
         let eq = "Atime;Btime;AB";
 
         // Solve with a small limit to ensure it runs to completion
-        let solve_result = solve_equation(eq, &wl, 5)
+        let solve_result = solve_equation(eq, &word_list, 5)
             .expect("equation should not trigger MaterializationError");
 
         let mut expected_atime_bindings = Bindings::default();
@@ -1257,4 +1257,447 @@ mod tests {
         }
     }
 
+    mod edge_cases {
+        use super::*;
+
+        #[test]
+        fn test_solve_empty_word_list() {
+            let result = solve_equation("A", &[], 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+            assert!(solve_result.solutions.is_empty());
+            assert_eq!(solve_result.status, SolveStatus::WordListExhausted);
+        }
+
+        #[test]
+        fn test_solve_very_large_num_results_requested() {
+            let words = vec!["cat", "dog", "bat"];
+            let result = solve_equation("A", &words, 1_000_000);
+            assert!(result.is_ok());
+            // should return all available solutions (3) (and not panic)
+            let solve_result = result.unwrap();
+            assert_eq!(solve_result.solutions.len(), 3);
+            assert_eq!(solve_result.status, SolveStatus::WordListExhausted);
+        }
+
+        #[test]
+        fn test_solve_single_word_list() {
+            let words = vec!["cat"];
+            let result = solve_equation("A", &words, 10);
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap().solutions.len(), 1);
+        }
+
+        #[test]
+        fn test_solve_pattern_with_many_variables() {
+            // test pattern using multiple variables (10... but not all 26 possible)
+            let words = vec!["abcdefghij"];
+            let result = solve_equation("ABCDEFGHIJ", &words, 10);
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap().solutions.len(), 1);
+        }
+
+        #[test]
+        fn test_solve_very_long_word() {
+            let long_word = "a".repeat(100);
+            let words = vec![long_word.as_str()];
+            let result = solve_equation("A", &words, 10);
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap().solutions.len(), 1);
+        }
+
+        #[test]
+        fn test_solve_no_matches() {
+            let words = vec!["cat", "dog", "bat"];
+            let result = solve_equation("xyz", &words, 10);
+            assert!(result.is_ok());
+            assert!(result.unwrap().solutions.is_empty());
+        }
+
+        #[test]
+        fn test_solve_wildcard_only() {
+            let words = vec!["cat", "dog", "elephant"];
+            let result = solve_equation("*", &words, 5);
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap().solutions.len(), 3);
+        }
+
+        #[test]
+        fn test_solve_multiple_wildcards() {
+            let words = vec!["cat", "dog", "bird"];
+            let result = solve_equation("*.*", &words, 5);
+            assert!(result.is_ok());
+            // should match all words (each can be split in multiple ways)
+            assert!(!result.unwrap().solutions.is_empty());
+        }
+
+        #[test]
+        fn test_solve_num_results_requested_one() {
+            let words = vec!["cat", "dog", "bat", "rat", "mat"];
+            let result = solve_equation("A", &words, 1);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+            assert_eq!(solve_result.solutions.len(), 1);
+            assert_eq!(solve_result.status, SolveStatus::FoundEnough);
+        }
+
+        #[test]
+        fn test_solve_duplicate_words_in_list() {
+            let words = vec!["cat", "cat", "dog", "cat"];
+            let result = solve_equation("A", &words, 10);
+            assert!(result.is_ok());
+            // return 2 unique solutions from deduplicated word list
+            assert_eq!(result.unwrap().solutions.len(), 2);
+        }
+
+        #[test]
+        fn test_solve_case_sensitivity() {
+            // solver expects lowercase words; verify behavior
+            let words = vec!["cat", "dog"];
+            let result = solve_equation("A", &words, 10);
+            assert!(result.is_ok());
+            assert_eq!(result.unwrap().solutions.len(), 2);
+        }
+
+        #[test]
+        fn test_solve_pattern_longer_than_words() {
+            let words = vec!["cat", "dog"];
+            let result = solve_equation("ABCDEFGHIJ", &words, 10);
+            assert!(result.is_ok());
+            // No 10-character words, so no matches
+            assert!(result.unwrap().solutions.is_empty());
+        }
+
+        #[test]
+        fn test_solve_pattern_with_repeated_variable() {
+            let words = vec!["noon", "deed", "test", "papa", "mama"];
+            let result = solve_equation("AA", &words, 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+            // "papa", "mama"
+            assert_eq!(solve_result.solutions.len(), 2);
+            let words: Vec<String> = solve_result.solutions.iter()
+                .filter_map(|row| row.first().and_then(|b| b.get_word().map(|w| w.to_string())))
+                .collect();
+            assert!(words.contains(&"papa".to_string()));
+            assert!(words.contains(&"mama".to_string()));
+        }
+
+        // TODO? handle 26 variables (seems to cause test timeout)
+        #[test]
+        fn test_pattern_with_many_variables() {
+            let word = "abcdefghijklmno";
+            let words = vec![word];
+            let result = solve_equation("ABCDEFGHIJKLMNO", &words, 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+            assert_eq!(solve_result.solutions.len(), 1, "should find exactly 1 solution");
+
+            let solution = &solve_result.solutions[0][0];
+            for (i, var) in (b'A'..=b'O').enumerate() {
+                let expected = &word[i..i+1];
+                assert_eq!(solution.get(var as char).map(|s| s.as_ref()), Some(expected),
+                    "variable {} should be '{}'", var as char, expected);
+            }
+        }
+
+        #[test]
+        fn test_deeply_nested_recursive_pattern() {
+            let words = vec!["abbabababa"];
+            let result = solve_equation("A~A~A~A~A", &words, 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+            assert_eq!(solve_result.solutions.len(), 1);
+            assert_eq!(solve_result.solutions[0][0].get('A').map(|s| s.as_ref()), Some("ab"));
+        }
+
+        #[test]
+        fn test_very_long_word_stress_test() {
+            let long_word = "a".repeat(150);
+            let words = vec![long_word.as_str()];
+
+            let result = solve_equation("A*B", &words, 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+            assert!(!solve_result.solutions.is_empty(), "should match very long words");
+
+            assert!(!&solve_result.solutions.is_empty());
+            for solution in &solve_result.solutions {
+                let word = solution[0].get_word();
+                assert_eq!(word.map(|s| s.as_ref()), Some(long_word.as_str()));
+            }
+        }
+    }
+
+    mod integration {
+        use super::*;
+
+        #[test]
+        fn test_multiple_patterns_with_shared_variable() {
+            let words = vec!["cat", "atop", "topaz"];
+            let result = solve_equation("AB;BC", &words, 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+
+            assert!(!solve_result.solutions.is_empty(), "Should find solutions with shared variable");
+
+            for solution in &solve_result.solutions {
+                assert_eq!(solution.len(), 2, "Should have 2 patterns");
+
+                let b1 = solution[0].get('B');
+                let b2 = solution[1].get('B');
+
+                // B should be the same in both patterns
+                assert_eq!(b1, b2, "B must be consistent across patterns");
+            }
+        }
+
+        #[test]
+        fn test_constraint_interaction_narrows_solution_space() {
+            // multiple constraints that collectively filter solutions
+            // A;|A|>3;|A|<6 means word length in {4, 5}
+            let words = vec!["cat", "bird", "tiger", "elephant"];
+            let result = solve_equation("A;|A|>3;|A|<6", &words, 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+
+            // only "bird" (4) and "tiger" (5) should match
+            assert_eq!(solve_result.solutions.len(), 2);
+
+            for solution in &solve_result.solutions {
+                let word_len = solution[0].get_word().unwrap().len();
+                assert!(word_len > 3 && word_len < 6, "word length must be 4 or 5");
+            }
+        }
+
+        #[test]
+        fn test_reverse_pattern_palindrome() {
+            let words = vec!["abba", "noon", "cat", "deed"];
+            let result = solve_equation("A~A", &words, 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+
+            assert!(!solve_result.solutions.is_empty(), "Should find palindromes");
+
+            for solution in &solve_result.solutions {
+                let word = solution[0].get_word().unwrap();
+                assert_eq!(word.len() % 2, 0, "A~A requires even-length words");
+            }
+        }
+
+        #[test]
+        fn test_shared_variable_with_reverse() {
+            let words = vec!["abba", "cab"];
+            let result = solve_equation("A~A;BA", &words, 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+
+            assert!(!solve_result.solutions.is_empty(), "Should find solutions");
+
+            for solution in &solve_result.solutions {
+                assert_eq!(solution.len(), 2);
+
+                let a1 = solution[0].get('A');
+                let a2 = solution[1].get('A');
+                assert_eq!(a1, a2, "A should be consistent across patterns");
+            }
+        }
+
+        #[test]
+        fn test_joint_constraint_across_patterns() {
+            let words = vec!["cat", "dog", "at", "bird"];
+            let result = solve_equation("AB;CD;|AC|=4", &words, 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+
+            assert!(!solve_result.solutions.is_empty(), "should find solutions satisfying |AC|=4");
+
+            for solution in &solve_result.solutions {
+                assert_eq!(solution.len(), 2);
+
+                let a_len = solution[0].get('A').unwrap().len();
+                let c_len = solution[1].get('C').unwrap().len();
+                assert_eq!(a_len + c_len, 4, "|AC| constraint must be satisfied");
+            }
+        }
+
+        #[test]
+        fn test_redundant_consistent_constraints() {
+            // ABC;|A|=2;|B|=2;|C|=2;|AB|=4;|BC|=4;|ABC|=6
+            let words = vec!["abcdef", "catdog"];
+            let result = solve_equation("ABC;|A|=2;|B|=2;|C|=2;|AB|=4;|BC|=4;|ABC|=6", &words, 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+
+            assert!(!solve_result.solutions.is_empty(), "Should find 6-letter words with 2+2+2 split");
+
+            for solution in &solve_result.solutions {
+                let binding = &solution[0];
+                let a_len = binding.get('A').unwrap().len();
+                let b_len = binding.get('B').unwrap().len();
+                let c_len = binding.get('C').unwrap().len();
+
+                assert_eq!(a_len, 2);
+                assert_eq!(b_len, 2);
+                assert_eq!(c_len, 2);
+            }
+        }
+
+        #[test]
+        fn test_contradictory_constraints() {
+            // |A|>5;|A|<3 - impossible (parser detects contradiction)
+            let words = vec!["cat", "catdog", "testing"];
+            let result = solve_equation("A;|A|>5;|A|<3", &words, 10);
+
+            // Should fail at parse time with ContradictoryBounds
+            assert!(result.is_err());
+            if let Err(SolverError::ParseFailure(pe)) = result {
+                assert!(matches!(*pe, ParseError::ContradictoryBounds { .. }));
+            } else {
+                panic!("Expected ParseFailure with ContradictoryBounds");
+            }
+        }
+
+        #[test]
+        fn test_reverse_with_length_constraint() {
+            // A~A; |A|=2 - 4-letter palindromes
+            let words = vec!["abba", "noon", "deed", "cat"];
+            let result = solve_equation("A~A;|A|=2", &words, 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+
+            assert!(!solve_result.solutions.is_empty(), "Should find 4-letter palindromes");
+
+            for solution in &solve_result.solutions {
+                let a_len = solution[0].get('A').unwrap().len();
+                let word_len = solution[0].get_word().unwrap().len();
+
+                assert_eq!(a_len, 2);
+                assert_eq!(word_len, 4);
+            }
+        }
+
+        #[test]
+        fn test_wildcard_with_constraints() {
+            let words = vec!["cat", "caterpillar", "abnormal"];
+            let result = solve_equation("A*B*C;|A|=2;|C|=1;|ABC|>6", &words, 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+
+            assert!(!solve_result.solutions.is_empty(), "should find words matching wildcard pattern with constraints");
+
+            for solution in &solve_result.solutions {
+                let binding = &solution[0];
+                let a_len = binding.get('A').unwrap().len();
+                let c_len = binding.get('C').unwrap().len();
+                let word_len = binding.get_word().unwrap().len();
+
+                assert_eq!(a_len, 2);
+                assert_eq!(c_len, 1);
+                assert!(word_len > 6);
+            }
+        }
+
+        #[test]
+        fn test_hub_variable_pattern() {
+            let words = vec!["at", "atop", "atlas"];
+            let result = solve_equation("A;AB;AC", &words, 5);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+
+            assert!(!solve_result.solutions.is_empty(), "Should find solutions with hub variable");
+
+            for solution in &solve_result.solutions {
+                assert_eq!(solution.len(), 3);
+
+                let a1 = solution[0].get('A');
+                let a2 = solution[1].get('A');
+                let a3 = solution[2].get('A');
+
+                // all As must be the same
+                assert_eq!(a1, a2);
+                assert_eq!(a2, a3);
+            }
+        }
+
+        #[test]
+        fn test_three_pattern_constraint() {
+            let words = vec!["cat", "dog", "at", "bird"];
+            let result = solve_equation("AB;CD;EF;|ACE|=6", &words, 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+
+            assert!(!solve_result.solutions.is_empty(), "Should find solutions satisfying 3-pattern constraint");
+
+            for solution in &solve_result.solutions {
+                assert_eq!(solution.len(), 3);
+
+                let a_len = solution[0].get('A').unwrap().len();
+                let c_len = solution[1].get('C').unwrap().len();
+                let e_len = solution[2].get('E').unwrap().len();
+
+                assert_eq!(a_len + c_len + e_len, 6);
+            }
+        }
+
+        #[test]
+        fn test_complex_shared_variable_graph() {
+            // AB;BC;CD - chain of shared variables B and C
+            // AB="at": A="a", B="t"
+            // BC="to": B="t", C="o"
+            // CD="on": C="o", D="n"
+            let words = vec!["at", "to", "on"];
+            let result = solve_equation("AB;BC;CD", &words, 5);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+
+            assert!(!solve_result.solutions.is_empty(), "Should find solutions with chained shared variables");
+
+            for solution in &solve_result.solutions {
+                assert_eq!(solution.len(), 3);
+
+                // verify B is shared between patterns 0 and 1
+                let b_0 = solution[0].get('B');
+                let b_1 = solution[1].get('B');
+                assert_eq!(b_0, b_1, "B shared between patterns 0 and 1");
+
+                // verify C is shared between patterns 1 and 2
+                let c_1 = solution[1].get('C');
+                let c_2 = solution[2].get('C');
+                assert_eq!(c_1, c_2, "C shared between patterns 1 and 2");
+            }
+        }
+
+        #[test]
+        fn test_impossible_joint_constraint() {
+            // AB;|A|=10;|AB|=5 (part cannot be larger than whole)
+            // parser detects contradiction and rejects it
+            let words = vec!["a".repeat(20)];
+            let word_refs: Vec<&str> = words.iter().map(|s| s.as_str()).collect();
+            let result = solve_equation("AB;|A|=10;|AB|=5", &word_refs, 10);
+
+            assert!(result.is_err());
+            if let Err(SolverError::ParseFailure(pe)) = result {
+                assert!(matches!(*pe, ParseError::ContradictoryBounds { .. })); // TODO be more explicit than ".." (here and elsewhere)
+            } else {
+                panic!("Expected ParseFailure with ContradictoryBounds");
+            }
+        }
+
+        #[test]
+        fn test_multiple_wildcards_with_decomposition() {
+            let words = vec!["category", "catapult"];
+            let result = solve_equation("A*B*.C;|A|=3;|C|=1", &words, 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+
+            assert!(!solve_result.solutions.is_empty(), "Should find words with wildcard decomposition");
+
+            for solution in &solve_result.solutions {
+                let binding = &solution[0];
+                assert_eq!(binding.get('A').unwrap().len(), 3);
+                assert_eq!(binding.get('C').unwrap().len(), 1);
+            }
+        }
+    }
 }

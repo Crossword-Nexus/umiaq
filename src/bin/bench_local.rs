@@ -115,12 +115,12 @@ fn main() -> std::io::Result<()> {
     // Load the word list once. This I/O is *not* included in per-pattern timing.
     eprintln!("Loading word list from: {}", cli.word_list);
     let t_load = Instant::now();
-    let wl = word_list::WordList::load_from_path(&cli.word_list, cli.min_score)?;
+    let word_list = word_list::WordList::load_from_path(&cli.word_list, cli.min_score)?;
     let load_secs = t_load.elapsed().as_secs_f64();
-    eprintln!("Loaded {} words in {:.3}s", wl.entries.len(), load_secs);
+    eprintln!("Loaded {} words in {:.3}s", word_list.entries.len(), load_secs);
 
     // Keep references to avoid reallocating strings during benchmarks.
-    let words_ref: Vec<_> = wl.entries.iter().map(String::as_str).collect();
+    let words_ref: Vec<_> = word_list.entries.iter().map(String::as_str).collect();
 
     let cases = get_cases();
     // Store (pattern, median_seconds, solutions_last_run, static_s, delta_pct_opt) for the summary.
