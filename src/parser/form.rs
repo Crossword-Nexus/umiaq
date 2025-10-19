@@ -4,10 +4,10 @@ use crate::errors::ParseError::ParseFailure;
 use crate::parser::utils::letter_to_num;
 use crate::umiaq_char::{ALPHABET_SIZE, LITERAL_CHARS, VARIABLE_CHARS};
 use fancy_regex::Regex;
-use std::rc::Rc;
+use nom::bytes::complete::is_a;
 use nom::{
     branch::alt,
-    bytes::complete::{is_not, tag},
+    bytes::complete::tag,
     character::complete::one_of,
     combinator::map,
     multi::many1,
@@ -16,6 +16,7 @@ use nom::{
     Parser,
 };
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 use std::str::FromStr;
 
 /// Parser result type: input, output, with our custom `ParseError`
@@ -255,7 +256,7 @@ fn expand_charset(body: &str) -> Result<HashSet<char>, Box<ParseError>> {
 }
 
 fn charset(input: &'_ str) -> PResult<'_, FormPart> {
-    let (input, body) = delimited(tag("["), is_not("]"), tag("]")).parse(input)?;
+    let (input, body) = delimited(tag("["), is_a("-abcdefghijklmnopqrstuvwxyz"), tag("]")).parse(input)?;
     // Expand ranges
     let chars = expand_charset(body).map_err(nom::Err::Failure)?;
     Ok((input, FormPart::Charset(chars)))
@@ -484,11 +485,10 @@ mod tests {
             assert!(result.is_err());
         }
 
-        // TODO! this seems wrong `is_not("]")` code should probably be replaced
         #[test]
         fn test_charset_with_unicode() {
             let result = "[aé]".parse::<ParsedForm>();
-            assert!(result.is_ok());
+            assert!(result.is_err());
         }
 
         #[test]
