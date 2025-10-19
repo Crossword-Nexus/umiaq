@@ -58,7 +58,7 @@ impl FormPart {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Alphagram {
     char_counts: [u8; ALPHABET_SIZE],
-    pub(crate) as_string: String, // for regexes, pretty printing
+    pub(crate) as_string: String, // for regexes, pretty printing // TODO? default to alpha order (alphagram)
     pub(crate) len: usize
 }
 
@@ -354,5 +354,295 @@ mod tests {
     #[test]
     fn test_parsed_form_dangling_dash() {
         assert!(matches!(*"[a-]".parse::<ParsedForm>().unwrap_err(), ParseError::DanglingCharsetDash));
+    }
+
+    mod edge_cases {
+        use super::*;
+
+        #[test]
+        fn test_very_long_pattern() {
+            let long_pattern = "a".repeat(150);
+            let result = long_pattern.parse::<ParsedForm>();
+            assert!(result.is_ok());
+            let parsed = result.unwrap();
+            assert_eq!(parsed.parts.len(), 1);
+            if let FormPart::Lit(s) = &parsed.parts[0] {
+                assert_eq!(s.len(), 150);
+            } else {
+                panic!("Expected literal");
+            }
+        }
+
+        #[test]
+        fn test_very_long_variable_sequence() {
+            let pattern = "A".repeat(20) + &"B".repeat(20) + &"C".repeat(20);
+            let result = pattern.parse::<ParsedForm>();
+            assert!(result.is_ok());
+            let parsed = result.unwrap();
+            assert_eq!(parsed.parts.len(), 60);
+        }
+
+        #[test]
+        fn test_charset_invalid_range() {
+            let result = "[z-a]".parse::<ParsedForm>();
+            assert!(result.is_err());
+            assert!(matches!(*result.unwrap_err(), ParseError::InvalidCharsetRange('z', 'a')));
+        }
+
+        #[test]
+        fn test_charset_empty() {
+            let result = "[]".parse::<ParsedForm>();
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_unclosed_charset() {
+            let result = "[abc".parse::<ParsedForm>();
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_anagram_with_uppercase() {
+            let result = "/ABC".parse::<ParsedForm>();
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_anagram_with_numbers() {
+            let result = "/abc123".parse::<ParsedForm>();
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_anagram_empty() {
+            let result = "/".parse::<ParsedForm>();
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_reverse_operator_without_variable() {
+            let result = "~".parse::<ParsedForm>();
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_reverse_operator_with_literal() {
+            let result = "~abc".parse::<ParsedForm>();
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_mixed_case_string() {
+            let result = "aBc".parse::<ParsedForm>();
+            assert!(result.is_ok());
+            let parsed = result.unwrap();
+            assert_eq!(parsed.parts.len(), 3);
+            assert_eq!(parsed.parts[0], FormPart::Lit("a".to_string()));
+            assert_eq!(parsed.parts[1], FormPart::Var('B'));
+            assert_eq!(parsed.parts[2], FormPart::Lit("c".to_string()));
+        }
+
+        #[test]
+        fn test_numbers_in_pattern() {
+            let result = "abc123".parse::<ParsedForm>();
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_special_chars_in_pattern() {
+            let result = "abc!def".parse::<ParsedForm>();
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_whitespace_in_pattern() {
+            let result = "abc def".parse::<ParsedForm>();
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_tab_in_pattern() {
+            let result = "abc\tdef".parse::<ParsedForm>();
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_newline_in_pattern() {
+            let result = "abc\ndef".parse::<ParsedForm>();
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_unicode_in_literal() {
+            let result = "café".parse::<ParsedForm>();
+            assert!(result.is_err());
+        }
+
+        #[test]
+        fn test_unicode_in_variable() {
+            let result = "Ä".parse::<ParsedForm>();
+            assert!(result.is_err());
+        }
+
+        // TODO! this seems wrong `is_not("]")` code should probably be replaced
+        #[test]
+        fn test_charset_with_unicode() {
+            let result = "[aé]".parse::<ParsedForm>();
+            assert!(result.is_ok());
+        }
+
+        #[test]
+        fn test_deeply_nested_charsets() {
+            let result = "[a-c][d-f][g-i][j-l]".parse::<ParsedForm>();
+            assert!(result.is_ok());
+            let parsed = result.unwrap();
+            assert_eq!(parsed.parts.len(), 4);
+        }
+
+        #[test]
+        fn test_all_wildcard_types() {
+            let result = ".*@#".parse::<ParsedForm>();
+            assert!(result.is_ok());
+            let parsed = result.unwrap();
+            assert_eq!(parsed.parts, vec![
+                FormPart::Dot,
+                FormPart::Star,
+                FormPart::Vowel,
+                FormPart::Consonant
+            ]);
+        }
+
+        #[test]
+        fn test_complex_mixed_pattern() {
+            let result = "A~Babc[d-f].*@#/ghi".parse::<ParsedForm>();
+            assert!(result.is_ok());
+            let parsed = result.unwrap();
+            assert_eq!(parsed.parts.len(), 9);
+        }
+
+        #[test]
+        fn test_charset_single_char() {
+            let result = "[a]".parse::<ParsedForm>();
+            assert!(result.is_ok());
+            let parsed = result.unwrap();
+            if let FormPart::Charset(chars) = &parsed.parts[0] {
+                assert_eq!(chars.len(), 1);
+                assert!(chars.contains(&'a'));
+            }
+        }
+
+        #[test]
+        fn test_charset_multiple_ranges() {
+            let result = "[a-ce-g]".parse::<ParsedForm>();
+            assert!(result.is_ok());
+            let parsed = result.unwrap();
+            if let FormPart::Charset(chars) = &parsed.parts[0] {
+                assert_eq!(chars.len(), 6);
+                assert!(chars.contains(&'a'));
+                assert!(chars.contains(&'b'));
+                assert!(chars.contains(&'c'));
+                assert!(chars.contains(&'e'));
+                assert!(chars.contains(&'f'));
+                assert!(chars.contains(&'g'));
+                assert!(!chars.contains(&'d'));
+            }
+        }
+
+        #[test]
+        fn test_anagram_same_letters_repeated() {
+            let result = "/aabbcc".parse::<ParsedForm>();
+            assert!(result.is_ok());
+            let parsed = result.unwrap();
+            if let FormPart::Anagram(ag) = &parsed.parts[0] {
+                assert_eq!(ag.len, 6);
+                assert_eq!(ag.as_string, "aabbcc");
+            }
+        }
+
+        #[test]
+        fn test_materialize_deterministic_simple() {
+            let parsed = "A".parse::<ParsedForm>().unwrap();
+            let mut env = HashMap::new();
+            env.insert('A', Rc::from("test"));
+            let result = parsed.materialize_deterministic_with_env(&env);
+            assert_eq!(result, Some("test".to_string()));
+        }
+
+        #[test]
+        fn test_materialize_deterministic_with_literal() {
+            let parsed = "Atest".parse::<ParsedForm>().unwrap();
+            let mut env = HashMap::new();
+            env.insert('A', Rc::from("pre"));
+            let result = parsed.materialize_deterministic_with_env(&env);
+            assert_eq!(result, Some("pretest".to_string()));
+        }
+
+        #[test]
+        fn test_materialize_deterministic_with_reverse() {
+            let parsed = "A~A".parse::<ParsedForm>().unwrap();
+            let mut env = HashMap::new();
+            env.insert('A', Rc::from("ab"));
+            let result = parsed.materialize_deterministic_with_env(&env);
+            assert_eq!(result, Some("abba".to_string()));
+        }
+
+        #[test]
+        fn test_materialize_nondeterministic_returns_none() {
+            let parsed = "A*B".parse::<ParsedForm>().unwrap();
+            let mut env = HashMap::new();
+            env.insert('A', Rc::from("test"));
+            env.insert('B', Rc::from("ing"));
+            let result = parsed.materialize_deterministic_with_env(&env);
+            assert_eq!(result, None);
+        }
+
+        #[test]
+        fn test_materialize_unbound_variable_returns_none() {
+            let parsed = "AB".parse::<ParsedForm>().unwrap();
+            let mut env = HashMap::new();
+            env.insert('A', Rc::from("test"));
+            let result = parsed.materialize_deterministic_with_env(&env);
+            // B is unbound
+            assert_eq!(result, None);
+        }
+
+        #[test]
+        fn test_is_anagram_positive() {
+            // "abc" is anagram of "bca"
+            let ag = FormPart::anagram_of("abc").unwrap();
+            if let FormPart::Anagram(agi) = ag {
+                let word: Vec<char> = "bca".chars().collect();
+                assert!(agi.is_anagram(&word).unwrap());
+            }
+        }
+
+        #[test]
+        fn test_is_anagram_different_length() {
+            let ag = FormPart::anagram_of("abc").unwrap();
+            if let FormPart::Anagram(agi) = ag {
+                let word: Vec<char> = "ab".chars().collect();
+                assert!(!agi.is_anagram(&word).unwrap());
+            }
+        }
+
+        #[test]
+        fn test_is_anagram_different_chars() {
+            let ag = FormPart::anagram_of("abc").unwrap();
+            if let FormPart::Anagram(agi) = ag {
+                let word: Vec<char> = "xyz".chars().collect();
+                assert!(!agi.is_anagram(&word).unwrap());
+            }
+        }
+
+        #[test]
+        fn test_is_deterministic() {
+            assert!(FormPart::Var('A').is_deterministic());
+            assert!(FormPart::RevVar('A').is_deterministic());
+            assert!(FormPart::Lit("abc".to_string()).is_deterministic());
+            assert!(!FormPart::Dot.is_deterministic());
+            assert!(!FormPart::Star.is_deterministic());
+            assert!(!FormPart::Vowel.is_deterministic());
+            assert!(!FormPart::Consonant.is_deterministic());
+        }
     }
 }
