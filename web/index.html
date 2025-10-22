@@ -5,16 +5,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Umiaq Solver</title>
-  <style>
-    body { font-family: sans-serif; margin: 2em; }
-    input {font-size: 1.25em;}
-    pre {font-size: 1.25em;}
-    #loading { font-style: italic; color: gray; }
-    #spinner { display: inline-block; width: 1em; height: 1em; border: 2px solid #ccc; border-top: 2px solid #333; border-radius: 50%; animation: spin 1s linear infinite; margin-right: 0.5em; }
-    @keyframes spin { 100% { transform: rotate(360deg); } }
-    #mainUI { display: none; }
-    details.examples { margin-top: 2em;}
-  </style>
   <!-- Word list processing -->
   <script src="./word-list.js" type="text/javascript"></script>
   <!-- Styles -->
@@ -52,6 +42,7 @@
 
     <button type="submit" id="word-list-button" value="Upload word list">(Optional) Upload word list</button>
 
+    <div id="results_loading"></div>
     <div id="results"></div>
     <div id="results-meta"></div>
 
@@ -110,6 +101,7 @@
     // Define elements
     const resultsEl = document.getElementById("results");
     const inputEl = document.getElementById("input");
+    const loadingEl = document.getElementById("results_loading");
 
     worker.postMessage({ type: 'init' });
     worker.onmessage = (e) => {
@@ -118,6 +110,7 @@
         document.getElementById("loading").style.display = "none";
         document.getElementById("mainUI").style.display = "block";
       } else if (e.data.type === 'ok') {
+        loadingEl.innerHTML = '';
         const rows = e.data.results['solutions'];
         const status = e.data.results['status'];
         resultsEl.textContent = rows.map(r => r.join(' • ').toUpperCase()).join('\n') || 'No matches found.';
@@ -144,7 +137,7 @@
 
     async function solve(e) {
       e.preventDefault();
-      resultsEl.textContent = 'Loading …';
+      loadingEl.innerHTML  = '<span id="spinner"></span> Loading …';
       document.getElementById("results-meta").textContent = '';
       // the "numResults" element
       const numResultsEl = document.getElementById('numResults');
@@ -163,8 +156,6 @@
   </script>
 
   <script>
-
-
     // Load the examples
     fetch("./examples.html")
       .then(response => response.text())
