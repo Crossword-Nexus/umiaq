@@ -69,6 +69,7 @@ use crate::parser::{match_equation_all, ParsedForm};
 use crate::patterns::{Pattern, EquationContext};
 use crate::errors::ParseError::ParseFailure;
 use instant::Instant;
+use log::{debug, info, warn};
 use std::collections::hash_map::{DefaultHasher, Entry};
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};

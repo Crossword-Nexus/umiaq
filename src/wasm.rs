@@ -2,6 +2,7 @@ use crate::bindings::Bindings;
 use crate::errors::ParseError;
 use crate::solver::solve_equation;
 use crate::word_list::WordList;
+use crate::log::init_logger;
 use wasm_bindgen::prelude::*;
 
 use serde_wasm_bindgen::to_value;
@@ -12,8 +13,14 @@ impl From<Box<ParseError>> for JsValue {
 }
 
 #[wasm_bindgen(start)]
-fn init_panic_hook() {
+fn init() {
+    // 1. Set up panic hook
     console_error_panic_hook::set_once();
+
+    // 2. Initialize logging — always debug-level in WASM
+    init_logger(true);
+
+    log::info!("WASM module initialized");
 }
 
 // Pull just the bound word ("*") out of a Bindings
