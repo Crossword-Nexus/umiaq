@@ -121,8 +121,7 @@
         const rows = e.data.results['solutions'];
         const status = e.data.results['status'];
         const readable_context = e.data.results['readable_equation_context'];
-        resultsEl.textContent = readable_context;
-        resultsEl.textContent += rows.map(r => r.join(' • ').toUpperCase()).join('\n') || 'No matches found.';
+        resultsEl.textContent = rows.map(r => r.join(' • ').toUpperCase()).join('\n') || 'No matches found.';
 
         if (searchStart !== null) {
           const elapsed = ((performance.now() - searchStart) / 1000).toFixed(2);
