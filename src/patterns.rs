@@ -672,7 +672,7 @@ impl fmt::Display for EquationContext {
         } else {
             writeln!(f, "\nVariable constraints:")?;
             for line in self.var_constraints.to_string().lines() {
-                writeln!(f, "  {}", line)?;
+                writeln!(f, "  {line}")?;
             }
         }
 
@@ -680,7 +680,7 @@ impl fmt::Display for EquationContext {
         writeln!(f, "\nJoint constraints:")?;
         let jc_str = self.joint_constraints.to_string();
         for line in jc_str.lines() {
-            writeln!(f, "  {}", line)?;
+            writeln!(f, "  {line}")?;
         }
 
         Ok(())
