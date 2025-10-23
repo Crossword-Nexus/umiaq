@@ -120,6 +120,7 @@
       } else if (e.data.type === 'ok') {
         const rows = e.data.results['solutions'];
         const status = e.data.results['status'];
+        const readable_context = e.data.results['readable_equation_context'];
         resultsEl.textContent = rows.map(r => r.join(' • ').toUpperCase()).join('\n') || 'No matches found.';
 
         if (searchStart !== null) {

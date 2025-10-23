@@ -7,6 +7,7 @@ use crate::umiaq_char::UmiaqChar;
 use fancy_regex::Regex;
 use std::cmp::Reverse;
 use std::collections::HashSet;
+use std::fmt;
 use std::str::FromStr;
 use std::sync::LazyLock;
 use crate::joint_constraints::{propagate_joint_to_var_bounds, JointConstraint, JointConstraints};
@@ -315,6 +316,12 @@ pub struct EquationContext {
 }
 
 impl EquationContext {
+
+    /// Return a readable version of the equation context
+    pub fn readable_context(&self) -> String {
+        self.to_string()
+    }
+
     fn build_order_maps(&mut self) {
         let n = self.patterns.len();
         self.ordered_to_original = self
@@ -647,6 +654,38 @@ impl FromStr for EquationContext {
     }
 }
 
+impl fmt::Display for EquationContext {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // --- Patterns ---
+        if self.patterns.is_empty() {
+            writeln!(f, "Patterns: (none)")?;
+        } else {
+            writeln!(f, "Patterns:")?;
+            for (i, p) in self.patterns.iter().enumerate() {
+                writeln!(f, "  {}. {}", i + 1, p.raw_string)?;
+            }
+        }
+
+        // --- Variable constraints ---
+        if self.var_constraints.to_string().is_empty() {
+            writeln!(f, "\nVariable constraints: (none)")?;
+        } else {
+            writeln!(f, "\nVariable constraints:")?;
+            for line in self.var_constraints.to_string().lines() {
+                writeln!(f, "  {line}")?;
+            }
+        }
+
+        // --- Joint constraints ---
+        writeln!(f, "\nJoint constraints:")?;
+        let jc_str = self.joint_constraints.to_string();
+        for line in jc_str.lines() {
+            writeln!(f, "  {line}")?;
+        }
+
+        Ok(())
+    }
+}
 
 /// Enable `for pattern in &equation_context { ... }`.
 ///

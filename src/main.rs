@@ -37,6 +37,13 @@ struct Cli {
 /// Delegates to [`try_main`], catching any errors and printing them
 /// in a user-friendly way before exiting with code 1.
 fn main() -> ExitCode {
+
+    // Set up logging
+    let debug_enabled = std::env::var("UMIAQ_DEBUG").is_ok();
+    umiaq::log::init_logger(debug_enabled);
+
+    log::info!("Starting Umiaq solver");
+
     if let Err(e) = try_main() {
         // Print the error message to stderr, with detailed formatting if it's a SolverError
         if let Some(solver_err) = e.downcast_ref::<solver::SolverError>() {

@@ -69,6 +69,7 @@ use crate::parser::{match_equation_all, ParsedForm};
 use crate::patterns::{Pattern, EquationContext};
 use crate::errors::ParseError::ParseFailure;
 use instant::Instant;
+use log::{debug, info, warn};
 use std::collections::hash_map::{DefaultHasher, Entry};
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -102,6 +103,8 @@ pub struct SolveResult {
     pub solutions: Vec<Vec<Bindings>>,
     /// Status indicating whether we finished or timed out.
     pub status: SolveStatus,
+    /// Readable equation context
+    pub readable_equation_context: String,
 }
 
 impl SolveResult {
@@ -759,6 +762,8 @@ pub fn solve_equation(
     //    This holds each pattern string, its parsed form, and its `lookup_keys` (shared vars).
     let equation_context = input.parse::<EquationContext>()?;
 
+    debug!("{equation_context}");
+
     // If there are no patterns, propagate a NoPatterns error.
     if equation_context.len() == 0 {
         return Err(SolverError::NoPatterns);
@@ -921,7 +926,7 @@ pub fn solve_equation(
         "All bindings in solutions must have a word set"
     );
 
-    Ok(SolveResult { solutions: reordered, status })
+    Ok(SolveResult { solutions: reordered, status, readable_equation_context: equation_context.readable_context() })
 }
 
 #[cfg(test)]
