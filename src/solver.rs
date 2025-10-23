@@ -762,7 +762,7 @@ pub fn solve_equation(
     //    This holds each pattern string, its parsed form, and its `lookup_keys` (shared vars).
     let equation_context = input.parse::<EquationContext>()?;
 
-    debug!("{}", equation_context);
+    debug!("{equation_context}");
 
     // If there are no patterns, propagate a NoPatterns error.
     if equation_context.len() == 0 {
