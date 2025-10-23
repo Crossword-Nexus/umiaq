@@ -32,6 +32,7 @@ fn binding_to_word(b: &Bindings) -> Option<String> {
 struct WasmSolveResult {
     solutions: Vec<Vec<String>>,
     status: String,
+    readable_equation_context: String,
 }
 
 /// JS entry: (input: string, word_list: string[], num_results_requested: number)
@@ -65,6 +66,7 @@ pub fn solve_equation_wasm(
             .map(|row| row.iter().filter_map(binding_to_word).collect())
             .collect(),
         status,
+        readable_equation_context: result.readable_equation_context,
     };
 
     serde_wasm_bindgen::to_value(&wasm_result)

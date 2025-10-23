@@ -103,6 +103,8 @@ pub struct SolveResult {
     pub solutions: Vec<Vec<Bindings>>,
     /// Status indicating whether we finished or timed out.
     pub status: SolveStatus,
+    /// Readable equation context
+    pub readable_equation_context: String,
 }
 
 impl SolveResult {
@@ -924,7 +926,7 @@ pub fn solve_equation(
         "All bindings in solutions must have a word set"
     );
 
-    Ok(SolveResult { solutions: reordered, status })
+    Ok(SolveResult { solutions: reordered, status, readable_equation_context: equation_context.readable_context() })
 }
 
 #[cfg(test)]
