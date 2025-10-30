@@ -26,6 +26,11 @@ thiserror = "2.0.15"
 fancy-regex = "0.16.1"
 instant = { version = "0.1.13", features = ["wasm-bindgen"] }
 once_cell = "1.21.3"
+log = "0.4.28"
+
+# native-only logging
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+env_logger = "0.11"
 
 # --- WASM-only deps (compiled only when target_arch = "wasm32") ---
 [target.'cfg(target_arch = "wasm32")'.dependencies]
@@ -33,3 +38,4 @@ wasm-bindgen = "0.2"
 serde = { version = "1.0.225", features = ["derive"] }
 serde-wasm-bindgen = "0.6"
 console_error_panic_hook = "0.1"
+console_log = "1.0"

@@ -4,6 +4,7 @@ use crate::constraints::{Bounds, VarConstraint, VarConstraints};
 use crate::errors::ParseError;
 use fancy_regex::Regex;
 use std::cmp::Ordering;
+use std::fmt;
 use std::str::FromStr;
 use std::sync::LazyLock;
 
@@ -155,6 +156,24 @@ impl JointConstraint {
     }
 }
 
+impl fmt::Display for JointConstraint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // convert RelMask back into a human-readable operator
+        let op_str = match self.rel {
+            r if r == RelMask::EQ => "=",
+            r if r == RelMask::NE => "!=",
+            r if r == RelMask::LE => "<=",
+            r if r == RelMask::GE => ">=",
+            r if r == RelMask::LT => "<",
+            r if r == RelMask::GT => ">",
+            _ => "?",
+        };
+        let vars: String = self.vars.iter().collect();
+        write!(f, "|{}| {} {}", vars, op_str, self.target)
+    }
+}
+
+
 /// Helper: find the current length of variable `var_char` across a slice of `Bindings`.
 /// Returns `None` if `var_char` is unbound in all Bindings in `parts`.
 #[inline]
@@ -276,6 +295,22 @@ impl JointConstraints {
     #[cfg(test)]
     pub(crate) fn of(as_vec: Vec<JointConstraint>) -> JointConstraints {
         JointConstraints { as_vec }
+    }
+}
+
+impl fmt::Display for JointConstraints {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.as_vec.is_empty() {
+            write!(f, "(none)")
+        } else {
+            for (i, jc) in self.as_vec.iter().enumerate() {
+                if i > 0 {
+                    writeln!(f)?;
+                }
+                write!(f, "{jc}")?;
+            }
+            Ok(())
+        }
     }
 }
 

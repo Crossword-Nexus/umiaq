@@ -88,4 +88,5 @@ pub mod complex_constraints;
 mod comparison_operator;
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
+pub mod log;
 
