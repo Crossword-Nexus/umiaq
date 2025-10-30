@@ -48,6 +48,21 @@ impl RelMask {
     }
 }
 
+impl fmt::Display for RelMask {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match *self {
+            RelMask::LT => "<",
+            RelMask::EQ => "=",
+            RelMask::GT => ">",
+            RelMask::LE => "<=",
+            RelMask::GE => ">=",
+            RelMask::NE => "!=",
+            _ => "?", // TODO handle some other way?
+        };
+        write!(f, "{s}")
+    }
+}
+
 impl FromStr for RelMask {
     type Err = ParseError;
 
@@ -158,18 +173,8 @@ impl JointConstraint {
 
 impl fmt::Display for JointConstraint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // convert RelMask back into a human-readable operator
-        let op_str = match self.rel {
-            r if r == RelMask::EQ => "=",
-            r if r == RelMask::NE => "!=",
-            r if r == RelMask::LE => "<=",
-            r if r == RelMask::GE => ">=",
-            r if r == RelMask::LT => "<",
-            r if r == RelMask::GT => ">",
-            _ => "?",
-        };
         let vars: String = self.vars.iter().collect();
-        write!(f, "|{}| {} {}", vars, op_str, self.target)
+        write!(f, "|{}| {} {}", vars, self.rel, self.target)
     }
 }
 
