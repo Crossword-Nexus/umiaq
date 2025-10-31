@@ -20,6 +20,8 @@
 //! - E014: `InvalidLowercaseChar` (Non-lowercase character)
 //! - E015: `InvalidAnagramChars` (Invalid characters in anagram)
 //! - E016: `NomError` (Low-level nom parser error)
+//! - E017: `PrefilterFailed` (Regex prefilter failed during matching)
+//! - E018: `AnagramCheckFailed` (Anagram validation failed during matching)
 //!
 //! # Examples
 //!
@@ -143,6 +145,13 @@ pub enum ParseError {
     // nom parser error (lowest level)
     #[error("nom parser error: {0:?}")]
     NomError(ErrorKind),
+
+    // Matching errors (E017+)
+    #[error("Prefilter regex match failed: {0}")]
+    PrefilterFailed(#[source] fancy_regex::Error),
+
+    #[error("Anagram validation failed: {0}")]
+    AnagramCheckFailed(#[source] Box<ParseError>),
 }
 
 impl From<ParseError> for io::Error {
@@ -196,6 +205,8 @@ impl ParseError {
             ParseError::InvalidLowercaseChar { .. } => "E014",
             ParseError::InvalidAnagramChars { .. } => "E015",
             ParseError::NomError(_) => "E016",
+            ParseError::PrefilterFailed(_) => "E017",
+            ParseError::AnagramCheckFailed(_) => "E018",
         }
     }
 
@@ -219,6 +230,8 @@ impl ParseError {
             ParseError::InvalidLowercaseChar { .. } => "Non-lowercase character in pattern",
             ParseError::InvalidAnagramChars { .. } => "Invalid characters in anagram",
             ParseError::NomError(_) => "Low-level parser error",
+            ParseError::PrefilterFailed(_) => "Regex prefilter failed during matching",
+            ParseError::AnagramCheckFailed(_) => "Anagram validation failed during matching",
         }
     }
 
@@ -242,6 +255,8 @@ impl ParseError {
             ParseError::InvalidLowercaseChar { .. } => "Only lowercase letters a-z are allowed in this context (typically in literal strings or anagrams).",
             ParseError::InvalidAnagramChars { .. } => "Anagram constraints must contain only lowercase letters a-z.",
             ParseError::NomError(_) => "An error occurred in the low-level nom parser. This typically indicates malformed input at the character level.",
+            ParseError::PrefilterFailed(_) => "The regex prefilter used for fast matching failed to execute. This may indicate an internal regex engine error or resource exhaustion.",
+            ParseError::AnagramCheckFailed(_) => "An error occurred while validating an anagram constraint during pattern matching. This typically wraps a lower-level parse error.",
         }
     }
 
@@ -258,6 +273,8 @@ impl ParseError {
             ParseError::InvalidVariableName { .. } => Some("Variable names must be single uppercase letters A-Z"),
             ParseError::InvalidLowercaseChar { .. } => Some("Only lowercase letters a-z are allowed"),
             ParseError::InvalidAnagramChars { .. } => Some("Anagrams must contain only lowercase letters a-z"),
+            ParseError::PrefilterFailed(_) => Some("This is an internal error. The prefilter regex should have been validated during pattern parsing."),
+            ParseError::AnagramCheckFailed(_) => Some("Ensure anagram patterns contain only lowercase letters a-z"),
             _ => None,
         }
     }
