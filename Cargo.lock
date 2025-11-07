@@ -435,6 +435,7 @@ dependencies = [
  "env_logger",
  "fancy-regex",
  "instant",
+ "js-sys",
  "log",
  "nom",
  "once_cell",
@@ -442,6 +443,7 @@ dependencies = [
  "serde-wasm-bindgen",
  "thiserror",
  "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
