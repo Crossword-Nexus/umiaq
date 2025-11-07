@@ -497,7 +497,7 @@ fn scan_batch(
                 &equation_context.parsed_forms[i],
                 &equation_context.var_constraints,
                 &equation_context.joint_constraints,
-            );
+            )?;
 
             for binding in matches {
                 timed_stop!(budget, i_word);

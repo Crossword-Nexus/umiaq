@@ -57,7 +57,7 @@ fn is_valid_binding(
         parsed,
         &VarConstraints::default(),
         &JointConstraints::default(),
-    ) {
+    )? {
         return Ok(false);
     }
 
@@ -72,29 +72,35 @@ fn is_valid_binding(
 }
 
 /// Return `true` if at least one binding satisfies the equation.
-#[must_use]
+///
+/// # Errors
+/// Returns `ParseError::PrefilterFailed` if the regex prefilter fails to execute.
+/// Returns `ParseError::AnagramCheckFailed` if anagram validation encounters an error.
 pub fn match_equation_exists(
     word: &str,
     parts: &ParsedForm,
     constraints: &VarConstraints,
     joint_constraints: &JointConstraints,
-) -> bool {
+) -> Result<bool, Box<ParseError>> {
     let mut results: Vec<Bindings> = Vec::with_capacity(1); // at most 1 result when all_matches=false
-    match_equation_internal(word, parts, false, &mut results, constraints, joint_constraints);
-    !results.is_empty()
+    match_equation_internal(word, parts, false, &mut results, constraints, joint_constraints)?;
+    Ok(!results.is_empty())
 }
 
 /// Return all bindings that satisfy the equation.
-#[must_use]
+///
+/// # Errors
+/// Returns `ParseError::PrefilterFailed` if the regex prefilter fails to execute.
+/// Returns `ParseError::AnagramCheckFailed` if anagram validation encounters an error.
 pub fn match_equation_all(
     word: &str,
     parts: &ParsedForm,
     constraints: &VarConstraints,
     joint_constraints: &JointConstraints,
-) -> Vec<Bindings> {
+) -> Result<Vec<Bindings>, Box<ParseError>> {
     let mut results: Vec<Bindings> = Vec::new();
-    match_equation_internal(word, parts, true, &mut results, constraints, joint_constraints);
-    results
+    match_equation_internal(word, parts, true, &mut results, constraints, joint_constraints)?;
+    Ok(results)
 }
 
 /// Core entry point for the backtracking search.
@@ -116,6 +122,10 @@ pub fn match_equation_all(
 /// - `results`: accumulator for successful variable bindings.
 /// - `constraints`: variable-level constraints to enforce during binding.
 /// - `joint_constraints`: constraints that involve multiple variables together.
+///
+/// # Errors
+/// Returns `ParseError::PrefilterFailed` if the regex prefilter fails to execute.
+/// Returns `ParseError::AnagramCheckFailed` if anagram validation encounters an error.
 fn match_equation_internal(
     word: &str,
     parsed_form: &ParsedForm,
@@ -123,12 +133,20 @@ fn match_equation_internal(
     results: &mut Vec<Bindings>,
     constraints: &VarConstraints,
     joint_constraints: &JointConstraints,
-) {
+) -> Result<(), Box<ParseError>> {
     // === PREFILTER STEP ===
     // Use the regex prefilter on the parsed form to quickly discard words
     // that cannot possibly match. This helps avoid expensive recursive searching.
-    if !parsed_form.prefilter.is_match(word).unwrap_or(false) {
-        return;
+    // Instead of silently treating errors as "no match", propagate them.
+    match parsed_form.prefilter.is_match(word) {
+        Ok(false) => return Ok(()), // No match, return early
+        Err(e) => {
+            // Log in debug builds and propagate error
+            #[cfg(debug_assertions)]
+            eprintln!("Prefilter regex error for word '{word}': {e}");
+            return Err(Box::new(ParseError::PrefilterFailed(e)));
+        }
+        Ok(true) => { /* Continue matching */ }
     }
 
     // === INITIALIZE SEARCH CONTEXT ===
@@ -145,7 +163,9 @@ fn match_equation_internal(
 
     // === RECURSIVE SEARCH ===
     // Convert the word to a Vec<char> for indexed access, and start recursion.
-    hp.recurse(&word.chars().collect::<Vec<_>>(), &parsed_form.parts);
+    hp.recurse(&word.chars().collect::<Vec<_>>(), &parsed_form.parts)?;
+
+    Ok(())
 }
 
 
@@ -188,7 +208,7 @@ impl HelperParams<'_> {
         chars: &[char],
         rest: &[FormPart],
         first: &FormPart,
-    ) -> bool {
+    ) -> Result<bool, Box<ParseError>> {
         // Compute min and max candidate lengths from constraints and availability.
         let min_len = self
             .constraints
@@ -204,58 +224,49 @@ impl HelperParams<'_> {
 
         if min_len > avail {
             // Not enough characters left to satisfy the minimum length.
-            false
-        } else {
-            // Cap the maximum so we never slice past the available characters.
-            let capped_max = std::cmp::min(max_len_cfg, avail);
-
-            (min_len..=capped_max).any(|l| {
-                // Slice off a candidate binding of length `l`.
-                let candidate_chars = &chars[..l];
-
-                // Reverse if this is a RevVar; otherwise leave as-is.
-                let var_val_string: String = if matches!(first, FormPart::RevVar(_)) {
-                    candidate_chars.iter().rev().collect()
-                } else {
-                    candidate_chars.iter().collect()
-                };
-
-                // Intern the string to avoid duplicate allocations
-                let var_val = interner::intern(var_val_string);
-
-                // Apply any variable-specific constraint.
-                // If there's a parse error in the constraint form, treat the binding as invalid
-                // (better to reject than to accept malformed constraints) // TODO  is this right?
-                let valid = self
-                    .constraints
-                    .get(var_name)
-                    .is_none_or(|c| {
-                        is_valid_binding(var_val.as_ref(), c, self.bindings).unwrap_or_else(|e| {
-                            // This indicates a malformed constraint that should have been caught earlier
-                            debug_assert!(false, "Failed to parse constraint form: {e}");
-                            false
-                        })
-                    });
-
-                if !valid {
-                    return false;
-                }
-
-                // Tentatively record the binding (using interned Rc).
-                self.bindings.set_rc(var_name, var_val);
-
-                // Recurse on the remaining characters.
-                // If `all_matches` is false, stop once we’ve found one match.
-                let retval = self.recurse(&chars[l..], rest) && !self.all_matches;
-
-                if !retval {
-                    // Backtrack (remove the binding) only if we’re continuing the search.
-                    self.bindings.remove(var_name);
-                }
-
-                retval
-            })
+            return Ok(false);
         }
+
+        // Cap the maximum so we never slice past the available characters.
+        let capped_max = std::cmp::min(max_len_cfg, avail);
+
+        for l in min_len..=capped_max {
+            // Slice off a candidate binding of length `l`.
+            let candidate_chars = &chars[..l];
+
+            // Reverse if this is a RevVar; otherwise leave as-is.
+            let var_val_string: String = if matches!(first, FormPart::RevVar(_)) {
+                candidate_chars.iter().rev().collect()
+            } else {
+                candidate_chars.iter().collect()
+            };
+
+            // Intern the string to avoid duplicate allocations
+            let var_val = interner::intern(var_val_string);
+
+            // Apply any variable-specific constraint.
+            // Propagate errors instead of swallowing them
+            if let Some(c) = self.constraints.get(var_name) &&
+                !is_valid_binding(var_val.as_ref(), c, self.bindings)? {
+                continue; // This binding is invalid, try next length
+            }
+
+            // Tentatively record the binding (using interned Rc).
+            self.bindings.set_rc(var_name, var_val);
+
+            // Recurse on the remaining characters.
+            // If `all_matches` is false, stop once we've found one match.
+            let retval = self.recurse(&chars[l..], rest)? && !self.all_matches;
+
+            if retval {
+                return Ok(true); // Found a match, stop searching
+            }
+
+            // Backtrack (remove the binding) and continue to next length
+            self.bindings.remove(var_name);
+        }
+
+        Ok(false) // No valid binding found
     }
 
 
@@ -264,7 +275,10 @@ impl HelperParams<'_> {
     /// Attempts to match the slice of `chars` against the remaining `parts`.
     /// On success, it may push a completed `Bindings` into `self.results`.
     /// Stops early if `all_matches` is false and one valid match is found.
-    fn recurse(&mut self, chars: &[char], parts: &[FormPart]) -> bool {
+    ///
+    /// # Errors
+    /// Returns `ParseError::AnagramCheckFailed` if anagram validation encounters an error.
+    fn recurse(&mut self, chars: &[char], parts: &[FormPart]) -> Result<bool, Box<ParseError>> {
         // Base case: no parts left
         if parts.is_empty() {
             if chars.is_empty() {
@@ -273,10 +287,10 @@ impl HelperParams<'_> {
                     let mut full_result = self.bindings.clone();
                     full_result.set_word(self.word);
                     self.results.push(full_result);
-                    return !self.all_matches; // Stop early if only one match needed
+                    return Ok(!self.all_matches); // Stop early if only one match needed
                 }
             }
-            return false;
+            return Ok(false);
         }
 
         // safe: parts is non-empty (checked above), so indexing [0] and slicing [1..] are valid
@@ -286,11 +300,19 @@ impl HelperParams<'_> {
         match first {
             FormPart::Lit(s) => {
                 // Literal match (case-insensitive, stored lowercase)
-                get_rest_if_valid_prefix(s, chars).is_some_and(|rest_chars| self.recurse(rest_chars, rest))
+                match get_rest_if_valid_prefix(s, chars) {
+                    Some(rest_chars) => self.recurse(rest_chars, rest),
+                    None => Ok(false),
+                }
             }
             FormPart::Star => {
                 // Zero-or-more wildcard; try all possible splits
-                (0..=chars.len()).any(|i| self.recurse(&chars[i..], rest))
+                for i in 0..=chars.len() {
+                    if self.recurse(&chars[i..], rest)? {
+                        return Ok(true);
+                    }
+                }
+                Ok(false)
             }
 
             // Combined vowel, consonant, charset, dot cases
@@ -302,16 +324,29 @@ impl HelperParams<'_> {
             FormPart::Anagram(ag) => {
                 // Match if the next len chars are an anagram of target
                 let len = ag.len;
-                chars.len() >= len
-                    && ag.is_anagram(&chars[..len]).unwrap_or(false)
-                    && self.recurse(&chars[len..], rest)
+                if chars.len() >= len {
+                    // Propagate anagram check errors instead of swallowing them
+                    match ag.is_anagram(&chars[..len]) {
+                        Ok(true) => self.recurse(&chars[len..], rest),
+                        Ok(false) => Ok(false),
+                        Err(e) => {
+                            #[cfg(debug_assertions)]
+                            eprintln!("Anagram check error: {e}");
+                            Err(Box::new(ParseError::AnagramCheckFailed(e)))
+                        }
+                    }
+                } else {
+                    Ok(false)
+                }
             }
 
             FormPart::Var(var_name) | FormPart::RevVar(var_name) => {
                 if let Some(var_val) = self.bindings.get(*var_name) {
                     // Already bound: must match exactly
-                    get_rest_if_valid_prefix(&get_reversed_or_not(first, var_val), chars)
-                        .is_some_and(|rest_chars| self.recurse(rest_chars, rest))
+                    match get_rest_if_valid_prefix(&get_reversed_or_not(first, var_val), chars) {
+                        Some(rest_chars) => self.recurse(rest_chars, rest),
+                        None => Ok(false),
+                    }
                 } else {
                     // Not bound yet: try binding to all possible lengths
                     self.try_bind_var(*var_name, chars, rest, first)
@@ -326,15 +361,19 @@ impl HelperParams<'_> {
     /// - Otherwise return false (dead end).
     ///
     /// Covers Dot (any char), Vowel, Consonant, Charset, etc.
+    ///
+    /// # Errors
+    /// Propagates errors from recursive matching.
     fn take_if(
         &mut self,
         chars: &[char],
         rest: &[FormPart],
         pred: impl Fn(&char) -> bool,
-    ) -> bool {
-        chars
-            .split_first()
-            .is_some_and(|(c, rest_chars)| pred(c) && self.recurse(rest_chars, rest))
+    ) -> Result<bool, Box<ParseError>> {
+        match chars.split_first() {
+            Some((c, rest_chars)) if pred(c) => self.recurse(rest_chars, rest),
+            _ => Ok(false),
+        }
     }
 }
 
@@ -346,24 +385,24 @@ mod tests {
     #[test]
     fn test_palindrome_matching() {
         let pf = "A~A".parse::<ParsedForm>().unwrap();
-        assert!(match_equation_exists("noon", &pf, &VarConstraints::default(), &JointConstraints::default()));
-        assert!(!match_equation_exists("radar", &pf, &VarConstraints::default(), &JointConstraints::default()));
-        assert!(!match_equation_exists("test", &pf, &VarConstraints::default(), &JointConstraints::default()));
+        assert!(match_equation_exists("noon", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+        assert!(!match_equation_exists("radar", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+        assert!(!match_equation_exists("test", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
     }
 
     #[test]
     fn test_match_equation_exists() {
         let pf = "A~A[rstlne]/jon@#.*".parse::<ParsedForm>().unwrap();
-        assert!(match_equation_exists("aaronjudge", &pf, &VarConstraints::default(), &JointConstraints::default()));
-        assert!(!match_equation_exists("noon", &pf, &VarConstraints::default(), &JointConstraints::default()));
-        assert!(!match_equation_exists("toon", &pf, &VarConstraints::default(), &JointConstraints::default()));
+        assert!(match_equation_exists("aaronjudge", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+        assert!(!match_equation_exists("noon", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+        assert!(!match_equation_exists("toon", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
     }
 
     #[test]
     fn test_literal_matching() {
         let pf = "abc".parse::<ParsedForm>().unwrap();
-        assert!(match_equation_exists("abc", &pf, &VarConstraints::default(), &JointConstraints::default()));
-        assert!(!match_equation_exists("xyz", &pf, &VarConstraints::default(), &JointConstraints::default()));
+        assert!(match_equation_exists("abc", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+        assert!(!match_equation_exists("xyz", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
     }
 
     mod edge_cases {
@@ -373,79 +412,79 @@ mod tests {
         fn test_many_consecutive_wildcards() {
             // min len: 7 (1+5+1)
             let pf = "A.....B".parse::<ParsedForm>().unwrap();
-            assert!(match_equation_exists("testing", &pf, &VarConstraints::default(), &JointConstraints::default()));
-            assert!(!match_equation_exists("test", &pf, &VarConstraints::default(), &JointConstraints::default())); // only 4 chars, need 7+
+            assert!(match_equation_exists("testing", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(!match_equation_exists("test", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap()); // only 4 chars, need 7+
         }
 
         #[test]
         fn test_multiple_variable_wildcards() {
             let pf = "A*B*C*D".parse::<ParsedForm>().unwrap();
-            assert!(match_equation_exists("abcd", &pf, &VarConstraints::default(), &JointConstraints::default())); // min case: each var is 1 char
-            assert!(match_equation_exists("testing", &pf, &VarConstraints::default(), &JointConstraints::default()));
+            assert!(match_equation_exists("abcd", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap()); // min case: each var is 1 char
+            assert!(match_equation_exists("testing", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
         }
 
         #[test]
         fn test_pattern_longer_than_word() {
             // min len: 10
             let pf = "ABCDEFGHIJ".parse::<ParsedForm>().unwrap();
-            assert!(!match_equation_exists("cat", &pf, &VarConstraints::default(), &JointConstraints::default()));
+            assert!(!match_equation_exists("cat", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
         }
 
         #[test]
         fn test_all_wildcards_pattern() {
             let pf = "*****".parse::<ParsedForm>().unwrap();
-            assert!(match_equation_exists("test", &pf, &VarConstraints::default(), &JointConstraints::default()));
-            assert!(match_equation_exists("a", &pf, &VarConstraints::default(), &JointConstraints::default()));
-            assert!(match_equation_exists("", &pf, &VarConstraints::default(), &JointConstraints::default())); // all wildcards empty
+            assert!(match_equation_exists("test", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(match_equation_exists("a", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(match_equation_exists("", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap()); // all wildcards empty
         }
 
         #[test]
         fn test_alternating_vars_and_wildcards() {
             // min len: 5
             let pf = "A.B.C".parse::<ParsedForm>().unwrap();
-            assert!(match_equation_exists("abcde", &pf, &VarConstraints::default(), &JointConstraints::default()));
-            assert!(!match_equation_exists("abcd", &pf, &VarConstraints::default(), &JointConstraints::default())); // only 4 chars
+            assert!(match_equation_exists("abcde", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(!match_equation_exists("abcd", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap()); // only 4 chars
         }
 
         #[test]
         fn test_reverse_operator() {
             let pf = "~A".parse::<ParsedForm>().unwrap();
-            assert!(match_equation_exists("test", &pf, &VarConstraints::default(), &JointConstraints::default())); // A = "tset"
+            assert!(match_equation_exists("test", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap()); // A = "tset"
 
             let pf2 = "A~B".parse::<ParsedForm>().unwrap();
-            assert!(match_equation_exists("testing", &pf2, &VarConstraints::default(), &JointConstraints::default()));
+            assert!(match_equation_exists("testing", &pf2, &VarConstraints::default(), &JointConstraints::default()).unwrap());
         }
 
         #[test]
         fn test_palindrome_structure() {
             let pf = "A~A~B".parse::<ParsedForm>().unwrap();
-            assert!(match_equation_exists("abbac", &pf, &VarConstraints::default(), &JointConstraints::default())); // A="ab", ~A="ba", ~B="c" (so B="c")
-            assert!(!match_equation_exists("test", &pf, &VarConstraints::default(), &JointConstraints::default()));
+            assert!(match_equation_exists("abbac", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap()); // A="ab", ~A="ba", ~B="c" (so B="c")
+            assert!(!match_equation_exists("test", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
         }
 
         #[test]
         fn test_single_char_word() {
             let pf = "A".parse::<ParsedForm>().unwrap();
-            assert!(match_equation_exists("a", &pf, &VarConstraints::default(), &JointConstraints::default()));
+            assert!(match_equation_exists("a", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
 
             let pf2 = "A*".parse::<ParsedForm>().unwrap();
-            assert!(match_equation_exists("a", &pf2, &VarConstraints::default(), &JointConstraints::default())); // A="a", wildcard empty
+            assert!(match_equation_exists("a", &pf2, &VarConstraints::default(), &JointConstraints::default()).unwrap()); // A="a", wildcard empty
         }
 
         #[test]
         fn test_very_long_word() {
             let long_word = "a".repeat(1000);
             let pf = "A".parse::<ParsedForm>().unwrap();
-            assert!(match_equation_exists(&long_word, &pf, &VarConstraints::default(), &JointConstraints::default()));
+            assert!(match_equation_exists(&long_word, &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
 
             let pf2 = "A*B".parse::<ParsedForm>().unwrap();
-            assert!(match_equation_exists(&long_word, &pf2, &VarConstraints::default(), &JointConstraints::default()));
+            assert!(match_equation_exists(&long_word, &pf2, &VarConstraints::default(), &JointConstraints::default()).unwrap());
         }
 
         #[test]
         fn test_backtracking_intensive_pattern() {
             let pf = "A*B*C".parse::<ParsedForm>().unwrap();
-            let all_matches = match_equation_all("aaaa", &pf, &VarConstraints::default(), &JointConstraints::default());
+            let all_matches = match_equation_all("aaaa", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap();
             // TODO? count?
             assert!(!all_matches.is_empty());
         }
@@ -453,24 +492,24 @@ mod tests {
         #[test]
         fn test_repeated_variable_same_value() {
             let pf = "ABA".parse::<ParsedForm>().unwrap();
-            assert!(match_equation_exists("catc", &pf, &VarConstraints::default(), &JointConstraints::default())); // A="c", B="at"
-            assert!(!match_equation_exists("catd", &pf, &VarConstraints::default(), &JointConstraints::default()));
+            assert!(match_equation_exists("catc", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap()); // A="c", B="at"
+            assert!(!match_equation_exists("catd", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
         }
 
         #[test]
         fn test_minimum_length_patterns() {
             let pf = "ABCD".parse::<ParsedForm>().unwrap();
-            assert!(match_equation_exists("abcd", &pf, &VarConstraints::default(), &JointConstraints::default())); // exact minimum
-            assert!(!match_equation_exists("abc", &pf, &VarConstraints::default(), &JointConstraints::default())); // too short
+            assert!(match_equation_exists("abcd", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap()); // exact minimum
+            assert!(!match_equation_exists("abc", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap()); // too short
         }
 
         #[test]
         fn test_wildcard_at_boundaries() {
             let pf = "*A".parse::<ParsedForm>().unwrap();
-            assert!(match_equation_exists("test", &pf, &VarConstraints::default(), &JointConstraints::default()));
+            assert!(match_equation_exists("test", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
 
             let pf2 = "A*".parse::<ParsedForm>().unwrap();
-            assert!(match_equation_exists("test", &pf2, &VarConstraints::default(), &JointConstraints::default()));
+            assert!(match_equation_exists("test", &pf2, &VarConstraints::default(), &JointConstraints::default()).unwrap());
         }
     }
 }
