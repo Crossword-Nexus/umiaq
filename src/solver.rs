@@ -252,27 +252,20 @@ pub fn solution_to_string(solution: &[Bindings]) -> Result<String, Box<ParseErro
 }
 
 /// Build a stable key for a full solution (bindings in **pattern order**).
-/// Prefer the whole word if present (`WORD_SENTINEL`). Fall back to sorted `(var_char, var_val)` pairs.
+///
+/// Uses the whole word binding (`WORD_SENTINEL`) to compute the hash.
+///
+/// # Panics
+/// Panics if any binding in the solution lacks a word binding. The solver ensures
+/// all solutions have word bindings set, so this panic indicates a programming error.
 fn solution_key(solution: &[Bindings]) -> u64 {
     let mut hasher = DefaultHasher::new();
 
     for b in solution {
-        // Try whole-word first (fast + canonical)
         if let Some(w) = b.get_word() {
             w.hash(&mut hasher);
         } else {
-            // this should never happen
             panic!("solution_key: no '*' binding found in solution: {solution:?}");
-            /*
-            // Fall back: hash all (var_char, var_val) pairs sorted by var
-            let mut pairs: Vec<(char, String)> =
-                b.iter().map(|(var_char, var_val)| (*var_char, var_val.clone())).collect();
-            pairs.sort_unstable_by_key(|(var_char, _)| *var_char);
-            for (var_char, string) in pairs {
-                var_char.hash(&mut hasher);
-                string.hash(&mut hasher);
-            }
-            */
         }
         // Separator between patterns to avoid ambiguity like ["ab","c"] vs ["a","bc"]
         HASH_SPLIT.hash(&mut hasher);
