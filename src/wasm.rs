@@ -88,3 +88,61 @@ pub fn parse_word_list(text: &str, min_score: i32) -> Result<JsValue, JsValue> {
     to_value(&word_list.entries)
         .map_err(|e| JsValue::from_str(&format!("serialization failed: {e}")))
 }
+
+/// Generate a debug report for troubleshooting.
+///
+/// This function creates a formatted debug report that users can copy/paste
+/// when reporting issues. It includes the error message, input pattern,
+/// configuration details, and environment information.
+///
+/// # Arguments
+/// * `input_pattern` - The equation pattern that was being solved
+/// * `error_message` - The error message that was displayed
+/// * `word_list_size` - Number of words in the word list
+/// * `num_results_requested` - How many results were requested
+///
+/// # Returns
+/// A formatted string containing all debug information
+#[wasm_bindgen]
+pub fn get_debug_info(
+    input_pattern: &str,
+    error_message: &str,
+    word_list_size: usize,
+    num_results_requested: usize,
+) -> String {
+    use std::fmt::Write;
+    let mut report = String::new();
+
+    writeln!(&mut report, "=== UMIAQ DEBUG REPORT ===").unwrap();
+    writeln!(&mut report, "Version: {}", env!("CARGO_PKG_VERSION")).unwrap();
+    writeln!(&mut report, "Generated: {}", js_sys::Date::new_0().to_iso_string().as_string().unwrap_or_else(|| "unknown".to_string())).unwrap();
+    writeln!(&mut report).unwrap();
+
+    writeln!(&mut report, "## Error").unwrap();
+    writeln!(&mut report, "{}", error_message).unwrap();
+    writeln!(&mut report).unwrap();
+
+    writeln!(&mut report, "## Input").unwrap();
+    writeln!(&mut report, "Pattern: {}", input_pattern).unwrap();
+    writeln!(&mut report, "Word List Size: {}", word_list_size).unwrap();
+    writeln!(&mut report, "Results Requested: {}", num_results_requested).unwrap();
+    writeln!(&mut report).unwrap();
+
+    writeln!(&mut report, "## Environment").unwrap();
+    if let Some(window) = web_sys::window() {
+        if let Ok(user_agent) = window.navigator().user_agent() {
+            writeln!(&mut report, "User Agent: {}", user_agent).unwrap();
+        }
+        writeln!(&mut report, "Location: {}", window.location().href().unwrap_or_else(|_| "unknown".to_string())).unwrap();
+    }
+    writeln!(&mut report).unwrap();
+
+    writeln!(&mut report, "## Instructions").unwrap();
+    writeln!(&mut report, "Please copy this entire report and paste it when reporting the issue.").unwrap();
+    writeln!(&mut report, "GitHub Issues: https://github.com/Crossword-Nexus/umiaq-rust/issues").unwrap();
+    writeln!(&mut report).unwrap();
+
+    writeln!(&mut report, "=== END DEBUG REPORT ===").unwrap();
+
+    report
+}

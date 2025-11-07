@@ -46,6 +46,18 @@
     <div id="results"></div>
     <div id="results-meta"></div>
 
+    <!-- Debug panel (shown on errors) -->
+    <div id="debug-panel" style="display:none; margin-top:20px; padding:15px; background:#fff3cd; border:2px solid #ffc107; border-radius:5px;">
+      <h3 style="margin-top:0; color:#856404;">⚠️ Error Debug Information</h3>
+      <p style="font-size:14px; color:#856404;">Something went wrong. Please copy this debug information when reporting the issue.</p>
+      <pre id="debug-output" style="white-space: pre-wrap; font-size:12px; background:#fff; color:#000; padding:10px; border:1px solid #ddd; border-radius:3px; overflow-x:auto;"></pre>
+      <div style="margin-top:10px;">
+        <button type="button" id="copy-debug-btn" class="button-primary" style="margin-right:10px;">📋 Copy Debug Info</button>
+        <button type="button" id="download-debug-btn" class="button">💾 Download Report</button>
+        <button type="button" id="hide-debug-btn" class="button" style="float:right;">Hide</button>
+      </div>
+    </div>
+
     <div id="examples-container"></div>
 
     <!-- Readme -->
@@ -72,7 +84,7 @@
 
   <script type="module">
     // load and process the default word list
-    import init, { parse_word_list } from './pkg/umiaq.js';
+    import init, { parse_word_list, get_debug_info } from './pkg/umiaq.js';
 
     async function getLocalWordList() {
       const url = './data/spreadthewordlist.dict';
@@ -111,6 +123,9 @@
         document.getElementById("mainUI").style.display = "block";
       } else if (e.data.type === 'ok') {
         loadingEl.innerHTML = '';
+        // Hide debug panel on successful search
+        document.getElementById('debug-panel').style.display = 'none';
+
         const rows = e.data.results['solutions'];
         const status = e.data.results['status'];
         const readable_context = e.data.results['readable_equation_context'];
@@ -129,7 +144,18 @@
         }
 
       } else if (e.data.type === 'err') {
+        loadingEl.innerHTML = '';
         resultsEl.textContent = 'Error: ' + e.data.error;
+
+        // Generate and show debug information
+        const debugInfo = get_debug_info(
+          inputEl.value.trim(),
+          e.data.error,
+          window.word_list?.length || 0,
+          parseInt(document.getElementById('numResults').value)
+        );
+        document.getElementById('debug-output').textContent = debugInfo;
+        document.getElementById('debug-panel').style.display = 'block';
       }
     };
 
@@ -153,6 +179,41 @@
 
     // Add listener to "submit" button
     document.querySelector("form").addEventListener("submit", solve);
+
+    // Debug panel button handlers
+    document.getElementById('copy-debug-btn').addEventListener('click', () => {
+      const debugText = document.getElementById('debug-output').textContent;
+      navigator.clipboard.writeText(debugText).then(() => {
+        const btn = document.getElementById('copy-debug-btn');
+        const originalText = btn.textContent;
+        btn.textContent = '✓ Copied!';
+        btn.style.backgroundColor = '#28a745';
+        setTimeout(() => {
+          btn.textContent = originalText;
+          btn.style.backgroundColor = '';
+        }, 2000);
+      }).catch(err => {
+        console.error('Failed to copy:', err);
+        alert('Failed to copy to clipboard. Please select and copy manually.');
+      });
+    });
+
+    document.getElementById('download-debug-btn').addEventListener('click', () => {
+      const debugText = document.getElementById('debug-output').textContent;
+      const blob = new Blob([debugText], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `umiaq-debug-${Date.now()}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('hide-debug-btn').addEventListener('click', () => {
+      document.getElementById('debug-panel').style.display = 'none';
+    });
 
   </script>
 

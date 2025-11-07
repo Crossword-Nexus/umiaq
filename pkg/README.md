@@ -5,6 +5,8 @@ Umiaq is designed for crossword constructors, wordplay enthusiasts, and puzzle m
 
 👉 [Try the web interface](https://crossword-nexus.github.io/umiaq/)
 
+📝 [Technical documentation](https://crossword-nexus.github.io/umiaq/docs/umiaq/)
+
 ---
 
 ## Features
@@ -21,6 +23,8 @@ Umiaq is designed for crossword constructors, wordplay enthusiasts, and puzzle m
   - `@`: any vowel (`aeiouy`)
   - `#`: any consonant (`bcdfghjklmnpqrstvwxz`)
   - `[abc]`: any of the listed letters (here: `a`, `b`, or `c`)
+  - `[a-e]`: any letter in the range from `a` to `e` (`a`, `b`, `c`, `d`, `e`)
+    - Ranges and lists can be combined: `[abcw-z]`
   - `/abc`: any anagram of the listed letters (here: `a`, `b`, or `c`)
 
 - **Constraints**  
@@ -38,12 +42,19 @@ Umiaq is designed for crossword constructors, wordplay enthusiasts, and puzzle m
 ## Examples
 
 - `l.x` → words like **lax**, **lox**
+- `gr[a-e]y` → matches **gray**, **grey**
 - `A~A` → even-length palindromes like **noon**, **redder**
 - `A.~A` → odd-length palindromes like **non**, **radar**
 - `AB;|A|=2;|B|=2;!=AB` → 4-letters words made up of two concatenated distinct 2-letter substrings
 - `A@#A` → words with some string, then a vowel, then a consonant, then the initial string again
 - `/triangle` → any anagram of "triangle"
 - `A;AB;|AB|=7;A=(3-4:g*)` → 7-letter words starting with a 3–to-4-letter word that begins with **g**
+
+## Development
+
+- Build the web version: `wasm-pack build --release --target web --out-dir web/pkg`
+- Run tests: `cargo test`
+- Run benchmarks: `cargo run --bin bench_local --release -- -r 1 -p 0`
 
 ---
 
