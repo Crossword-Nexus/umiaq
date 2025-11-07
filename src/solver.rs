@@ -735,6 +735,17 @@ pub fn solve_equation(
     word_list: &[&str],
     num_results_requested: usize,
 ) -> Result<SolveResult, SolverError> {
+    solve_equation_with_budget(input, word_list, num_results_requested, Duration::from_secs(TIME_BUDGET))
+}
+
+/// Internal solver with custom time budget (used for testing).
+#[cfg_attr(not(test), allow(dead_code))]
+fn solve_equation_with_budget(
+    input: &str,
+    word_list: &[&str],
+    num_results_requested: usize,
+    time_budget: Duration,
+) -> Result<SolveResult, SolverError> {
     // Precondition: validate input at API boundary
     if input.is_empty() {
         return Err(SolverError::ParseFailure(Box::new(ParseError::EmptyForm)));
@@ -778,7 +789,7 @@ pub fn solve_equation(
     let joint_constraints = &equation_context.joint_constraints;
 
     // 5. Iterate through every candidate word.
-    let budget = TimeBudget::new(Duration::from_secs(TIME_BUDGET));
+    let budget = TimeBudget::new(time_budget);
 
     let mut results: Vec<Vec<Bindings>> = Vec::with_capacity(num_results_requested.min(1000));
     let mut selected: Vec<Bindings> = Vec::with_capacity(equation_context.len());
@@ -1817,6 +1828,118 @@ mod tests {
             let solve_result = result.unwrap();
             assert_eq!(solve_result.solutions.len(), 0);
             assert_eq!(solve_result.status, SolveStatus::WordListExhausted);
+        }
+    }
+
+    mod timeout_tests {
+        use super::*;
+
+        #[test]
+        fn test_timeout_during_scan_phase() {
+            // Create a large word list and complex pattern with very short timeout
+            let mut words = vec![];
+            for i in 0..5000 {
+                words.push(format!("word{:04}", i));
+            }
+            let word_refs: Vec<&str> = words.iter().map(|s| s.as_str()).collect();
+
+            // Complex pattern with multiple wildcards (expensive to match)
+            let result = solve_equation_with_budget(
+                "A*B*C*D*E*",
+                &word_refs,
+                100,
+                Duration::from_nanos(1) // Extremely short timeout
+            );
+
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+
+            // Should time out
+            assert!(matches!(solve_result.status, SolveStatus::TimedOut { .. }));
+
+            // Verify elapsed time is captured
+            if let SolveStatus::TimedOut { elapsed } = solve_result.status {
+                assert!(elapsed.as_nanos() > 0);
+            }
+        }
+
+        #[test]
+        fn test_timeout_behavior_with_results() {
+            // Test that timeout can occur with or without partial results
+            let mut words = vec!["a", "ab", "abc", "abcd"];
+            // Add more words
+            for i in 0..1000 {
+                words.push(Box::leak(format!("word{:04}", i).into_boxed_str()));
+            }
+
+            // Pattern that matches early words
+            let result = solve_equation_with_budget(
+                "A*",
+                &words,
+                1000, // Request many results
+                Duration::from_nanos(1) // Instant timeout
+            );
+
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+
+            // Should time out
+            assert!(matches!(solve_result.status, SolveStatus::TimedOut { .. }));
+        }
+
+        #[test]
+        fn test_timeout_status_enum_variants() {
+            // Test that timeout status is distinct from other statuses
+            let timeout = SolveStatus::TimedOut { elapsed: Duration::from_secs(5) };
+            let found_enough = SolveStatus::FoundEnough;
+            let exhausted = SolveStatus::WordListExhausted;
+
+            assert!(matches!(timeout, SolveStatus::TimedOut { .. }));
+            assert!(!matches!(timeout, SolveStatus::FoundEnough));
+            assert!(!matches!(timeout, SolveStatus::WordListExhausted));
+
+            assert_ne!(timeout, found_enough);
+            assert_ne!(timeout, exhausted);
+            assert_ne!(found_enough, exhausted);
+        }
+
+        #[test]
+        fn test_timeout_with_multiple_patterns() {
+            // Multiple patterns force recursive join logic
+            let words = vec!["cat", "dog", "catalog", "dogmatic", "catdog"];
+
+            let result = solve_equation_with_budget(
+                "AB;BA", // Requires joining two patterns
+                &words,
+                100,
+                Duration::from_nanos(1) // Instant timeout
+            );
+
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+
+            // Should time out in scan or join phase
+            assert!(matches!(solve_result.status, SolveStatus::TimedOut { .. }));
+        }
+
+        #[test]
+        fn test_no_timeout_with_sufficient_budget() {
+            // Verify that normal operation doesn't time out
+            let words = vec!["cat", "dog", "bird"];
+
+            let result = solve_equation_with_budget(
+                "A",
+                &words,
+                10,
+                Duration::from_secs(10) // Plenty of time
+            );
+
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+
+            // Should _not_ time out
+            assert!(!matches!(solve_result.status, SolveStatus::TimedOut { .. }));
+            assert!(matches!(solve_result.status, SolveStatus::FoundEnough | SolveStatus::WordListExhausted));
         }
     }
 }
