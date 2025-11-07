@@ -5,6 +5,7 @@ use crate::errors::ParseError;
 use crate::parser::{FormPart, ParsedForm};
 use crate::umiaq_char::UmiaqChar;
 use fancy_regex::Regex;
+use log::debug;
 use std::cmp::Reverse;
 use std::collections::HashSet;
 use std::fmt;
@@ -637,6 +638,10 @@ impl FromStr for EquationContext {
             &equation_context.joint_constraints,
         )?;
 
+        debug!("Propagated joint constraints to variable bounds: {} vars, {} joint constraints",
+            equation_context.var_constraints.len(),
+            equation_context.joint_constraints.len());
+
         // Step 9: Build cheap, per-form length hints (index-aligned with parsed_forms)
         // The hints are length bounds for each form
         equation_context.scan_hints = equation_context
@@ -650,6 +655,9 @@ impl FromStr for EquationContext {
             .collect();
 
         // Return the completed context.
+        debug!("EquationContext parsing complete: {} patterns, {} variables",
+            equation_context.len(),
+            equation_context.var_constraints.len());
         Ok(equation_context)
     }
 }

@@ -755,6 +755,7 @@ pub fn solve_equation(
     //    This holds each pattern string, its parsed form, and its `lookup_keys` (shared vars).
     let equation_context = input.parse::<EquationContext>()?;
 
+    info!("Parsed equation with {} patterns: {}", equation_context.len(), input);
     debug!("{equation_context}");
 
     // If there are no patterns, propagate a NoPatterns error.
@@ -809,8 +810,8 @@ pub fn solve_equation(
         {
             iteration += 1;
             if iteration % 10 == 0 {
-                eprintln!(
-                    "[solver] iteration {}: scan_pos={}/{}, batch_size={}, results={}/{}, elapsed={:.2}s",
+                debug!(
+                    "Solver iteration {}: scan_pos={}/{}, batch_size={}, results={}/{}, elapsed={:.2}s",
                     iteration, scan_pos, word_list.len(), batch_size,
                     results.len(), num_results_requested,
                     budget.elapsed().as_secs_f64()
@@ -885,10 +886,13 @@ pub fn solve_equation(
 
     // Determine status before consuming results
     let status = if budget.expired() {
+        warn!("Solver timed out after {:.2}s with {} results", budget.elapsed().as_secs_f64(), results.len());
         SolveStatus::TimedOut { elapsed: budget.elapsed() }
     } else if results.len() >= num_results_requested {
+        info!("Found {} results (requested: {})", results.len(), num_results_requested);
         SolveStatus::FoundEnough
     } else {
+        info!("Exhausted word list with {} results", results.len());
         SolveStatus::WordListExhausted
     };
 

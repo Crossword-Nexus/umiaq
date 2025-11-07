@@ -3,6 +3,7 @@ use crate::comparison_operator::ComparisonOperator;
 use crate::constraints::{Bounds, VarConstraint, VarConstraints};
 use crate::errors::ParseError;
 use fancy_regex::Regex;
+use log::debug;
 use std::cmp::Ordering;
 use std::fmt;
 use std::str::FromStr;
@@ -273,6 +274,11 @@ impl JointConstraints {
         self.as_vec.is_empty()
     }
 
+    /// Number of joint constraints.
+    pub(crate) fn len(&self) -> usize {
+        self.as_vec.len()
+    }
+
     /// Return true iff **every** joint constraint is satisfied w.r.t. `bindings`.
     ///
     /// Mid-search semantics: a constraint with unbound vars returns `true`
@@ -391,6 +397,7 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
 
         if sum_min == jc.target {
             // Case 1: exact by mins
+            debug!("Joint constraint propagation: sum of mins equals target {} for vars {:?}, setting exact bounds", jc.target, jc.vars);
             for (var_char, min_len) in mins {
                 vcs.ensure_entry_mut(var_char).set_exact_len(min_len);
             }
