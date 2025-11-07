@@ -280,4 +280,153 @@ mod tests {
         assert!(pf.prefilter.is_match("xya").unwrap());
         assert!(!pf.prefilter.is_match("abba").unwrap());
     }
+
+    #[test]
+    fn test_form_to_regex_str_literal() {
+        let pf = "hello".parse::<ParsedForm>().unwrap();
+        let regex_str = form_to_regex_str(&pf.parts).unwrap();
+        assert_eq!(regex_str, "hello");
+    }
+
+    #[test]
+    fn test_form_to_regex_str_single_variable() {
+        let pf = "A".parse::<ParsedForm>().unwrap();
+        let regex_str = form_to_regex_str(&pf.parts).unwrap();
+        assert_eq!(regex_str, ".+");
+    }
+
+    #[test]
+    fn test_form_to_regex_str_repeated_variable() {
+        let pf = "ABA".parse::<ParsedForm>().unwrap();
+        let regex_str = form_to_regex_str(&pf.parts).unwrap();
+        // A appears twice (gets capture group), B is single-use variable
+        assert_eq!(regex_str, "(.+).+\\1");
+    }
+
+    #[test]
+    fn test_form_to_regex_str_dot_wildcard() {
+        let pf = ".".parse::<ParsedForm>().unwrap();
+        let regex_str = form_to_regex_str(&pf.parts).unwrap();
+        assert_eq!(regex_str, ".");
+    }
+
+    #[test]
+    fn test_form_to_regex_str_star_wildcard() {
+        let pf = "*".parse::<ParsedForm>().unwrap();
+        let regex_str = form_to_regex_str(&pf.parts).unwrap();
+        assert_eq!(regex_str, ".*");
+    }
+
+    #[test]
+    fn test_form_to_regex_str_vowel() {
+        // @ represents a vowel
+        let pf = "@".parse::<ParsedForm>().unwrap();
+        let regex_str = form_to_regex_str(&pf.parts).unwrap();
+        assert_eq!(regex_str, "[aeiouy]");
+    }
+
+    #[test]
+    fn test_form_to_regex_str_consonant() {
+        // # represents a consonant
+        let pf = "#".parse::<ParsedForm>().unwrap();
+        let regex_str = form_to_regex_str(&pf.parts).unwrap();
+        assert_eq!(regex_str, "[bcdfghjklmnpqrstvwxz]");
+    }
+
+    #[test]
+    fn test_form_to_regex_str_mixed() {
+        let pf = "hAllo".parse::<ParsedForm>().unwrap();
+        let regex_str = form_to_regex_str(&pf.parts).unwrap();
+        assert_eq!(regex_str, "h.+llo");
+    }
+
+    #[test]
+    fn test_constraint_prefilter_multiple_use() {
+        let pf = "ABA".parse::<ParsedForm>().unwrap();
+        let mut vcs = VarConstraints::default();
+        let vc = VarConstraint { form: Some("x*a".to_string()), ..Default::default() };
+        vcs.insert('A', vc);
+        let re_str = form_to_regex_str_with_constraints(&pf.parts, &vcs).unwrap();
+        // First A gets capture group with lookahead, B is single-use variable, second A is backreference
+        assert_eq!(re_str, "(?=x.*a)(.+).+\\1");
+    }
+
+    #[test]
+    fn test_reversed_variable() {
+        let pf = "~A".parse::<ParsedForm>().unwrap();
+        let regex_str = form_to_regex_str(&pf.parts).unwrap();
+        assert_eq!(regex_str, ".+");
+    }
+
+    #[test]
+    fn test_repeated_reversed_variable() {
+        let pf = "~A~A".parse::<ParsedForm>().unwrap();
+        let regex_str = form_to_regex_str(&pf.parts).unwrap();
+        // First ~A gets capture group, second ~A gets backreference
+        assert_eq!(regex_str, "(.+)\\1");
+    }
+
+    #[test]
+    fn test_charset() {
+        let pf = "[abc]".parse::<ParsedForm>().unwrap();
+        let regex_str = form_to_regex_str(&pf.parts).unwrap();
+        // Charset is stored in HashSet so order may vary, but should contain all chars
+        assert!(regex_str.starts_with('['));
+        assert!(regex_str.ends_with(']'));
+        assert!(regex_str.contains('a'));
+        assert!(regex_str.contains('b'));
+        assert!(regex_str.contains('c'));
+        assert_eq!(regex_str.len(), 5); // "[abc]" or any permutation
+    }
+
+    #[test]
+    fn test_literal_with_special_chars() {
+        // Lowercase letters are literals, '.' in pattern is a wildcard
+        // Pattern "a.b" means: literal 'a', any char wildcard, literal 'b'
+        let pf = "a.b".parse::<ParsedForm>().unwrap();
+        let regex_str = form_to_regex_str(&pf.parts).unwrap();
+        assert_eq!(regex_str, "a.b"); // '.' is wildcard, not escaped
+    }
+
+    #[test]
+    fn test_has_inlineable_var_form_true() {
+        let pf = "A".parse::<ParsedForm>().unwrap();
+        let mut vcs = VarConstraints::default();
+        let vc = VarConstraint { form: Some("x*".to_string()), ..Default::default() };
+        vcs.insert('A', vc);
+
+        assert!(has_inlineable_var_form(&pf.parts, &vcs).unwrap());
+    }
+
+    #[test]
+    fn test_has_inlineable_var_form_false_no_constraint() {
+        let pf = "A".parse::<ParsedForm>().unwrap();
+        let vcs = VarConstraints::default();
+
+        assert!(!has_inlineable_var_form(&pf.parts, &vcs).unwrap());
+    }
+
+    #[test]
+    fn test_has_inlineable_var_form_false_no_variables() {
+        let pf = "hello".parse::<ParsedForm>().unwrap();
+        let vcs = VarConstraints::default();
+
+        assert!(!has_inlineable_var_form(&pf.parts, &vcs).unwrap());
+    }
+
+    #[test]
+    fn test_multiple_variables_different() {
+        let pf = "AB".parse::<ParsedForm>().unwrap();
+        let regex_str = form_to_regex_str(&pf.parts).unwrap();
+        // Single-use variables don't need capture groups
+        assert_eq!(regex_str, ".+.+");
+    }
+
+    #[test]
+    fn test_complex_pattern_with_repeats() {
+        let pf = "ABBA".parse::<ParsedForm>().unwrap();
+        let regex_str = form_to_regex_str(&pf.parts).unwrap();
+        // A appears twice, B appears twice
+        assert_eq!(regex_str, "(.+)(.+)\\2\\1");
+    }
 }

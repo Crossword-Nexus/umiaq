@@ -146,3 +146,94 @@ pub fn get_debug_info(
 
     report
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    #[cfg(target_arch = "wasm32")]
+    fn test_get_debug_info_structure() {
+        let report = get_debug_info("AB;BA", "solver error: Parse error", 1000, 100);
+
+        let lines: Vec<&str> = report.lines().collect();
+
+        // Verify exact structure
+        assert_eq!(lines[0], "=== UMIAQ DEBUG REPORT ===");
+        assert_eq!(lines[1], format!("Version: {}", env!("CARGO_PKG_VERSION")));
+        assert!(lines[2].starts_with("Generated: ")); // Dynamic timestamp
+        assert_eq!(lines[3], "");
+        assert_eq!(lines[4], "## Error");
+        assert_eq!(lines[5], "solver error: Parse error");
+        assert_eq!(lines[6], "");
+        assert_eq!(lines[7], "## Input");
+        assert_eq!(lines[8], "Pattern: AB;BA");
+        assert_eq!(lines[9], "Word List Size: 1000");
+        assert_eq!(lines[10], "Results Requested: 100");
+        assert_eq!(lines[11], "");
+        assert_eq!(lines[12], "## Environment");
+        // lines[13] and [14] are User Agent and Location (dynamic)
+        // Find the Instructions section
+        let instructions_idx = lines.iter().position(|&l| l == "## Instructions").unwrap();
+        assert_eq!(lines[instructions_idx], "## Instructions");
+        assert_eq!(lines[instructions_idx + 1], "Please copy this entire report and paste it when reporting the issue.");
+        assert_eq!(lines[instructions_idx + 2], "GitHub Issues: https://github.com/Crossword-Nexus/umiaq-rust/issues");
+        assert_eq!(lines[instructions_idx + 3], "");
+        assert_eq!(lines[instructions_idx + 4], "=== END DEBUG REPORT ===");
+    }
+
+    #[test]
+    #[cfg(target_arch = "wasm32")]
+    fn test_get_debug_info_multiline_error() {
+        let error_msg = "solver error: Parse error\nLine 2 of error\nLine 3 of error";
+        let report = get_debug_info("AB", error_msg, 500, 50);
+
+        let lines: Vec<&str> = report.lines().collect();
+
+        // Find error section
+        let error_idx = lines.iter().position(|&l| l == "## Error").unwrap();
+        assert_eq!(lines[error_idx + 1], "solver error: Parse error");
+        assert_eq!(lines[error_idx + 2], "Line 2 of error");
+        assert_eq!(lines[error_idx + 3], "Line 3 of error");
+    }
+
+    #[test]
+    #[cfg(target_arch = "wasm32")]
+    fn test_get_debug_info_special_chars_in_pattern() {
+        let pattern = "A;B;|A|>5;!=AB;[abc]";
+        let report = get_debug_info(pattern, "test error", 2000, 200);
+
+        let lines: Vec<&str> = report.lines().collect();
+
+        // Find input section and verify exact pattern
+        let input_idx = lines.iter().position(|&l| l == "## Input").unwrap();
+        assert_eq!(lines[input_idx + 1], "Pattern: A;B;|A|>5;!=AB;[abc]");
+        assert_eq!(lines[input_idx + 2], "Word List Size: 2000");
+        assert_eq!(lines[input_idx + 3], "Results Requested: 200");
+    }
+
+    #[test]
+    #[cfg(target_arch = "wasm32")]
+    fn test_get_debug_info_empty_pattern() {
+        let report = get_debug_info("", "Empty pattern error", 0, 1);
+
+        let lines: Vec<&str> = report.lines().collect();
+
+        let input_idx = lines.iter().position(|&l| l == "## Input").unwrap();
+        assert_eq!(lines[input_idx + 1], "Pattern: ");
+        assert_eq!(lines[input_idx + 2], "Word List Size: 0");
+        assert_eq!(lines[input_idx + 3], "Results Requested: 1");
+    }
+
+    #[test]
+    #[cfg(target_arch = "wasm32")]
+    fn test_get_debug_info_large_numbers() {
+        let report = get_debug_info("A", "error", 999999, 88888);
+
+        let lines: Vec<&str> = report.lines().collect();
+
+        let input_idx = lines.iter().position(|&l| l == "## Input").unwrap();
+        assert_eq!(lines[input_idx + 2], "Word List Size: 999999");
+        assert_eq!(lines[input_idx + 3], "Results Requested: 88888");
+    }
+}

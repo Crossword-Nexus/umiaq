@@ -1701,5 +1701,122 @@ mod tests {
                 assert_eq!(binding.get('C').unwrap().len(), 1);
             }
         }
+
+        #[test]
+        fn test_pattern_with_all_wildcard_types() {
+            // Test pattern combining: @ (vowel), # (consonant), . (any char), * (star)
+            // Pattern @#.* means: vowel, consonant, any single char, then zero or more chars
+            let words = vec!["abcde", "xyzab"];
+            let result = solve_equation("@#.*", &words, 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+            // Only "abcde" matches: a=vowel, b=consonant, c=any char, de=star
+            // "xyzab" doesn't match because x is not a vowel
+            assert_eq!(solve_result.solutions.len(), 1);
+            assert_eq!(solve_result.solutions[0][0].get_word().unwrap().as_ref(), "abcde");
+        }
+
+        #[test]
+        fn test_reversed_variable_with_constraint() {
+            // Pattern with reversed variable and length constraint
+            let words = vec!["abc", "def", "abba"];
+            let result = solve_equation("A~A;|A|=2", &words, 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+            // "abba" matches: A="ab", ~A="ba" (reversed), full word = "abba"
+            assert_eq!(solve_result.solutions.len(), 1);
+            assert_eq!(solve_result.solutions[0][0].get_word().unwrap().as_ref(), "abba");
+        }
+
+        #[test]
+        fn test_anagram_pattern() {
+            // Test anagram notation /abc means any permutation of a,b,c
+            let words = vec!["abc", "bac", "cab", "xyz"];
+            let result = solve_equation("/abc", &words, 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+            // Should match all permutations of abc that exist in word list (3 words), not xyz
+            assert_eq!(solve_result.solutions.len(), 3);
+        }
+
+        #[test]
+        fn test_complex_constraint_combination() {
+            // Test complex combination: multiple patterns, variables, constraints, joint constraints
+            let words = vec!["cat", "dog", "catdog", "dogcat", "catcat"];
+            let result = solve_equation("AB;BA;|A|=3;|B|=3;|AB|=6;!=AB", &words, 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+
+            // Verify each solution has correct constraints
+            for solution in &solve_result.solutions {
+                assert_eq!(solution.len(), 2);
+                let a = solution[0].get('A').unwrap();
+                let b = solution[0].get('B').unwrap();
+                assert_eq!(a.len(), 3, "A should be length 3");
+                assert_eq!(b.len(), 3, "B should be length 3");
+                assert_ne!(a, b, "A and B should not be equal (!=AB constraint)");
+            }
+        }
+
+        #[test]
+        fn test_num_results_requested_exactly_one() {
+            // Test that requesting exactly 1 result stops early
+            let words = vec!["a", "b", "c", "d", "e"];
+            let result = solve_equation("A", &words, 1);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+            assert_eq!(solve_result.solutions.len(), 1);
+            assert_eq!(solve_result.status, SolveStatus::FoundEnough);
+        }
+
+        #[test]
+        fn test_pattern_with_repeated_literals() {
+            // Test pattern where literal appears multiple times
+            let words = vec!["abacadabra", "banana"];
+            let result = solve_equation("aAaB", &words, 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+            // Should find matches where pattern starts with 'a', has 'a' in middle
+            assert!(!solve_result.solutions.is_empty());
+        }
+
+        #[test]
+        fn test_charset_pattern() {
+            // Test [xyz] charset notation
+            let words = vec!["axe", "aye", "aze", "awe"];
+            let result = solve_equation("a[xyz]e", &words, 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+            // Should match: axe, aye, aze (not awe)
+            assert_eq!(solve_result.solutions.len(), 3);
+        }
+
+        #[test]
+        fn test_empty_pattern_errors() {
+            let words = vec!["test"];
+            let result = solve_equation("", &words, 10);
+            assert!(result.is_err());
+            assert!(matches!(result.unwrap_err(), SolverError::ParseFailure(_)));
+        }
+
+        #[test]
+        fn test_pattern_with_only_constraints_no_forms() {
+            // Pattern with only constraints, no actual patterns - should error
+            let words = vec!["test"];
+            let result = solve_equation("|A|=3;|B|=4", &words, 10);
+            assert!(result.is_err());
+            assert!(matches!(result.unwrap_err(), SolverError::NoPatterns));
+        }
+
+        #[test]
+        fn test_word_list_all_words_too_short() {
+            // Edge case: pattern requires longer words than exist in word list
+            let words = vec!["cat", "dog", "bird"];
+            let result = solve_equation("A;|A|>4", &words, 10);
+            assert!(result.is_ok());
+            let solve_result = result.unwrap();
+            assert_eq!(solve_result.solutions.len(), 0);
+            assert_eq!(solve_result.status, SolveStatus::WordListExhausted);
+        }
     }
 }

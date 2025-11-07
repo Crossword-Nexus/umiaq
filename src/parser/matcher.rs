@@ -511,5 +511,197 @@ mod tests {
             let pf2 = "A*".parse::<ParsedForm>().unwrap();
             assert!(match_equation_exists("test", &pf2, &VarConstraints::default(), &JointConstraints::default()).unwrap());
         }
+
+        // Anagram edge cases
+        #[test]
+        fn test_anagram_with_duplicate_letters() {
+            // /aab means any permutation of a,a,b
+            let pf = "/aab".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists("aab", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(match_equation_exists("aba", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(match_equation_exists("baa", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            // Wrong count: has two b's instead of one
+            assert!(!match_equation_exists("abb", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            // Wrong count: only one 'a'
+            assert!(!match_equation_exists("abc", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+        }
+
+        #[test]
+        fn test_anagram_single_char() {
+            let pf = "/a".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists("a", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(!match_equation_exists("b", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+        }
+
+        #[test]
+        fn test_anagram_all_same_letter() {
+            let pf = "/aaa".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists("aaa", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(!match_equation_exists("aab", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+        }
+
+        #[test]
+        fn test_anagram_shorter_than_word() {
+            // Anagram of 3 chars, but word has more
+            let pf = "/abc".parse::<ParsedForm>().unwrap();
+            // Word "abcd" has 4 chars, anagram needs exactly 3
+            assert!(!match_equation_exists("abcd", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+        }
+
+        #[test]
+        fn test_anagram_longer_than_word() {
+            // Anagram of 5 chars, but word only has 3
+            let pf = "/abcde".parse::<ParsedForm>().unwrap();
+            assert!(!match_equation_exists("abc", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+        }
+
+        // Charset edge cases
+        #[test]
+        fn test_charset_basic() {
+            let pf = "[abc]".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists("a", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(match_equation_exists("b", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(match_equation_exists("c", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(!match_equation_exists("d", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(!match_equation_exists("ab", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+        }
+
+        #[test]
+        fn test_charset_with_range() {
+            // [a-c] should match a, b, or c
+            let pf = "[a-c]".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists("a", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(match_equation_exists("b", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(match_equation_exists("c", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(!match_equation_exists("d", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(!match_equation_exists("ab", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+        }
+
+        #[test]
+        fn test_charset_multiple_in_pattern() {
+            let pf = "[abc][xyz]".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists("ax", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(match_equation_exists("by", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(match_equation_exists("cz", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(!match_equation_exists("ad", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(!match_equation_exists("dx", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+        }
+
+        #[test]
+        fn test_charset_with_variables() {
+            let pf = "A[xyz]B".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists("axb", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap()); // A="a", B="b"
+            assert!(match_equation_exists("ayb", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(match_equation_exists("testxing", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap()); // A="test", B="ing"
+            assert!(!match_equation_exists("tab", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap()); // middle char 'a' not in [xyz]
+        }
+
+        #[test]
+        fn test_charset_single_char() {
+            let pf = "[a]".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists("a", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(!match_equation_exists("b", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+        }
+
+        // Vowel and consonant edge cases
+        #[test]
+        fn test_vowel_matching() {
+            let pf = "@".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists("a", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(match_equation_exists("e", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(match_equation_exists("i", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(match_equation_exists("o", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(match_equation_exists("u", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(match_equation_exists("y", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(!match_equation_exists("b", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+        }
+
+        #[test]
+        fn test_consonant_matching() {
+            let pf = "#".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists("b", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(match_equation_exists("c", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(match_equation_exists("z", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(!match_equation_exists("a", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(!match_equation_exists("e", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+        }
+
+        #[test]
+        fn test_mixed_wildcards_vowels_consonants() {
+            // Pattern: consonant, vowel, consonant
+            let pf = "#@#".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists("cat", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(match_equation_exists("bed", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(match_equation_exists("cab", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(!match_equation_exists("ate", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap()); // starts with vowel
+            assert!(!match_equation_exists("tea", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap()); // ends with vowel
+        }
+
+        // Constraint edge cases
+        #[test]
+        fn test_variable_with_not_equal_constraint() {
+            let pf = "AB".parse::<ParsedForm>().unwrap();
+            let mut constraints = VarConstraints::default();
+            // Create constraint: A != B (need to set on both variables for bidirectional check)
+            let mut constraint_a = VarConstraint::default();
+            constraint_a.not_equal.insert('B');
+            constraints.insert('A', constraint_a);
+
+            let mut constraint_b = VarConstraint::default();
+            constraint_b.not_equal.insert('A');
+            constraints.insert('B', constraint_b);
+
+            assert!(match_equation_exists("ab", &pf, &constraints, &JointConstraints::default()).unwrap()); // A="a", B="b" (different)
+            assert!(!match_equation_exists("aa", &pf, &constraints, &JointConstraints::default()).unwrap()); // A="a", B="a" (violates A!=B)
+        }
+
+        #[test]
+        fn test_variable_with_length_constraint() {
+            let pf = "AB".parse::<ParsedForm>().unwrap();
+            let mut constraints = VarConstraints::default();
+            // Constraint: |A| >= 2
+            let mut constraint_a = VarConstraint::default();
+            constraint_a.bounds.min_len = 2;
+            constraints.insert('A', constraint_a);
+
+            assert!(match_equation_exists("abc", &pf, &constraints, &JointConstraints::default()).unwrap()); // A="ab", B="c"
+            assert!(!match_equation_exists("ab", &pf, &constraints, &JointConstraints::default()).unwrap()); // A can't be just "a" (min 2)
+        }
+
+        #[test]
+        fn test_variable_with_max_length_constraint() {
+            let pf = "AB".parse::<ParsedForm>().unwrap();
+            let mut constraints = VarConstraints::default();
+            // Constraint: |A| <= 2
+            let mut constraint_a = VarConstraint::default();
+            constraint_a.bounds.max_len_opt = Some(2);
+            constraints.insert('A', constraint_a);
+
+            assert!(match_equation_exists("abc", &pf, &constraints, &JointConstraints::default()).unwrap()); // A="ab", B="c"
+            assert!(match_equation_exists("abcd", &pf, &constraints, &JointConstraints::default()).unwrap()); // A="ab", B="cd"
+            // But can't have A take more than 2 chars
+            let all = match_equation_all("abcd", &pf, &constraints, &JointConstraints::default()).unwrap();
+            // Check that no solution has A with length > 2
+            for binding in &all {
+                if let Some(a_val) = binding.get('A') {
+                    assert!(a_val.len() <= 2, "A should have max length 2, got {}", a_val.len());
+                }
+            }
+        }
+
+        // Recursion depth tests
+        #[test]
+        fn test_deep_recursion_many_variables() {
+            // Pattern with many variables forces deep recursion
+            let pf = "ABCDEFGHIJ".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists("abcdefghij", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+        }
+
+        #[test]
+        fn test_deep_recursion_many_wildcards() {
+            // Many wildcards force backtracking
+            let pf = "*.*.*.*.*".parse::<ParsedForm>().unwrap();
+            assert!(match_equation_exists("testing", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+        }
     }
 }
