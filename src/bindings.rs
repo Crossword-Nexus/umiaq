@@ -27,6 +27,10 @@ impl Default for Bindings {
 
 /// Convert a variable character to an array index
 /// 'A' -> 0, 'B' -> 1, ..., 'Z' -> 25, '*' -> 26
+///
+/// # Panics
+/// Panics if `c` is not 'A'..='Z' or '*'. The parser ensures only valid
+/// variable characters are used, so this panic indicates a programming error.
 #[inline]
 fn char_to_index(c: char) -> usize {
     match c {
