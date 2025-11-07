@@ -479,4 +479,141 @@ mod tests {
             "Should show outer error code"
         );
     }
+
+    // Tests for missing error variants
+    #[test]
+    fn test_nom_error_variant() {
+        let err = ParseError::NomError(ErrorKind::Alpha);
+        assert_eq!(err.code(), "E016");
+        assert_eq!(err.description(), "Low-level parser error");
+        assert!(err.details().contains("nom parser"));
+        assert!(err.to_string().contains("nom parser error"));
+    }
+
+    #[test]
+    fn test_prefilter_failed_variant() {
+        let regex_err = fancy_regex::Regex::new("(").unwrap_err();
+        let err = ParseError::PrefilterFailed(regex_err);
+        assert_eq!(err.code(), "E017");
+        assert_eq!(err.description(), "Regex prefilter failed during matching");
+        assert!(err.details().contains("prefilter"));
+        assert!(err.help().is_some());
+        assert!(err.to_string().contains("Prefilter regex match failed"));
+    }
+
+    #[test]
+    fn test_anagram_check_failed_variant() {
+        let inner = Box::new(ParseError::InvalidLowercaseChar { invalid_char: 'X' });
+        let err = ParseError::AnagramCheckFailed(inner);
+        assert_eq!(err.code(), "E018");
+        assert_eq!(err.description(), "Anagram validation failed during matching");
+        assert!(err.details().contains("anagram"));
+        assert!(err.help().is_some());
+        assert!(err.to_string().contains("Anagram validation failed"));
+    }
+
+    #[test]
+    fn test_regex_error_variant() {
+        let regex_err = fancy_regex::Regex::new("(").unwrap_err();
+        let err = ParseError::RegexError(regex_err);
+        assert_eq!(err.code(), "E002");
+        assert_eq!(err.description(), "Invalid regex pattern");
+        assert!(err.to_string().contains("Invalid regex pattern"));
+    }
+
+    #[test]
+    fn test_parse_int_error_variant() {
+        let int_err = "not_a_number".parse::<i32>().unwrap_err();
+        let err = ParseError::ParseIntError(int_err);
+        assert_eq!(err.code(), "E007");
+        assert_eq!(err.description(), "Integer parsing error");
+        assert!(err.to_string().contains("int-parsing error"));
+    }
+
+    // Error conversion tests
+    #[test]
+    fn test_from_parse_int_error() {
+        let int_err = "xyz".parse::<i32>().unwrap_err();
+        let boxed: Box<ParseError> = int_err.into();
+        assert!(matches!(*boxed, ParseError::ParseIntError(_)));
+    }
+
+    #[test]
+    fn test_from_regex_error() {
+        let regex_err = Box::new(fancy_regex::Regex::new("(").unwrap_err());
+        let boxed: Box<ParseError> = regex_err.into();
+        assert!(matches!(*boxed, ParseError::RegexError(_)));
+    }
+
+    #[test]
+    fn test_from_parse_error_to_io_error() {
+        let parse_err = ParseError::EmptyForm;
+        let io_err: io::Error = parse_err.into();
+        assert_eq!(io_err.kind(), io::ErrorKind::InvalidInput);
+        assert!(io_err.to_string().contains("Empty form"));
+    }
+
+    #[test]
+    fn test_nom_parse_error_trait_from_error_kind() {
+        let boxed: Box<ParseError> = NomParseError::from_error_kind("input", ErrorKind::Digit);
+        assert!(matches!(*boxed, ParseError::NomError(ErrorKind::Digit)));
+    }
+
+    #[test]
+    fn test_nom_parse_error_trait_append() {
+        let existing = Box::new(ParseError::EmptyForm);
+        let existing_code = existing.code();
+        let result: Box<ParseError> = NomParseError::append("input", ErrorKind::Alpha, existing);
+        // append should return the existing error unchanged
+        assert_eq!(result.code(), existing_code);
+    }
+
+    // Comprehensive description() and details() tests
+    #[test]
+    fn test_all_variants_have_description_and_details() {
+        let errors: Vec<ParseError> = vec![
+            ParseError::ParseFailure { s: "test".to_string() },
+            ParseError::EmptyForm,
+            ParseError::InvalidInput { str: "test".to_string() },
+            ParseError::InvalidVariableName { var: "1".to_string() },
+            ParseError::ContradictoryBounds { min: 5, max: 3 },
+            ParseError::InvalidLengthRange { input: "bad".to_string() },
+            ParseError::InvalidComplexConstraint { str: "bad".to_string() },
+            ParseError::InvalidCharsetRange('z', 'a'),
+            ParseError::DanglingCharsetDash,
+            ParseError::ConflictingConstraint { var_char: 'A', older: "old".to_string(), newer: "new".to_string() },
+            ParseError::InvalidLowercaseChar { invalid_char: 'X' },
+            ParseError::InvalidAnagramChars { anagram: "xyz".to_string(), invalid_char: 'X' },
+            ParseError::NomError(ErrorKind::Alpha),
+        ];
+
+        // arbitrary...ish values
+        let min_desc_len = 6;
+        let min_details_len = 11;
+
+        for err in errors {
+            let desc = err.description();
+            assert!(!desc.is_empty(), "Description should not be empty for {:?}", err);
+            assert!(desc.len() >= min_desc_len, "Description should be substantial for {:?}", err);
+
+            let details = err.details();
+            assert!(!details.is_empty(), "Details should not be empty for {:?}", err);
+            assert!(details.len() >= min_details_len, "Details should be substantial for {:?}", err);
+        }
+    }
+
+    #[test]
+    fn test_error_display_consistency() {
+        // Verify that display messages are consistent with error types
+        let err1 = ParseError::InvalidLowercaseChar { invalid_char: 'A' };
+        assert!(err1.to_string().contains('A'));
+
+        let err2 = ParseError::ContradictoryBounds { min: 10, max: 5 };
+        assert!(err2.to_string().contains("10"));
+        assert!(err2.to_string().contains("5"));
+
+        let err3 = ParseError::InvalidCharsetRange('z', 'a');
+        assert!(err3.to_string().contains('z'));
+        assert!(err3.to_string().contains('a'));
+    }
 }
