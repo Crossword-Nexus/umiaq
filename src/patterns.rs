@@ -1050,4 +1050,142 @@ mod tests {
         );
     }
 
+    mod large_equations {
+        use super::*;
+        use std::collections::HashSet;
+
+        #[test]
+        fn test_twenty_pattern_equation() {
+            let patterns: Vec<String> = (0..20).map(|i| format!("P{}", (b'A' + i) as char)).collect();
+            let input = patterns.join(";");
+            let result = input.parse::<EquationContext>();
+            assert!(result.is_ok());
+            let ctx = result.unwrap();
+            assert_eq!(ctx.patterns.len(), 20);
+            assert_eq!(ctx.ordered_list.len(), 20);
+            // Verify all patterns are present
+            let raw_patterns: Vec<String> = ctx.patterns.iter().map(|p| p.raw_string.clone()).collect();
+            for i in 0..20 {
+                let expected = format!("P{}", (b'A' + i) as char);
+                assert!(raw_patterns.contains(&expected));
+            }
+        }
+
+        #[test]
+        fn test_all_constraint_types_combined() {
+            let input = "AB;BA;|A|=3;|B|>2;|B|<=10;!=AB;A=(3:a*);|AB|=8";
+            let result = input.parse::<EquationContext>();
+            assert!(result.is_ok());
+            let ctx = result.unwrap();
+            assert_eq!(ctx.patterns.len(), 2);
+
+            let a = ctx.var_constraints.get('A').unwrap();
+            assert_eq!(a.bounds.min_len, 3);
+            assert_eq!(a.bounds.max_len_opt, Some(3));
+            assert_eq!(a.form, Some("a*".to_string()));
+            assert_eq!(a.not_equal, HashSet::from_iter(['B']));
+
+            // After joint constraint |AB|=8 propagation with A=[3,3]:
+            // B gets tightened to [5,5] (since A is fixed at 3, B must be exactly 5)
+            let b = ctx.var_constraints.get('B').unwrap();
+            assert_eq!(b.bounds.min_len, 5);
+            assert_eq!(b.bounds.max_len_opt, Some(5));
+            assert_eq!(b.not_equal, HashSet::from_iter(['A']));
+
+            assert_eq!(ctx.joint_constraints.len(), 1);
+            let jc = ctx.joint_constraints.iter().next().unwrap();
+            assert_eq!(jc.vars, vec!['A', 'B']);
+            assert_eq!(jc.target, 8);
+        }
+
+        #[test]
+        fn test_many_inequality_constraints() {
+            // Use a single !=ABC constraint (not three separate constraints)
+            // to ensure all variables are marked as not_equal to each other
+            let input = "ABC;!=ABC";
+            let result = input.parse::<EquationContext>();
+            assert!(result.is_ok());
+            let ctx = result.unwrap();
+
+            let a = ctx.var_constraints.get('A').unwrap();
+            let b = ctx.var_constraints.get('B').unwrap();
+            let c = ctx.var_constraints.get('C').unwrap();
+
+            assert_eq!(a.not_equal, HashSet::from_iter(['B', 'C']));
+            assert_eq!(b.not_equal, HashSet::from_iter(['A', 'C']));
+            assert_eq!(c.not_equal, HashSet::from_iter(['A', 'B']));
+        }
+
+        #[test]
+        fn test_all_26_variables_in_pattern() {
+            let input = "ABCDEFGHIJKLMNOPQRSTUVWXYZ;|A|=2;|Z|=3";
+            let result = input.parse::<EquationContext>();
+            assert!(result.is_ok());
+            let ctx = result.unwrap();
+            assert_eq!(ctx.patterns.len(), 1);
+
+            let a = ctx.var_constraints.get('A').unwrap();
+            assert_eq!(a.bounds, Bounds::of(2, 2));
+
+            let z = ctx.var_constraints.get('Z').unwrap();
+            assert_eq!(z.bounds, Bounds::of(3, 3));
+        }
+
+        #[test]
+        fn test_many_joint_constraints() {
+            let input = "AB;CD;|AB|=5;|CD|=7;|AC|>=3;|BD|<=10";
+            let result = input.parse::<EquationContext>();
+            assert!(result.is_ok());
+            let ctx = result.unwrap();
+            assert_eq!(ctx.joint_constraints.len(), 4);
+
+            let constraints: Vec<_> = ctx.joint_constraints.iter().collect();
+            assert!(constraints.iter().any(|jc| jc.vars == vec!['A', 'B'] && jc.target == 5));
+            assert!(constraints.iter().any(|jc| jc.vars == vec!['C', 'D'] && jc.target == 7));
+            assert!(constraints.iter().any(|jc| jc.vars == vec!['A', 'C'] && jc.target == 3));
+            assert!(constraints.iter().any(|jc| jc.vars == vec!['B', 'D'] && jc.target == 10));
+        }
+
+        #[test]
+        fn test_hub_pattern_many_variables() {
+            let input = "ABCDEFGHIJ";
+            let result = input.parse::<EquationContext>();
+            assert!(result.is_ok());
+            let ctx = result.unwrap();
+            assert_eq!(ctx.patterns.len(), 1);
+
+            let pattern = &ctx.patterns[0];
+            // Check variables (not lookup_keys, which is empty for the first pattern)
+            assert_eq!(pattern.variables.len(), 10);
+            for c in 'A'..='J' {
+                assert!(pattern.variables.contains(&c), "Missing variable {}", c);
+            }
+        }
+
+        #[test]
+        fn test_complex_constraint_propagation() {
+            let input = "ABC;|A|>=5;|B|<=10;|AB|=12;|BC|>=8";
+            let result = input.parse::<EquationContext>();
+            assert!(result.is_ok());
+            let ctx = result.unwrap();
+
+            // After |AB|=12 propagation:
+            // A: [5,∞) → [5,11] (tightened upper bound from 12-1)
+            let a = ctx.var_constraints.get('A').unwrap();
+            assert_eq!(a.bounds.min_len, 5);
+            assert_eq!(a.bounds.max_len_opt, Some(11));
+
+            // B: [1,10] → [1,7] (tightened upper bound from 12-5)
+            let b = ctx.var_constraints.get('B').unwrap();
+            assert_eq!(b.bounds.min_len, 1);
+            assert_eq!(b.bounds.max_len_opt, Some(7));
+
+            // C has no individual constraints (only appears in joint constraint |BC|>=8),
+            // so it doesn't have an entry in var_constraints
+
+            // Two joint constraints: |AB|=12 and |BC|>=8
+            assert_eq!(ctx.joint_constraints.len(), 2);
+        }
+    }
+
 }
