@@ -46,7 +46,12 @@
     <div id="results"></div>
     <div id="results-meta"></div>
 
-    <!-- Debug panel (shown on errors) -->
+    <!-- Compact error message (shown initially on errors) -->
+    <div id="error-compact" style="display:none; margin-top:20px;">
+      <button type="button" id="show-debug-btn" class="button">Show Error Report</button>
+    </div>
+
+    <!-- Full debug panel (shown when user clicks "Show Error Report") -->
     <div id="debug-panel" style="display:none; margin-top:20px; padding:15px; background:#fff3cd; border:2px solid #ffc107; border-radius:5px;">
       <h3 style="margin-top:0; color:#856404;">⚠️ Error Debug Information</h3>
       <p style="font-size:14px; color:#856404;">Something went wrong. Please copy this debug information when reporting the issue.</p>
@@ -123,7 +128,8 @@
         document.getElementById("mainUI").style.display = "block";
       } else if (e.data.type === 'ok') {
         loadingEl.innerHTML = '';
-        // Hide debug panel on successful search
+        // Hide error messages on successful search
+        document.getElementById('error-compact').style.display = 'none';
         document.getElementById('debug-panel').style.display = 'none';
 
         const rows = e.data.results['solutions'];
@@ -147,7 +153,7 @@
         loadingEl.innerHTML = '';
         resultsEl.textContent = 'Error: ' + e.data.error;
 
-        // Generate and show debug information
+        // Generate debug information
         const debugInfo = get_debug_info(
           inputEl.value.trim(),
           e.data.error,
@@ -155,7 +161,10 @@
           parseInt(document.getElementById('numResults').value)
         );
         document.getElementById('debug-output').textContent = debugInfo;
-        document.getElementById('debug-panel').style.display = 'block';
+
+        // Show compact error message (not the full panel)
+        document.getElementById('error-compact').style.display = 'block';
+        document.getElementById('debug-panel').style.display = 'none';
       }
     };
 
@@ -179,6 +188,12 @@
 
     // Add listener to "submit" button
     document.querySelector("form").addEventListener("submit", solve);
+
+    // Show Error Report button handler
+    document.getElementById('show-debug-btn').addEventListener('click', () => {
+      document.getElementById('error-compact').style.display = 'none';
+      document.getElementById('debug-panel').style.display = 'block';
+    });
 
     // Debug panel button handlers
     document.getElementById('copy-debug-btn').addEventListener('click', () => {
@@ -213,6 +228,7 @@
 
     document.getElementById('hide-debug-btn').addEventListener('click', () => {
       document.getElementById('debug-panel').style.display = 'none';
+      document.getElementById('error-compact').style.display = 'block';
     });
 
   </script>
