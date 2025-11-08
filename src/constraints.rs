@@ -357,4 +357,84 @@ mod tests {
             ParseError::ContradictoryBounds { min, max } if min == 10 && max == 5
         ));
     }
+
+    // get_parsed_form tests - main gap in coverage
+    #[test]
+    fn test_get_parsed_form_none_when_no_form() {
+        let vc = VarConstraint::default();
+        assert!(vc.get_parsed_form().unwrap().is_none());
+    }
+
+    #[test]
+    fn test_get_parsed_form_success() {
+        let mut vc = VarConstraint::default();
+        vc.form = Some("a*".to_string());
+
+        let parsed = vc.get_parsed_form().unwrap();
+        assert!(parsed.is_some());
+
+        let pf = parsed.unwrap();
+        assert_eq!(pf.parts.len(), 2); // "a" literal and "*" wildcard
+    }
+
+    #[test]
+    fn test_get_parsed_form_caching() {
+        let mut vc = VarConstraint::default();
+        vc.form = Some("abc".to_string());
+
+        // First call parses and caches
+        let parsed1 = vc.get_parsed_form().unwrap();
+        assert!(parsed1.is_some());
+
+        // Second call returns cached value
+        let parsed2 = vc.get_parsed_form().unwrap();
+        assert!(parsed2.is_some());
+
+        // Same reference proves caching
+        assert!(std::ptr::eq(parsed1.unwrap(), parsed2.unwrap()));
+    }
+
+    #[test]
+    fn test_get_parsed_form_error_on_invalid_form() {
+        let mut vc = VarConstraint::default();
+        vc.form = Some("[abc".to_string()); // Unmatched bracket
+
+        let result = vc.get_parsed_form();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_parsed_form_complex_patterns() {
+        let mut vc = VarConstraint::default();
+        vc.form = Some("A~A".to_string()); // Palindrome pattern
+
+        let parsed = vc.get_parsed_form().unwrap();
+        assert!(parsed.is_some());
+    }
+
+    #[test]
+    fn test_set_exact_len() {
+        let mut vc = VarConstraint::default();
+        vc.set_exact_len(5);
+
+        assert_eq!(vc.bounds.min_len, 5);
+        assert_eq!(vc.bounds.max_len_opt, Some(5));
+    }
+
+    #[test]
+    fn test_var_constraints_bounds_helper() {
+        let mut vcs = VarConstraints::default();
+
+        // Nonexistent variable returns default
+        let bounds = vcs.bounds('A');
+        assert_eq!(bounds.min_len, VarConstraint::DEFAULT_MIN);
+        assert_eq!(bounds.max_len_opt, None);
+
+        // Existing variable returns its bounds
+        let mut vc = VarConstraint::default();
+        vc.bounds = Bounds::of(3, 7);
+        vcs.insert('B', vc);
+
+        assert_eq!(vcs.bounds('B'), Bounds::of(3, 7));
+    }
 }

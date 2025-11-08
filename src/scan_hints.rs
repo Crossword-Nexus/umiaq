@@ -683,5 +683,57 @@ mod tests {
         assert_eq!(expected, hints);
     }
 
+    // Very long form edge cases
+    #[test]
+    fn test_very_long_form_50_plus_tokens() {
+        // Form with 60 mixed tokens
+        let mut parts = vec![];
+        for i in 0..60 {
+            match i % 4 {
+                0 => parts.push(FormPart::Var((b'A' + ((i / 4) % 26)) as char)),
+                1 => parts.push(FormPart::Dot),
+                2 => parts.push(FormPart::Lit("x".into())),
+                _ => parts.push(FormPart::Vowel),
+            }
+        }
+
+        let form = pf(parts);
+        let vcs = VarConstraints::default();
+        let hints = form_len_hints_pf(&form, &vcs, &JointConstraints::default());
+
+        // 15 vars (min 1 each) + 45 fixed tokens = 60 min
+        assert_eq!(hints.min_len, 60);
+    }
+
+    // Minimum length = 0 edge case
+    #[test]
+    fn test_min_len_effectively_zero_with_unbounded_outside() {
+        // Form: A with |AB|=5 where B is otherwise unbounded (default)
+        let form = pf(vec![FormPart::Var('A')]);
+        let vcs = VarConstraints::default();
+
+        let jc = JointConstraint { vars: vec!['A','B'], target: 5, rel: RelMask::EQ };
+        let jcs = JointConstraints::of(vec![jc]);
+
+        let hints = form_len_hints_pf(&form, &vcs, &jcs);
+
+        // B is unbounded, so outside_form_max is None, making tmin_eff = 0
+        // A still has its own default min of 1
+        assert_eq!(hints.min_len, VarConstraint::DEFAULT_MIN);
+        assert_eq!(hints.max_len_opt, Some(4)); // 5 - min(B) where min(B)=1
+    }
+
+    #[test]
+    fn test_is_word_len_possible_boundary_cases() {
+        let hints = PatternLenHints {
+            min_len: 5,
+            max_len_opt: Some(10),
+        };
+
+        assert!(!hints.is_word_len_possible(4)); // Below min
+        assert!(hints.is_word_len_possible(5));  // At min
+        assert!(hints.is_word_len_possible(10)); // At max
+        assert!(!hints.is_word_len_possible(11)); // Above max
+    }
 
 }

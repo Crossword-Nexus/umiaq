@@ -62,4 +62,25 @@ mod tests {
         assert_eq!(LT.to_string(), "<");
         assert_eq!(GT.to_string(), ">");
     }
+
+    #[test]
+    fn test_round_trip_all_operators() {
+        let operators = vec!["=", "!=", "<=", ">=", "<", ">"];
+
+        for op_str in operators {
+            let parsed = op_str.parse::<ComparisonOperator>().unwrap();
+            let displayed = parsed.to_string();
+            assert_eq!(op_str, displayed, "Round-trip failed for '{}'", op_str);
+        }
+    }
+
+    #[test]
+    fn test_from_str_invalid_operators() {
+        let invalid = vec!["==", "equals", "", " = ", "!", "<>", "=>"];
+
+        for input in invalid {
+            let result = input.parse::<ComparisonOperator>();
+            assert!(result.is_err(), "Should reject invalid operator '{}'", input);
+        }
+    }
 }
