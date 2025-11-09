@@ -1770,9 +1770,10 @@ mod tests {
             let result = solve_equation("A;|A|>5;|A|<3", &words, 10);
 
             // Should fail at parse time with ContradictoryBounds
+            // |A| > 5 means min = 6; |A| < 3 means max = 2
             assert!(result.is_err());
             if let Err(SolverError::ParseFailure(pe)) = result {
-                assert!(matches!(*pe, ParseError::ContradictoryBounds { .. }));
+                assert!(matches!(*pe, ParseError::ContradictoryBounds { min: 6, max: 2 }));
             } else {
                 panic!("Expected ParseFailure with ContradictoryBounds");
             }
@@ -1898,9 +1899,9 @@ mod tests {
 
             assert!(result.is_err());
             if let Err(SolverError::ParseFailure(pe)) = result {
-                assert!(matches!(*pe, ParseError::ContradictoryBounds { .. })); // TODO be more explicit than ".." (here and elsewhere)
+                assert!(matches!(*pe, ParseError::ContradictoryBounds { min: 11, max: 5 }));
             } else {
-                panic!("Expected ParseFailure with ContradictoryBounds");
+                panic!("Expected ParseFailure with ContradictoryBounds, got {:?}", result);
             }
         }
 
@@ -2062,7 +2063,7 @@ mod tests {
             let solve_result = result.unwrap();
 
             // Should time out
-            assert!(matches!(solve_result.status, SolveStatus::TimedOut { .. }));
+            assert!(matches!(solve_result.status, SolveStatus::TimedOut { elapsed: _ }));
 
             // Verify elapsed time is captured
             if let SolveStatus::TimedOut { elapsed } = solve_result.status {
@@ -2091,7 +2092,7 @@ mod tests {
             let solve_result = result.unwrap();
 
             // Should time out
-            assert!(matches!(solve_result.status, SolveStatus::TimedOut { .. }));
+            assert!(matches!(solve_result.status, SolveStatus::TimedOut { elapsed: _ }));
         }
 
         #[test]
@@ -2101,7 +2102,7 @@ mod tests {
             let found_enough = SolveStatus::FoundEnough;
             let exhausted = SolveStatus::WordListExhausted;
 
-            assert!(matches!(timeout, SolveStatus::TimedOut { .. }));
+            assert!(matches!(timeout, SolveStatus::TimedOut { elapsed: _ }));
             assert!(!matches!(timeout, SolveStatus::FoundEnough));
             assert!(!matches!(timeout, SolveStatus::WordListExhausted));
 
@@ -2126,7 +2127,7 @@ mod tests {
             let solve_result = result.unwrap();
 
             // Should time out in scan or join phase
-            assert!(matches!(solve_result.status, SolveStatus::TimedOut { .. }));
+            assert!(matches!(solve_result.status, SolveStatus::TimedOut { elapsed: _ }));
         }
 
         #[test]
@@ -2145,7 +2146,7 @@ mod tests {
             let solve_result = result.unwrap();
 
             // Should _not_ time out
-            assert!(!matches!(solve_result.status, SolveStatus::TimedOut { .. }));
+            assert!(!matches!(solve_result.status, SolveStatus::TimedOut { elapsed: _ }));
             assert!(matches!(solve_result.status, SolveStatus::FoundEnough | SolveStatus::WordListExhausted));
         }
     }

@@ -6,14 +6,12 @@ use umiaq::solver;
 use umiaq::solver::SolveStatus;
 use umiaq::word_list;
 
-// TODO rename "pattern" here
-/// Umiaq pattern solver
+/// Umiaq equation solver
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Cli {
-    // TODO rename "pattern" here
-    /// The pattern to solve (e.g., "AB;BA;|A|=2;|B|=2;!=AB")
-    pattern: String,
+    /// The equation to solve (e.g., "AB;BA;|A|=2;|B|=2;!=AB")
+    equation: String,
 
     /// Path to the word list file (word;score per line)
     #[arg(
@@ -81,9 +79,9 @@ fn try_main() -> Result<(), Box<dyn std::error::Error>> {
     // Build a Vec<&str> of word references for the solver
     let words_ref: Vec<_> = word_list.entries.iter().map(String::as_str).collect();
 
-    // 2. Solve the pattern against the word list
+    // 2. Solve the equation against the word list
     let t_solve = Instant::now();
-    let solve_result = solver::solve_equation(&cli.pattern, &words_ref, cli.num_results_requested)?;
+    let solve_result = solver::solve_equation(&cli.equation, &words_ref, cli.num_results_requested)?;
     let solve_secs = t_solve.elapsed().as_secs_f64();
 
     // 3. Print each solution on stdout
