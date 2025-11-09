@@ -69,7 +69,7 @@ use crate::parser::{match_equation_all, ParsedForm};
 use crate::patterns::{Pattern, EquationContext};
 use crate::errors::ParseError::ParseFailure;
 use instant::Instant;
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use std::collections::hash_map::{DefaultHasher, Entry};
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -82,6 +82,10 @@ const TIME_BUDGET: u64 = 30;
 const DEFAULT_BATCH_SIZE: usize = 10_000;
 // A constant to split up items in our hashes
 const HASH_SPLIT: u16 = 0xFFFFu16;
+// Warn when solving equations with many patterns (potentially expensive)
+const PATTERN_COUNT_WARNING_THRESHOLD: usize = 5;
+// Warn when candidate buckets grow very large (memory and performance concern)
+const LARGE_CANDIDATE_COUNT_THRESHOLD: usize = 50_000;
 
 /// Status of the solver run.
 #[derive(Debug, Clone, PartialEq)]
@@ -468,6 +472,8 @@ fn scan_batch(
         end, word_list.len()
     );
 
+    debug!("Scanning batch: words [{start_idx}, {end})");
+
     while i_word < end {
         timed_stop!(budget, i_word);
 
@@ -508,6 +514,10 @@ fn scan_batch(
 
         i_word += 1;
     }
+
+    let scanned = i_word - start_idx;
+    debug!("Scanned {} words, populated {} candidate buckets", scanned,
+        words.iter().map(|b| b.count).sum::<usize>());
 
     Ok(i_word)
 }
@@ -698,6 +708,7 @@ fn recursive_join_inner(
         // Base case: if we've placed all patterns, `selected` is a full solution.
         if ctx.joint_constraints.all_strictly_satisfied_for_parts(selected)
             && seen.insert(solution_key(selected)) {
+            debug!("Found solution #{}: {} patterns matched", results.len() + 1, selected.len());
             results.push(selected.clone());
         }
     }
@@ -764,7 +775,13 @@ fn solve_equation_with_budget(
 
     // 2. Parse the input equation string into our `EquationContext` struct.
     //    This holds each pattern string, its parsed form, and its `lookup_keys` (shared vars).
-    let equation_context = input.parse::<EquationContext>()?;
+    let equation_context = match input.parse::<EquationContext>() {
+        Ok(ctx) => ctx,
+        Err(e) => {
+            error!("Failed to parse equation '{input}': {e}");
+            return Err(e.into());
+        }
+    };
 
     info!("Parsed equation with {} patterns: {}", equation_context.len(), input);
     debug!("{equation_context}");
@@ -772,6 +789,11 @@ fn solve_equation_with_budget(
     // If there are no patterns, propagate a NoPatterns error.
     if equation_context.len() == 0 {
         return Err(SolverError::NoPatterns);
+    }
+
+    // Warn about potentially expensive queries
+    if equation_context.len() >= PATTERN_COUNT_WARNING_THRESHOLD {
+        warn!("Solving {} patterns may be computationally expensive", equation_context.len());
     }
 
     // 3. Prepare storage for candidate buckets, one per pattern.
@@ -813,6 +835,9 @@ fn solve_equation_with_budget(
     #[cfg(debug_assertions)]
     let mut iteration = 0;
 
+    // Track whether we've already issued certain warnings (warn once)
+    let mut warned_about_large_candidates = false;
+
     while results.len() < num_results_requested
         && scan_pos < word_list.len()
         && !budget.expired()
@@ -832,15 +857,30 @@ fn solve_equation_with_budget(
 
         // 1. Scan the next batch_size words into candidate buckets.
         // Each candidate binding is grouped by its lookup key so later joins are fast.
-        let new_pos = scan_batch(
+        let new_pos = match scan_batch(
             word_list,
             scan_pos,
             batch_size,
             &equation_context,
             &mut words,
             &budget,
-        )?;
+        ) {
+            Ok(pos) => pos,
+            Err(e) => {
+                error!("Error during word list scanning at position {scan_pos}: {e}");
+                return Err(e);
+            }
+        };
         scan_pos = new_pos;
+
+        // Warn if candidate buckets are growing very large
+        if !warned_about_large_candidates {
+            let total_candidates: usize = words.iter().map(|b| b.count).sum();
+            if total_candidates >= LARGE_CANDIDATE_COUNT_THRESHOLD {
+                warn!("Large candidate count ({total_candidates} bindings)--search space may be very large");
+                warned_about_large_candidates = true;
+            }
+        }
 
         if budget.expired() {
             break;
@@ -868,15 +908,19 @@ fn solve_equation_with_budget(
         };
 
         // Call `recursive_join`
-        let rj_result = recursive_join(
+        debug!("Starting recursive join with {} candidate buckets (currently {} solutions)",
+            words.len(), results.len());
+        if let Err(e) = recursive_join(
             &mut selected,
             &mut env,
             &mut results,
             &ctx,
             &mut seen,
             &rjp,
-        );
-        rj_result?;
+        ) {
+            error!("Error during recursive join: {e}");
+            return Err(e);
+        }
 
         // We exit early in two cases
         // 1. We've hit the number of results requested
@@ -892,7 +936,11 @@ fn solve_equation_with_budget(
 
         // Grow the batch size for the next round
         // TODO: magic number, maybe adaptive resizing?
+        let old_batch_size = batch_size;
         batch_size = batch_size.saturating_mul(2);
+        if batch_size != old_batch_size {
+            debug!("Increasing batch size: {old_batch_size} → {batch_size}");
+        }
     }
 
     // Determine status before consuming results
