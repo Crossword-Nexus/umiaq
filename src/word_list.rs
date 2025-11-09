@@ -101,8 +101,12 @@ impl WordList {
             })
             .collect();
 
-        // TODO is this better than just throwing the entries into a HashSet?
         // Step 6: Deduplicate the list.
+        //
+        // We use sort + dedup rather than HashSet because:
+        // - we need a sorted Vec anyway for the final step (sort by length)
+        // - HashSet would require an additional allocation and conversion back to Vec
+        // - sort + dedup is O(n log n), HashSet insert is O(n), but we save the Vec conversion
         //
         // We sort alphabetically first, because `dedup()` only removes *adjacent*
         // duplicates — and we want all duplicates next to each other.

@@ -1,11 +1,13 @@
 use crate::comparison_operator::ComparisonOperator::{EQ, GE, GT, LE, LT, NE};
 use crate::errors::ParseError::ParseFailure;
+use std::collections::HashMap;
 use std::fmt;
 use std::str::FromStr;
+use std::sync::{LazyLock, OnceLock};
 
 // pub(crate) static COMPARISON_OPERATORS: [ComparisonOperator; 6] = [EQ,NE,LE,GE,LT,GT];
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub(crate) enum ComparisonOperator {
     EQ,
     NE,
@@ -15,37 +17,71 @@ pub(crate) enum ComparisonOperator {
     GT
 }
 
-impl FromStr for ComparisonOperator {
-    type Err = crate::errors::ParseError;
+impl ComparisonOperator {
+    /// All operator variants, used to build the reverse lookup map.
+    pub(crate) const ALL: [ComparisonOperator; 6] = [EQ, NE, LE, GE, LT, GT];
 
-    // TODO? DRY w/Display::fmt
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
-            "=" => Ok(EQ),
-            "!=" => Ok(NE),
-            "<=" => Ok(LE),
-            ">=" => Ok(GE),
-            "<" => Ok(LT),
-            ">" => Ok(GT),
-            _ => Err(ParseFailure {
-                s: format!("Invalid comparison operator '{s}' (expected: =, !=, <, >, <=, >=)")
-            })
-        }
+    /// All operator strings, lazily initialized.
+    pub(crate) fn all_as_strings() -> &'static Vec<String> {
+        static ALL_AS_STRINGS: LazyLock<Vec<String>> = LazyLock::new(|| {
+            ComparisonOperator::ALL
+                .iter()
+                .map(ComparisonOperator::to_string)
+                .collect()
+        });
+        &ALL_AS_STRINGS
     }
-}
 
-impl fmt::Display for ComparisonOperator {
-    // TODO? DRY w/FromStr::from_str
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let s = match self {
+    /// Returns the string representation of this operator.
+    /// Single source of truth for operator-to-string mapping.
+    const fn as_str(self) -> &'static str {
+        match self {
             EQ => "=",
             NE => "!=",
             LE => "<=",
             GE => ">=",
             LT => "<",
             GT => ">"
-        };
-        write!(f, "{s}")
+        }
+    }
+}
+
+/// Lazily initialized `HashMap` for constant-time string-to-operator lookup.
+/// Built from `as_str()` to ensure a single source of truth.
+///
+/// NB: This approach (`LazyLock` + `HashMap`) is necessary because const `HashMap`
+/// construction is not yet stable in Rust. Once `const_trait_impl` is stabilized,
+/// this could potentially be simplified.
+static OP_MAP: OnceLock<HashMap<&'static str, ComparisonOperator>> = OnceLock::new();
+
+fn get_str_to_op_map() -> &'static HashMap<&'static str, ComparisonOperator> {
+    OP_MAP.get_or_init(|| {
+        ComparisonOperator::ALL
+            .iter()
+            .map(|op| (op.as_str(), *op))
+            .collect()
+    })
+}
+
+impl FromStr for ComparisonOperator {
+    type Err = crate::errors::ParseError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        get_str_to_op_map()
+            .get(s)
+            .copied()
+            .ok_or_else(|| {
+                let expected = ComparisonOperator::all_as_strings().join(", ");
+                ParseFailure {
+                    s: format!("Invalid comparison operator '{s}' (expected: {expected})")
+                }
+            })
+    }
+}
+
+impl fmt::Display for ComparisonOperator {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.as_str())
     }
 }
 

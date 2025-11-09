@@ -2,7 +2,7 @@ use crate::bindings::Bindings;
 use crate::comparison_operator::ComparisonOperator;
 use crate::constraints::{Bounds, VarConstraint, VarConstraints};
 use crate::errors::ParseError;
-use fancy_regex::Regex;
+use fancy_regex::{escape, Regex};
 use log::debug;
 use std::cmp::Ordering;
 use std::fmt;
@@ -187,15 +187,22 @@ fn resolve_var_len(parts: &[Bindings], var_char: char) -> Option<usize> {
     parts.iter().find_map(|bindings| bindings.get(var_char).map(|s| s.len()))
 }
 
-// TODO derive "=|!=|<=|>=|<|>" from a single source (e.g., COMPARISON_OPERATORS)
-/// Regex pattern for joint length constraints like `|AB|=7`
-const JOINT_LEN_PATTERN: &str = r"^\|(?<vars>[A-Z]{2,})\| *(?<op>=|!=|<=|>=|<|>) *(?<len>\d+)$";
+/// Regex pattern for joint length constraints like `|AB|=7`.
+/// Built dynamically from `ComparisonOperator::ALL` to ensure single source of truth.
+static JOINT_LEN_PATTERN: LazyLock<String> = LazyLock::new(|| {
+    let all_ops_string = ComparisonOperator::all_as_strings()
+        .iter()
+        .map(|s| escape(s))
+        .collect::<Vec<_>>()
+        .join("|");
+    format!(r"^\|(?<vars>[A-Z]{{2,}})\| *(?<op>{all_ops_string}) *(?<len>\d+)$")
+});
 
 /// Matches joint length constraints like `|AB|=7`
 static JOINT_LEN_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(JOINT_LEN_PATTERN)
+    LazyLock::new(|| Regex::new(&JOINT_LEN_PATTERN)
         .unwrap_or_else(|e| panic!(
-            "BUG: Failed to compile JOINT_LEN_RE regex pattern '{JOINT_LEN_PATTERN}': {e}."
+            "BUG: Failed to compile JOINT_LEN_RE regex pattern '{}': {e}.", *JOINT_LEN_PATTERN
         )));
 
 /// Parse a single joint-length expression that **starts at** a `'|'`. Returns `None` on invalid
@@ -584,7 +591,7 @@ mod tests {
         assert_eq!(RelMask::LT, RelMask::from_str("<").unwrap());
         assert_eq!(RelMask::GT, RelMask::from_str(">").unwrap());
         assert!(RelMask::from_str("INVALID123").is_err_and(|pe| {
-            pe.to_string() == "Form parsing failed: \"Invalid comparison operator 'INVALID123' (expected: =, !=, <, >, <=, >=)\""
+            pe.to_string() == "Form parsing failed: \"Invalid comparison operator 'INVALID123' (expected: =, !=, <=, >=, <, >)\""
         }));
         assert!(!RelMask::EQ.allows(Ordering::Less));
         assert!(RelMask::EQ.allows(Ordering::Equal));
