@@ -61,6 +61,99 @@
 //! }
 //! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
+//!
+//! # Performance Characteristics
+//!
+//! ## Time Complexity
+//!
+//! The solver's performance depends heavily on pattern structure and word-list size:
+//!
+//! - **Best case**: O(n × k) where n = word list size, k = max bucket size
+//!   - achieved when patterns share many variables (good bucketing)
+//!   - example: `AB;BA;BC` with 10,000 words → ~10,000 iterations
+//!
+//! - **Worst case**: O(n^p) where n = word list size, p = number of patterns
+//!   - occurs when patterns share no variables (no bucketing)
+//!   - example: `A;B;C` with 10,000 words → 10,000³ = 1 trillion iterations
+//!
+//! - **Middle-ground case**: O(n × k^p) where k ≪ n
+//!   - Moderate variable sharing provides some bucketing benefit
+//!
+//! ## Key Performance Factors
+//!
+//! ### 1. Pattern Ordering
+//!
+//! Pattern ordering potentially has an exponential impact. The `get_ordered_patterns` heuristic
+//! (see patterns.rs) maximizes shared variables between consecutive patterns:
+//!
+//! ```text
+//! Good:  ABC → AB → A  (2 shared, then 1 shared)
+//! Bad:   A → B → C     (0 shared, 0 shared)
+//! ```
+//!
+//! See `patterns::get_ordered_patterns` for details on the ordering algorithm.
+//!
+//! ### 2. Constraint Propagation
+//!
+//! Joint constraints like `|ABC| = 10` tighten variable bounds before search:
+//!
+//! ```text
+//! Before: A,B,C ∈ [1,∞) → search space = "∞"³
+//! After:  A,B,C ∈ [1,8]  → search space = 8³ = 512
+//! ```
+//!
+//! See `joint_constraints::propagate_joint_to_var_bounds` for implementation.
+//!
+//! ### 3. Adaptive Batch Sizing (Time/Memory Trade-off)
+//!
+//! The solver scans the word list in adaptive batches (10k → 20k → 40k...):
+//!
+//! - **Small batches**: lower memory, more join iterations
+//! - **Large batches**: higher memory, fewer join iterations
+//! - **Adaptive**: balances memory usage with search efficiency
+//!
+//! ### 4. Time Budget (Robustness)
+//!
+//! Timeout (currently 30s) prevents queries from running indefinitely:
+//!
+//! - checks budget between candidates in recursive join
+//! - returns partial results or error when budget expires
+//! - prevents exponential blowup from consuming unlimited resources
+//!
+//! ## Expensive Equations
+//!
+//! Equations potentially become computationally expensive when:
+//!
+//! 1. **Many patterns** (e.g., 5+): potentially exponential with number of patterns
+//! 2. **No shared variables**: each pattern multiplies search space
+//! 3. **Unconstrained variables**: variables with bounds [1,∞) are costly
+//! 4. **Large word lists**: linear factor, but multiplied by pattern count
+//!
+//! Example expensive queries:
+//! ```text
+//! A;B;C;D;E    → 5 patterns, no sharing (exponential)
+//! ABCDEFGH     → 8 vars, no joint constraints (huge search space)
+//! ```
+//!
+//! ## Optimization Strategies
+//!
+//! The solver uses several optimizations to handle complex queries:
+//!
+//! 1. **Prefilter regex**: rejects nonmatching words before detailed matching
+//! 2. **Deterministic fast path**: materializes fully determined patterns directly
+//! 3. **Early termination**: stops when quota met or budget expires
+//! 4. **Deduplication**: hash-based set prevents duplicate solutions
+//! 5. **String interning**: reduces allocation overhead via Rust's Rc<str>
+//!
+//! ## Memory Usage
+//!
+//! Peak memory usage is dominated by:
+//!
+//! - **Candidate buckets**: O(n × patterns) (where n = word-list size)
+//! - **Solutions**: O(#results × patterns)
+//! - **Dedup set**: O(s), where s = # of unique solutions
+//!
+//! Typical usage: 10-100 MB with a 100k word list.
 
 use crate::bindings::{Bindings, WORD_SENTINEL};
 use crate::errors::ParseError;
@@ -547,6 +640,72 @@ struct RecursiveJoinParameters<'a> {
 /// - This function mutates `results` and stops early once `results` contains
 ///   `num_results_requested` values.
 /// # Errors
+/// Recursively joins candidate word bindings to build complete solutions.
+///
+/// # Algorithm Overview
+///
+/// This is a **backtracking search** that explores the space of possible word assignments
+/// to patterns. It tries to efficiently prune branches using:
+/// 1. **Shared variable bucketing**: candidates are pre-grouped by their shared variable values
+/// 2. **Deterministic fast path**: patterns with all variables already bound are materialized directly
+/// 3. **Early termination**: stops when quota is met or time budget expires
+/// 4. **Deduplication**: uses a hash to avoid returning duplicate solutions
+///
+/// # Details
+///
+/// Given patterns like `AB;BA;BC`, the algorithm:
+/// 1. **Recurse on pattern index**: for pattern `i`, try each candidate binding from its bucket
+/// 2. **Extend environment**: add new variable bindings from the candidate to `env`
+/// 3. **Recurse deeper**: try to match pattern `i+1` with the extended environment
+/// 4. **Backtrack**: restore `env` by removing added variables before trying next candidate
+/// 5. **Base case**: when all patterns matched, check joint constraints and add to `results`
+///
+/// # Fast Path Optimization
+///
+/// For deterministic patterns (e.g., `"cat"` or `AB` when `A` and `B` are already bound):
+/// - materialize the exact word directly from `env`
+/// - check if it exists in word list
+/// - skip candidate enumeration entirely
+///
+/// This optimization is critical for performance with long pattern chains.
+///
+/// # Bucketing Example
+///
+/// For equation `AB;BA` with words `["cat", "dog"]`:
+/// - Pattern 1 `AB`: Candidates bucketed by empty key (no shared vars yet)
+///   - Bucket `[]`: `[{A="c", B="at"}, {A="ca", B="t"}, {A="d", B="og"}, {A="do", B="g"}]`
+/// - Pattern 2 `BA`: Candidates bucketed by `A` (shared variable from pattern 1)
+///   - We scan the word list again for matches to BA and bucket by value of A:
+///   - Bucket `{A="c"}`: would contain a matches from "atc" (BA = "at"+"c"), but it is not in the word list
+///   - Bucket `{A="ca"}`: would contain a matches from "tca", but it is not in the word list
+///   - Bucket `{A="d"}`: would contain a matches from "ogd", but it is not in the word list
+///   - Bucket `{A="do"}`: would contain a matches from "gdo", but it is not in the word list
+///
+/// When recursing with, for example, `A="c"` (from "cat" = "c"+"at"), we look up bucket `{A="c"}` for pattern 2.
+/// This bucket is empty (no words match BA with A="c"), so this branch produces no solutions.
+/// The key optimization: we only check the one bucket, not all 4 bindings from pattern 1.
+///
+/// # Time Complexity
+///
+/// - **Best case**: O(#patterns × b), where b = max bucket size (with good bucketing)
+/// - **Worst case**: O(#candidates ^ #patterns) (with poor bucketing) (i.e., exponential in #patterns)
+///
+/// Pattern ordering (choosing patterns that maximize shared variables) is critical
+/// to keeping bucket sizes small.
+///
+/// # Arguments
+///
+/// - `selected`: stack of bindings chosen so far (one per matched pattern)
+/// - `env`: current variable assignments (e.g., `{A: "cat", B: "dog"}`)
+/// - `results`: accumulator for complete solutions
+/// - `ctx`: context with word list, constraints, budget, quota
+/// - `seen`: deduplication set (hashes of solutions already found)
+/// - `rjp`: remaining patterns to match (slice shrinks with each recursion level)
+///
+/// # Returns
+///
+/// `Ok(())` when search completes (quota met or exhausted candidates).
+///
 /// Returns `Err(SolverError::Timeout)` if the time budget expires during the join.
 /// In that case, partial solutions already found remain in `results`.
 fn recursive_join(
