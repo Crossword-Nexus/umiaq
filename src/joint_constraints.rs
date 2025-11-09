@@ -327,30 +327,75 @@ impl fmt::Display for JointConstraints {
 
 /// Attempt to tighten per-variable length bounds using information from joint constraints.
 ///
-/// This is a simple propagation step that converts some equalities over groups of variables
-/// into stronger individual bounds.  Example:
-///   • Joint constraint: `|ABCDEFGHIJKLMN| = 14`
-///   • Default per-var bounds: each ≥ 1
-///   • Since sum(mins) = 14, every variable must be exactly length 1.
-/// This allows the solver to avoid exploring longer assignments unnecessarily.
+/// # Overview
 ///
-/// This function implements a circuit-breaker pattern for performance and robustness:
-/// before attempting expensive search, we check if the constraints are provably impossible to satisfy.
-/// For example, if sum(mins) > target or sum(maxes) < target, we immediately return an error.
+/// This propagation step converts joint constraints (equalities over groups of variables)
+/// into tighter individual variable bounds, potentially dramatically reducing the search space.
 ///
-/// Algorithm outline:
-///      - If sum(mins) > T: impossible (minimum required exceeds target)
-///      - If sum(maxes) < T: impossible (maximum possible falls short of target)
-///      - Collect current min/max bounds for the vars in the group.
-///      - If sum(mins) == T, then all vars are fixed at their minimum length.
-///      - Else if sum(maxes) == T (and all maxes are finite), then all vars are fixed at their maximum.
-///      - Else, perform generic interval tightening:
-///        • New min for Vi = max(current min, T - Σ other maxes)
-///        • New max for Vi = min(current max, T - Σ other mins)
-///        • If new min > new max, fail immediately with `ContradictoryBounds`
+/// # Example: Exact Propagation
 ///
-/// This propagation is *sound* (never removes feasible solutions) and often
-/// eliminates huge amounts of search, especially for long chains of unconstrained vars.
+/// ```text
+/// Joint constraint: |ABCDEFGHIJKLMN| = 14
+/// Default per-var bounds: each ≥ 1
+/// Sum of mins: 14 × 1 = 14 = target
+/// Conclusion: Every variable must be exactly length 1
+/// ```
+///
+/// This allows the solver to avoid exploring assignments where any variable is length > 1.
+///
+/// # Example: Interval Tightening
+///
+/// ```text
+/// joint constraint: |ABC| = 10
+/// initial bounds: A ∈ [1,∞), B ∈ [1,∞), C ∈ [1,∞)
+///
+/// for variable A:
+///   • min for |A| = max(1, 10 - ("∞" + "∞")) = 1  (i.e., no tightening)
+///   • max for |A| = min("∞", 10 - (1 + 1)) = 8
+///
+/// result: |A| ∈ [1,8], |B| ∈ [1,8], |C| ∈ [1,8]
+/// ```
+///
+/// This reduces the search space from "∞"³ to 8³ = 512 possibilities.
+///
+/// # Circuit-Breaker Pattern
+///
+/// Before attempting potentially expensive search, this function fails fast when constraints are
+/// provably unsatisfiable:
+///
+/// - if `sum(mins) > target` (minimum required exceeds target)
+/// - if `sum(maxes) < target` (maximum possible falls short of target)
+///
+/// Example contradiction:
+/// ```text
+/// |AB| = 5 with |A| ≥ 3, |B| ≥ 4
+/// sum of mins: 3 + 4 = 7 > 5
+/// ```
+///
+/// # Algorithm
+///
+/// 1. **Early fail**: if `sum(mins) > T` or `sum(maxes) < T`, return `ContradictoryBounds`
+/// 2. **Exact by mins**: if `sum(mins) == T`, set all vars to their min (exact)
+/// 3. **Exact by maxes**: if `sum(maxes) == T` (finite), set all vars to their max (exact)
+/// 4. **Generic tightening**: otherwise, for each variable Vi:
+///    - new min for Vi = max(current min, T - Σ other maxes)
+///    - new max for Vi = min(current max, T - Σ other mins)
+///    - if new min > new max, fail with `ContradictoryBounds`
+///
+/// # Soundness
+///
+/// This propagation is **sound** (never removes feasible solutions). It only tightens
+/// bounds based on provable arithmetic constraints.
+///
+/// # Performance Impact
+///
+/// This is a critical optimization that often eliminates large amounts of search space:
+/// - **Best case**: reduces "∞ⁿ" search space to finite bounds
+/// - **Common case**: tightens [1,∞) to [1,k] for small k
+/// - **Worst case**: no tightening (sum(mins) < T < sum(maxes))
+///
+/// Especially effective for long chains like `|ABCDEFGH| = 15` where default bounds
+/// would allow exponential combinations.
 ///
 /// # Errors
 ///

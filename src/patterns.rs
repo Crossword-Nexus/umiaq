@@ -475,14 +475,61 @@ impl EquationContext {
     // TODO is this the right way to order things?
     /// Reorders the list of patterns to improve solving efficiency.
     ///
-    /// Strategy:
-    /// - First pick: choose the pattern with the most variables (desc).
-    /// - Subsequent picks: choose the pattern with the fewest *new* variables (asc).
+    /// # Why Pattern Ordering Matters
     ///
-    /// Tie-breakers (applied in order):
-    /// 1. Higher `constraint_score` first
-    /// 2. Nondeterministic before deterministic
-    /// 3. Lower original index first
+    /// Pattern ordering potentially has **exponential impact** on solver performance. The recursive
+    /// join algorithm (see `recursive_join` in solver.rs) uses **shared variable bucketing** to
+    /// prune the search space. Good ordering can keep bucket sizes small; bad ordering can lead to
+    /// exponential blowup.
+    ///
+    /// # Ordering Strategy
+    ///
+    /// **First pattern:** Choose the pattern with the **most variables**
+    /// - rationale: establishes many variable bindings upfront
+    /// - example: for `A;AB;ABC`, choose `ABC` first
+    ///
+    /// **Subsequent patterns:** Choose the pattern with the **fewest new variables**
+    /// - rationale: maximizes shared variables (lookup keys) for bucketing efficiency
+    /// - example: after `ABC`, prefer `AB` (shares 2 vars) over `A` (shares 1 var)
+    ///
+    /// # Tiebreakers
+    ///
+    /// When patterns have equal variable counts:
+    /// 1. **higher `constraint_score`** first (patterns with more constraints hopefully prune more)
+    /// 2. **nondeterministic before deterministic** (nondeterministic patterns need candidate enumeration)
+    /// 3. **lower original index** first (for stable ordering)
+    ///
+    /// # Example 1: heuristic helps
+    ///
+    /// For equation `A;AB;ABC` with 1000 candidates per pattern:
+    ///
+    /// **Heuristic ordering** (`ABC;AB;A`):
+    /// - pattern 1 `ABC`: 1000 candidates (establishes A, B, C)
+    /// - pattern 2 `AB`: 1000 candidates bucketed by `A,B` → ~1 candidate per bucket
+    /// - pattern 3 `A`: 1000 candidates bucketed by `A` → ~1 candidate per bucket
+    /// - **total iterations: ~1000** (linear (in number of entry patterns))
+    ///
+    /// Note: For this particular equation, even orderings like `A;AB;ABC` still
+    /// achieve good bucketing because the patterns naturally share variables. The heuristic
+    /// becomes more critical when patterns have complex variable relationships.
+    ///
+    /// # Example: heuristic doesn't help
+    ///
+    /// For equation `A;D;G` (no shared variables) with 1000 candidates per pattern:
+    /// - pattern 1 `A`: 1000 candidates
+    /// - pattern 2 `D`: 1000 candidates (no bucketing--D is unrelated to A)
+    /// - pattern 3 `G`: 1000 candidates (no bucketing--G is unrelated to A, D)
+    /// - **total iterations: 1000³ = 1 billion** (exponential (in number of entry patterns))
+    ///
+    /// No ordering of `A;D;G` would help here because the patterns share no variables.
+    /// This is why the solver warns when solving a large number of patterns.
+    ///
+    /// # Performance Characteristics
+    ///
+    /// - **Best case**: O(n × b), where b = max bucket size (when patterns share many variables)
+    /// - **Worst case**: O(n^p), where p = number of patterns (when patterns share no variables)
+    ///
+    /// This heuristic maximizes shared variables to stay closer to the best case.
     fn get_ordered_patterns(&self) -> Vec<Pattern> {
         let mut patterns = self.patterns.clone();
         let mut ordered_patterns = Vec::with_capacity(patterns.len());
