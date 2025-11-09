@@ -487,6 +487,8 @@ impl EquationContext {
         let mut patterns = self.patterns.clone();
         let mut ordered_patterns = Vec::with_capacity(patterns.len());
 
+        debug!("Starting pattern ordering for {} patterns", patterns.len());
+
         while !patterns.is_empty() {
             // Vars already "seen" in previously chosen patterns
             let found_vars = ordered_patterns
@@ -527,13 +529,33 @@ impl EquationContext {
 
             let mut chosen = patterns.remove(ix);
 
-            if !ordered_patterns.is_empty() {
+            if ordered_patterns.is_empty() {
+                debug!(
+                    "Selected pattern #1 '{}': {} vars, {} constraint score",
+                    chosen.raw_string,
+                    chosen.variables.len(),
+                    chosen.constraint_score()
+                );
+            } else {
                 // Assign join keys only after the first pick
                 chosen.lookup_keys = chosen.variables.intersection(&found_vars).copied().collect();
+                debug!(
+                    "Selected pattern #{} '{}': {} shared vars, {} constraint score",
+                    ordered_patterns.len() + 1,
+                    chosen.raw_string,
+                    chosen.lookup_keys.len(),
+                    chosen.constraint_score()
+                );
             }
 
             ordered_patterns.push(chosen);
         }
+
+        debug!("Pattern ordering complete: {}",
+            ordered_patterns.iter()
+                .map(|p| p.raw_string.as_str())
+                .collect::<Vec<_>>()
+                .join(" → "));
 
         ordered_patterns
     }
