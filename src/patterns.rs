@@ -382,8 +382,8 @@ impl EquationContext {
                         // Not-equals length constraints are disallowed by grammar,
                         // but we defend here just in case.
                         ComparisonOperator::NE => {
-                            return Err(Box::new(ParseError::ParseFailure {
-                                s: "not-equals length constraints are not supported".to_string(),
+                            return Err(Box::new(ParseError::UnsupportedConstraintType {
+                                constraint_type: format!("Not-equals length constraint (|{}|!={})", var_char, bound),
                             }));
                         }
 

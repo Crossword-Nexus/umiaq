@@ -22,6 +22,7 @@
 //! - E016: `NomError` (Low-level nom parser error)
 //! - E017: `PrefilterFailed` (Regex prefilter failed during matching)
 //! - E018: `AnagramCheckFailed` (Anagram validation failed during matching)
+//! - E019: `UnsupportedConstraintType` (Constraint type not supported)
 //!
 //! # Examples
 //!
@@ -152,6 +153,9 @@ pub enum ParseError {
 
     #[error("Anagram validation failed: {0}")]
     AnagramCheckFailed(#[source] Box<ParseError>),
+
+    #[error("{constraint_type} is not supported")]
+    UnsupportedConstraintType { constraint_type: String },
 }
 
 impl From<ParseError> for io::Error {
@@ -207,6 +211,7 @@ impl ParseError {
             ParseError::NomError(_) => "E016",
             ParseError::PrefilterFailed(_) => "E017",
             ParseError::AnagramCheckFailed(_) => "E018",
+            ParseError::UnsupportedConstraintType { .. } => "E019",
         }
     }
 
@@ -232,6 +237,7 @@ impl ParseError {
             ParseError::NomError(_) => "Low-level parser error",
             ParseError::PrefilterFailed(_) => "Regex prefilter failed during matching",
             ParseError::AnagramCheckFailed(_) => "Anagram validation failed during matching",
+            ParseError::UnsupportedConstraintType { .. } => "Constraint type not supported",
         }
     }
 
@@ -257,6 +263,7 @@ impl ParseError {
             ParseError::NomError(_) => "An error occurred in the low-level nom parser. This typically indicates malformed input at the character level.",
             ParseError::PrefilterFailed(_) => "The regex prefilter used for fast matching failed to execute. This may indicate an internal regex engine error or resource exhaustion.",
             ParseError::AnagramCheckFailed(_) => "An error occurred while validating an anagram constraint during pattern matching. This typically wraps a lower-level parse error.",
+            ParseError::UnsupportedConstraintType { .. } => "The constraint type used in the equation is not supported by the solver.",
         }
     }
 
@@ -275,6 +282,7 @@ impl ParseError {
             ParseError::InvalidAnagramChars { .. } => Some("Anagrams must contain only lowercase letters a-z"),
             ParseError::PrefilterFailed(_) => Some("This is an internal error. The prefilter regex should have been validated during pattern parsing."),
             ParseError::AnagramCheckFailed(_) => Some("Ensure anagram patterns contain only lowercase letters a-z"),
+            ParseError::UnsupportedConstraintType { .. } => Some("Try using a different constraint type."),
             _ => None,
         }
     }
