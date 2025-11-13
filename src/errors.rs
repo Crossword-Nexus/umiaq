@@ -24,6 +24,8 @@
 //! - E018: `AnagramCheckFailed` (Anagram validation failed during matching)
 //! - E019: `UnsupportedConstraintType` (Constraint type not supported)
 //! - E020: `JointConstraintContradiction` (Joint constraint cannot be satisfied)
+//! - E021: `NegativeLengthConstraint` (Length constraint would be negative)
+//! - E022: `LengthConstraintExceedsMax` (Length constraint exceeds maximum representable value)
 //!
 //! # Examples
 //!
@@ -163,6 +165,12 @@ pub enum ParseError {
         constraint: String,
         reason: String,
     },
+
+    #[error("Length constraint {constraint} is impossible (would be negative)")]
+    NegativeLengthConstraint { constraint: String },
+
+    #[error("Length constraint {constraint} exceeds maximum representable value")]
+    LengthConstraintExceedsMax { constraint: String },
 }
 
 impl From<ParseError> for io::Error {
@@ -220,6 +228,8 @@ impl ParseError {
             ParseError::AnagramCheckFailed(_) => "E018",
             ParseError::UnsupportedConstraintType { .. } => "E019",
             ParseError::JointConstraintContradiction { .. } => "E020",
+            ParseError::NegativeLengthConstraint { .. } => "E021",
+            ParseError::LengthConstraintExceedsMax { .. } => "E022",
         }
     }
 
@@ -247,6 +257,8 @@ impl ParseError {
             ParseError::AnagramCheckFailed(_) => "Anagram validation failed during matching",
             ParseError::UnsupportedConstraintType { .. } => "Constraint type not supported",
             ParseError::JointConstraintContradiction { .. } => "Joint constraint cannot be satisfied",
+            ParseError::NegativeLengthConstraint { .. } => "Length constraint would be negative",
+            ParseError::LengthConstraintExceedsMax { .. } => "Length constraint exceeds maximum representable value",
         }
     }
 
@@ -274,6 +286,8 @@ impl ParseError {
             ParseError::AnagramCheckFailed(_) => "An error occurred while validating an anagram constraint during pattern matching. This typically wraps a lower-level parse error.",
             ParseError::UnsupportedConstraintType { .. } => "The constraint type used in the equation is not supported by the solver.",
             ParseError::JointConstraintContradiction { .. } => "A joint constraint on multiple variables cannot be satisfied perhaps due to the individual constraints on those variables. This can occur when the sum of minimum lengths exceeds the constraint target or the sum of maximum lengths is less than the constraint target.",
+            ParseError::NegativeLengthConstraint { .. } => "A length constraint like |A|<0 is impossible because lengths cannot be negative. This occurs when using the < operator with 0 as the bound, which would require the length to be negative.",
+            ParseError::LengthConstraintExceedsMax { .. } => "A length constraint exceeds the maximum representable value (usize::MAX). This occurs when using the > operator with usize::MAX as the bound, which would require adding 1 to the maximum representable value.",
         }
     }
 
@@ -294,6 +308,8 @@ impl ParseError {
             ParseError::AnagramCheckFailed(_) => Some("Ensure anagram patterns contain only lowercase letters a-z"),
             ParseError::UnsupportedConstraintType { .. } => Some("Try using a different constraint type."),
             ParseError::JointConstraintContradiction { .. } => Some("Check that individual variable constraints are compatible with the joint constraint. For example, if |A|=5 and |B|=3, then |AB|=3 is impossible."),
+            ParseError::NegativeLengthConstraint { .. } => Some("Remove the problematic < constraint."),
+            ParseError::LengthConstraintExceedsMax { .. } => Some("Remove the problematic > constraint."),
             _ => None,
         }
     }

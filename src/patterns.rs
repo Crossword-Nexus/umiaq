@@ -404,8 +404,8 @@ impl EquationContext {
                             if let Some(max) = bound.checked_sub(1) {
                                 vc.bounds.constrain_by(Bounds::of(1, max))?;
                             } else {
-                                return Err(Box::new(ParseError::InvalidInput {
-                                    str: (*form).to_string(),
+                                return Err(Box::new(ParseError::NegativeLengthConstraint {
+                                    constraint: (*form).to_string(),
                                 }));
                             }
                         }
@@ -416,8 +416,8 @@ impl EquationContext {
                             if let Some(min) = bound.checked_add(1) {
                                 vc.bounds.constrain_by(Bounds::of_unbounded(min))?;
                             } else {
-                                return Err(Box::new(ParseError::InvalidInput {
-                                    str: (*form).to_string(),
+                                return Err(Box::new(ParseError::LengthConstraintExceedsMax {
+                                    constraint: (*form).to_string(),
                                 }));
                             }
                         }
