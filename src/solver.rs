@@ -160,7 +160,6 @@ use crate::errors::ParseError;
 use crate::joint_constraints::JointConstraints;
 use crate::parser::{match_equation_all, ParsedForm};
 use crate::patterns::{Pattern, EquationContext};
-use crate::errors::ParseError::ParseFailure;
 use instant::Instant;
 use log::{debug, error, info, warn};
 use std::collections::hash_map::{DefaultHasher, Entry};
@@ -303,6 +302,13 @@ impl SolverError {
     }
 }
 
+impl From<SolverError> for std::io::Error {
+    fn from(se: SolverError) -> Self {
+        // String version is the least fragile (no Send/Sync bounds issues)
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, se.to_string())
+    }
+}
+
 /// Bucket key for indexing candidates by the subset of variables that must agree.
 /// - `None` means "no lookup constraints for this pattern" (Python's `words[i][None]`).
 /// - When present, we store a *sorted* `(var_char, var_val)` list so the key is deterministic
@@ -337,11 +343,19 @@ pub struct CandidateBuckets {
 ///
 /// # Errors
 ///
-/// Will return `Box<ParseError>` if the bound word cannot be found for one of the `Bindings`
-/// objects in `solution`.
-pub fn solution_to_string(solution: &[Bindings]) -> Result<String, Box<ParseError>> {
+/// Returns [`SolverError::MaterializationError`] if the bound word cannot be found for one of
+/// the `Bindings` objects in `solution`. This indicates an internal solver bug where a solution
+/// was accepted without proper word bindings.
+pub fn solution_to_string(solution: &[Bindings]) -> Result<String, SolverError> {
     let str = solution.iter()
-        .map(|b| b.get_word().ok_or_else(|| Box::new(ParseFailure { s : format!("cannot find solution in bindings {b}") })).map(|c| c.to_ascii_uppercase()))
+        .enumerate()
+        .map(|(i, b)| {
+            b.get_word()
+                .ok_or_else(|| SolverError::MaterializationError {
+                    context: format!("Solution missing word binding at index {i}: {b}")
+                })
+                .map(|c| c.to_ascii_uppercase())
+        })
         .collect::<Result<Vec<_>, _>>()?
         .join(" • ");
 
@@ -1240,7 +1254,7 @@ mod tests {
         let bindings_list = vec![b1, b2];
         let actual = solution_to_string(&bindings_list);
 
-        assert!(matches!(*actual.unwrap_err(), ParseFailure { s } if s == "cannot find solution in bindings [A→a]" ));
+        assert!(matches!(actual.unwrap_err(), SolverError::MaterializationError { context } if context == "Solution missing word binding at index 1: [A→a]"));
     }
 
     #[test]
