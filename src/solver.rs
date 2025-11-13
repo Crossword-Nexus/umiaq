@@ -169,11 +169,11 @@ use std::rc::Rc;
 
 /// helper macro for invariant checks: panic in debug, warn in release
 macro_rules! check_invariant {
-    ($cond:expr, $($arg:tt)*) => {
-        debug_assert!($cond, $($arg)*);
+    ($cond:expr, $fmt:literal $(, $arg:expr)*) => {
+        debug_assert!($cond, $fmt $(, $arg)*);
         #[cfg(not(debug_assertions))]
         if !($cond) {
-            warn!(concat!("Invariant violation: ", $($arg)*));
+            warn!(concat!("Invariant violation: ", $fmt) $(, $arg)*);
         }
     };
 }
