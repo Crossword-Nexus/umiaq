@@ -352,23 +352,24 @@ pub fn solution_to_string(solution: &[Bindings]) -> Result<String, Box<ParseErro
 ///
 /// Uses the whole word binding (`WORD_SENTINEL`) to compute the hash.
 ///
-/// # Panics
-/// Panics if any binding in the solution lacks a word binding. The solver ensures
-/// all solutions have word bindings set, so this panic indicates a programming error.
-fn solution_key(solution: &[Bindings]) -> u64 {
+/// # Errors
+/// Returns an error if any binding in the solution lacks a word binding.
+/// This indicates a solver bug where a solution was accepted without word bindings.
+fn solution_key(solution: &[Bindings]) -> Result<u64, SolverError> {
     let mut hasher = DefaultHasher::new();
 
-    for b in solution {
-        if let Some(w) = b.get_word() {
-            w.hash(&mut hasher);
-        } else {
-            panic!("solution_key: no '*' binding found in solution: {solution:?}");
-        }
+    for (i, b) in solution.iter().enumerate() {
+        let w = b.get_word().ok_or_else(|| {
+            SolverError::MaterializationError {
+                context: format!("Solution missing word binding at pattern index {i}: {solution:?}")
+            }
+        })?;
+        w.hash(&mut hasher);
         // Separator between patterns to avoid ambiguity like ["ab","c"] vs ["a","bc"]
         HASH_SPLIT.hash(&mut hasher);
     }
 
-    hasher.finish()
+    Ok(hasher.finish())
 }
 
 /// Simple helper to enforce a wall-clock time limit.
@@ -866,7 +867,7 @@ fn recursive_join_inner(
     } else {
         // Base case: if we've placed all patterns, `selected` is a full solution.
         if ctx.joint_constraints.all_strictly_satisfied_for_parts(selected)
-            && seen.insert(solution_key(selected)) {
+            && seen.insert(solution_key(selected)?) {
             debug!("Found solution #{}: {} patterns matched", results.len() + 1, selected.len());
             results.push(selected.clone());
         }
