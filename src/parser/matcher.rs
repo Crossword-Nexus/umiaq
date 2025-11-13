@@ -4,6 +4,7 @@ use crate::errors::ParseError;
 use crate::interner;
 use crate::joint_constraints::JointConstraints;
 use crate::umiaq_char::UmiaqChar;
+use log::error;
 
 use super::form::{FormPart, ParsedForm};
 
@@ -141,9 +142,7 @@ fn match_equation_internal(
     match parsed_form.prefilter.is_match(word) {
         Ok(false) => return Ok(()), // No match, return early
         Err(e) => {
-            // Log in debug builds and propagate error
-            #[cfg(debug_assertions)]
-            eprintln!("Prefilter regex error for word '{word}': {e}");
+            error!("Prefilter regex failed for word '{word}': {e}");
             return Err(Box::new(ParseError::PrefilterFailed(e)));
         }
         Ok(true) => { /* Continue matching */ }
@@ -330,8 +329,7 @@ impl HelperParams<'_> {
                         Ok(true) => self.recurse(&chars[len..], rest),
                         Ok(false) => Ok(false),
                         Err(e) => {
-                            #[cfg(debug_assertions)]
-                            eprintln!("Anagram check error: {e}");
+                            error!("Anagram check failed during matching: {e}");
                             Err(Box::new(ParseError::AnagramCheckFailed(e)))
                         }
                     }
