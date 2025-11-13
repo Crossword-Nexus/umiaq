@@ -328,6 +328,14 @@ impl From<SolverError> for std::io::Error {
 /// - The sort happens once when we construct the key, not on hash/compare.
 pub type LookupKey = Vec<(char, Rc<str>)>;
 
+/// Result of attempting to build a lookup key from a binding
+enum LookupKeyResult {
+    /// successfully built the lookup key (empty if no keys needed)
+    Complete(LookupKey),
+    /// a required key variable was not found in the binding
+    MissingKey,
+}
+
 /// Context for a `recursive_join` call
 struct JoinCtx<'a> {
     num_results_requested: usize,
@@ -483,18 +491,16 @@ fn lookup_key_from_env(
 
 /// Build the deterministic lookup key for a binding given the pattern's lookup vars.
 ///
-/// Returns a `LookupKey` (alias for `Vec<(char, Rc<str>)>`) sorted by `var_char`.
+/// Returns `LookupKeyResult::Complete` with a sorted key, or `LookupKeyResult::MissingKey`
+/// if a required variable is not bound.
 ///
-/// Conventions:
-/// - If `keys` is empty, returns an empty `LookupKey` (unkeyed bucket).
-/// - If any required key is missing in the binding, also returns an empty `LookupKey`;
-///   callers must check `keys.is_empty()` to distinguish this case.
-///   TODO: perhaps avoid pushing this responsibility on callers (via an enum return type?)
-/// - Otherwise, returns the full normalized key.
+/// # Return values
+/// - `Complete(key)` - Successfully built the key (may be empty if `keys` is empty)
+/// - `MissingKey` - A required key variable was not found in the binding
 fn lookup_key_for_binding(
     binding: &Bindings,
     keys: &HashSet<char>,
-) -> LookupKey {
+) -> LookupKeyResult {
     check_invariant!(
         keys.iter().all(char::is_ascii_uppercase),
         "All key variables must be one of uppercase A-Z"
@@ -507,7 +513,7 @@ fn lookup_key_for_binding(
                 check_invariant!(!var_val.is_empty(), "Variable bindings must be non-empty strings");
                 pairs.push((var_char, Rc::clone(var_val)));
             }
-            None => return Vec::new(), // required key missing
+            None => return LookupKeyResult::MissingKey,
         }
     }
 
@@ -516,7 +522,7 @@ fn lookup_key_for_binding(
         pairs.windows(2).all(|w| w[0].0 < w[1].0),
         "Sorted pairs must be strictly increasing"
     );
-    pairs
+    LookupKeyResult::Complete(pairs)
 }
 
 /// Push a binding into the appropriate bucket and bump the count.
@@ -621,14 +627,14 @@ fn scan_batch(
             for binding in matches {
                 timed_stop!(budget, i_word);
 
-                let key = lookup_key_for_binding(&binding, &p.lookup_keys);
-
-                // If a required key is missing, skip
-                if key.is_empty() && !p.lookup_keys.is_empty() {
-                    continue;
+                match lookup_key_for_binding(&binding, &p.lookup_keys) {
+                    LookupKeyResult::Complete(key) => {
+                        push_binding(words, i, key, binding);
+                    }
+                    LookupKeyResult::MissingKey => {
+                        // required key variable not found--skip this binding
+                    }
                 }
-
-                push_binding(words, i, key, binding);
             }
         }
 
