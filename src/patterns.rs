@@ -1257,4 +1257,97 @@ mod tests {
         }
     }
 
+    /// tests that validate compile-time regex patterns used in parsing
+    /// (to help ensure that LazyLock regex initialization won't panic at runtime)
+    mod regex_validation {
+        use super::*;
+
+        #[test]
+        fn test_len_cmp_re_compiles() {
+            // force initialization of LEN_CMP_RE by accessing it
+            // if the regex pattern is invalid, this will panic with a clear message
+            let _ = &*LEN_CMP_RE;
+
+            assert!(LEN_CMP_RE.is_match("|A|=5").unwrap());
+            assert!(LEN_CMP_RE.is_match("|B|>3").unwrap());
+            assert!(LEN_CMP_RE.is_match("|C|<=10").unwrap());
+            assert!(LEN_CMP_RE.is_match("|Z|>=7").unwrap());
+            assert!(LEN_CMP_RE.is_match("|A|<4").unwrap());
+
+            assert!(!LEN_CMP_RE.is_match("|AB|=5").unwrap()); // multiple vars
+            assert!(!LEN_CMP_RE.is_match("|a|=5").unwrap());  // lowercase
+            assert!(!LEN_CMP_RE.is_match("A=5").unwrap());    // missing pipes
+        }
+
+        #[test]
+        fn test_neq_re_compiles() {
+            // force initialization of NEQ_RE by accessing it
+            // if the regex pattern is invalid, this will panic with a clear message
+            let _ = &*NEQ_RE;
+
+            assert!(NEQ_RE.is_match("!=A").unwrap());
+            assert!(NEQ_RE.is_match("!=AB").unwrap());
+            assert!(NEQ_RE.is_match("!=ABC").unwrap());
+            assert!(NEQ_RE.is_match("!=ABCDEFGHIJKLMNOPQRSTUVWXYZ").unwrap());
+
+            assert!(!NEQ_RE.is_match("!=").unwrap());        // no variables
+            assert!(!NEQ_RE.is_match("!=a").unwrap());       // lowercase
+            assert!(!NEQ_RE.is_match("!=A1").unwrap());      // numbers
+            assert!(!NEQ_RE.is_match("!AB").unwrap());       // missing =
+        }
+
+        #[test]
+        fn test_len_cmp_re_captures() {
+            let cap = LEN_CMP_RE.captures("|A|=5").unwrap().unwrap();
+            assert_eq!(&cap[1], "A");
+            assert_eq!(&cap[2], "=");
+            assert_eq!(&cap[3], "5");
+
+            let cap = LEN_CMP_RE.captures("|Z|>=42").unwrap().unwrap();
+            assert_eq!(&cap[1], "Z");
+            assert_eq!(&cap[2], ">=");
+            assert_eq!(&cap[3], "42");
+        }
+
+        #[test]
+        fn test_neq_re_captures() {
+            let cap = NEQ_RE.captures("!=ABC").unwrap().unwrap();
+            assert_eq!(&cap[1], "ABC");
+
+            let cap = NEQ_RE.captures("!=XY").unwrap().unwrap();
+            assert_eq!(&cap[1], "XY");
+        }
+
+        #[test]
+        fn test_len_cmp_re_pattern_const() {
+            assert_eq!(LEN_CMP_PATTERN, r"^\|([A-Z])\|\s*(<=|>=|=|<|>)\s*(\d+)$");
+
+            // ensure pattern hasn't been accidentally modified
+            // test will fail if someone changes the pattern without updating tests
+            let test_regex = Regex::new(LEN_CMP_PATTERN);
+            assert!(test_regex.is_ok(), "LEN_CMP_PATTERN must be a valid regex");
+        }
+
+        #[test]
+        fn test_neq_re_pattern_const() {
+            assert_eq!(NEQ_PATTERN, r"^!=([A-Z]+)$");
+
+            // ensure pattern hasn't been accidentally modified
+            let test_regex = Regex::new(NEQ_PATTERN);
+            assert!(test_regex.is_ok(), "NEQ_PATTERN must be a valid regex");
+        }
+
+        #[test]
+        fn test_regex_initialization_idempotent() {
+            // access both regexes multiple times to ensure LazyLock is idempotent
+            let r1 = &*LEN_CMP_RE;
+            let r2 = &*LEN_CMP_RE;
+            assert!(std::ptr::eq(r1, r2), "LazyLock should return same instance");
+
+            let r3 = &*NEQ_RE;
+            let r4 = &*NEQ_RE;
+            assert!(std::ptr::eq(r3, r4), "LazyLock should return same instance");
+        }
+    }
+
 }
