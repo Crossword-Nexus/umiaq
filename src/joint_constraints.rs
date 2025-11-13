@@ -434,16 +434,28 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
         // Fail fast: if constraints are provably unsatisfiable, fail immediately
         if sum_min > jc.target {
             // sum of minimums exceeds target (impossible to satisfy)
-            return Err(Box::new(ParseError::ContradictoryBounds {
-                min: sum_min,
-                max: jc.target,
+            let bounds_str: Vec<String> = mins.iter()
+                .map(|(v, min)| format!("|{v}|>={min}"))
+                .collect();
+            return Err(Box::new(ParseError::JointConstraintContradiction {
+                constraint: format!("|{}|={}", jc.vars.iter().collect::<String>(), jc.target),
+                reason: format!(
+                    "sum of minimum lengths ({}) exceeds target ({}). Individual constraints: {}",
+                    sum_min, jc.target, bounds_str.join(", ")
+                ),
             }));
         }
         if let Some(sum_max) = sum_max_opt && sum_max < jc.target {
             // sum of maximums is less than target (impossible to satisfy)
-            return Err(Box::new(ParseError::ContradictoryBounds {
-                min: jc.target,
-                max: sum_max,
+            let bounds_str: Vec<String> = maxes.iter()
+                .map(|(v, max)| format!("|{v}|<={max}"))
+                .collect();
+            return Err(Box::new(ParseError::JointConstraintContradiction {
+                constraint: format!("|{}|={}", jc.vars.iter().collect::<String>(), jc.target),
+                reason: format!(
+                    "sum of maximum lengths ({}) is less than target ({}). Individual constraints: {}",
+                    sum_max, jc.target, bounds_str.join(", ")
+                ),
             }));
         }
 
@@ -504,9 +516,12 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
 
                 // fail fast: check for contradictory bounds
                 if new_min > new_max {
-                    return Err(Box::new(ParseError::ContradictoryBounds {
-                        min: new_min,
-                        max: new_max,
+                    return Err(Box::new(ParseError::JointConstraintContradiction {
+                        constraint: format!("|{}|={}", jc.vars.iter().collect::<String>(), jc.target),
+                        reason: format!(
+                            "variable '{var_char}' would need |{var_char}|>={new_min} and |{var_char}|<={new_max}, which is impossible. \
+                             This occurs when the joint constraint forces contradictory bounds on a variable."
+                        ),
                     }));
                 }
 
@@ -779,10 +794,11 @@ mod tests {
         assert!(result.is_err(), "Should fail on unsatisfiable constraints: sum_min=6 > target=5");
 
         match result.unwrap_err().as_ref() {
-            ParseError::ContradictoryBounds { min, max } => {
-                assert!(*min > *max, "Contradictory bounds: min={} should be > max={}", min, max);
+            ParseError::JointConstraintContradiction { constraint, reason } => {
+                assert_eq!(constraint, "|AB|=5");
+                assert_eq!(reason, "sum of minimum lengths (6) exceeds target (5). Individual constraints: |A|>=3, |B|>=3");
             }
-            other => panic!("Expected ContradictoryBounds, got: {:?}", other),
+            other => panic!("Expected JointConstraintContradiction, got: {:?}", other),
         }
     }
 
@@ -804,6 +820,14 @@ mod tests {
 
         let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);
         assert!(result.is_err(), "Should fail when sum of maxes < target");
+
+        match result.unwrap_err().as_ref() {
+            ParseError::JointConstraintContradiction { constraint, reason } => {
+                assert_eq!(constraint, "|AB|=6");
+                assert_eq!(reason, "sum of maximum lengths (4) is less than target (6). Individual constraints: |A|<=2, |B|<=2");
+            }
+            other => panic!("Expected JointConstraintContradiction, got: {:?}", other),
+        }
     }
 
     mod edge_cases {

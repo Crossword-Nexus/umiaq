@@ -1914,9 +1914,10 @@ mod tests {
 
             assert!(result.is_err());
             if let Err(SolverError::ParseFailure(pe)) = result {
-                assert!(matches!(*pe, ParseError::ContradictoryBounds { min: 11, max: 5 }));
+                assert!(matches!(*pe, ParseError::JointConstraintContradiction { constraint, reason }
+                    if constraint == "|AB|=5" && reason == "sum of minimum lengths (11) exceeds target (5). Individual constraints: |A|>=10, |B|>=1"));
             } else {
-                panic!("Expected ParseFailure with ContradictoryBounds, got {:?}", result);
+                panic!("Expected ParseFailure with JointConstraintContradiction, got {:?}", result);
             }
         }
 

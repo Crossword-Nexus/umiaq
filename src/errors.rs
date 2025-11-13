@@ -23,6 +23,7 @@
 //! - E017: `PrefilterFailed` (Regex prefilter failed during matching)
 //! - E018: `AnagramCheckFailed` (Anagram validation failed during matching)
 //! - E019: `UnsupportedConstraintType` (Constraint type not supported)
+//! - E020: `JointConstraintContradiction` (Joint constraint cannot be satisfied)
 //!
 //! # Examples
 //!
@@ -156,6 +157,12 @@ pub enum ParseError {
 
     #[error("{constraint_type} is not supported")]
     UnsupportedConstraintType { constraint_type: String },
+
+    #[error("Joint constraint {constraint} cannot be satisfied: {reason}")]
+    JointConstraintContradiction {
+        constraint: String,
+        reason: String,
+    },
 }
 
 impl From<ParseError> for io::Error {
@@ -212,6 +219,7 @@ impl ParseError {
             ParseError::PrefilterFailed(_) => "E017",
             ParseError::AnagramCheckFailed(_) => "E018",
             ParseError::UnsupportedConstraintType { .. } => "E019",
+            ParseError::JointConstraintContradiction { .. } => "E020",
         }
     }
 
@@ -238,6 +246,7 @@ impl ParseError {
             ParseError::PrefilterFailed(_) => "Regex prefilter failed during matching",
             ParseError::AnagramCheckFailed(_) => "Anagram validation failed during matching",
             ParseError::UnsupportedConstraintType { .. } => "Constraint type not supported",
+            ParseError::JointConstraintContradiction { .. } => "Joint constraint cannot be satisfied",
         }
     }
 
@@ -264,6 +273,7 @@ impl ParseError {
             ParseError::PrefilterFailed(_) => "The regex prefilter used for fast matching failed to execute. This may indicate an internal regex engine error or resource exhaustion.",
             ParseError::AnagramCheckFailed(_) => "An error occurred while validating an anagram constraint during pattern matching. This typically wraps a lower-level parse error.",
             ParseError::UnsupportedConstraintType { .. } => "The constraint type used in the equation is not supported by the solver.",
+            ParseError::JointConstraintContradiction { .. } => "A joint constraint on multiple variables cannot be satisfied perhaps due to the individual constraints on those variables. This can occur when the sum of minimum lengths exceeds the constraint target or the sum of maximum lengths is less than the constraint target.",
         }
     }
 
@@ -283,6 +293,7 @@ impl ParseError {
             ParseError::PrefilterFailed(_) => Some("This is an internal error. The prefilter regex should have been validated during pattern parsing."),
             ParseError::AnagramCheckFailed(_) => Some("Ensure anagram patterns contain only lowercase letters a-z"),
             ParseError::UnsupportedConstraintType { .. } => Some("Try using a different constraint type."),
+            ParseError::JointConstraintContradiction { .. } => Some("Check that individual variable constraints are compatible with the joint constraint. For example, if |A|=5 and |B|=3, then |AB|=3 is impossible."),
             _ => None,
         }
     }
