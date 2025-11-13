@@ -383,7 +383,7 @@ impl EquationContext {
                         // but we defend here just in case.
                         ComparisonOperator::NE => {
                             return Err(Box::new(ParseError::UnsupportedConstraintType {
-                                constraint_type: format!("Not-equals length constraint (|{}|!={})", var_char, bound),
+                                constraint_type: format!("Not-equals length constraint (|{var_char}|!={bound})"),
                             }));
                         }
 
