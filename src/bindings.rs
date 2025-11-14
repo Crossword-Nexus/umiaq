@@ -28,25 +28,19 @@ impl Default for Bindings {
 /// Convert a variable character to an array index
 /// 'A' -> 0, 'B' -> 1, ..., 'Z' -> 25, '*' -> 26
 ///
-/// # Safety
-/// This function assumes the caller has validated that `c` is 'A'..='Z' or '*'.
+/// # Panics
+/// This function panics if `c` is not in 'A'..='Z' or '*'.
 /// Invalid characters indicate a bug in the parser/solver logic.
 ///
-/// In debug builds, this will panic on invalid input to catch bugs early.
-/// In release builds, invalid characters are logged and mapped to index 0 as a safe fallback.
+/// The parser validates all variable characters before creating bindings,
+/// so invalid input here represents a programming error, not invalid user input.
 #[inline]
 fn char_to_index(c: char) -> usize {
-    debug_assert!(
-        matches!(c, 'A'..='Z' | '*'),
-        "Invalid variable character: {c} (parser should have validated this)"
-    );
     match c {
         'A'..='Z' => (c as u8 - b'A') as usize,
         '*' => WORD_SENTINEL_INDEX,
-        // in release builds, handle invalid input gracefully to prevent crashes
         _ => {
-            eprintln!("WARNING: Invalid variable character '{c}' in bindings (defaulting to index 0)");
-            0 // TODO does this make sense?
+            panic!("Invalid variable character: '{c}' (parser should have validated this)")
         }
     }
 }
@@ -259,17 +253,8 @@ mod tests {
     }
 
     #[test]
-    #[cfg(debug_assertions)]
     #[should_panic(expected = "Invalid variable character")]
-    fn test_char_to_index_invalid_debug() {
-        char_to_index('a'); // lowercase should cause panic in debug builds
-    }
-
-    #[test]
-    #[cfg(not(debug_assertions))]
-    fn test_char_to_index_invalid_release() {
-        // in release builds, invalid chars fall back to index 0 (variable 'A')
-        let idx = char_to_index('a');
-        assert_eq!(idx, 0, "Invalid char should fall back to index 0");
+    fn test_char_to_index_invalid() {
+        char_to_index('a'); // lowercase should cause panic
     }
 }
