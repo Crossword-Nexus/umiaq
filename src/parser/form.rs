@@ -41,16 +41,6 @@ impl FormPart {
         matches!(self, FormPart::Var(_) | FormPart::RevVar(_) | FormPart::Lit(_))
     }
 
-    fn get_tag_string(&self) -> Option<&str> {
-        match self {
-            FormPart::Dot => Some("."),
-            FormPart::Star => Some("*"),
-            FormPart::Vowel => Some("@"),
-            FormPart::Consonant => Some("#"),
-            _ => None // Only the single-char tokens have tags
-        }
-    }
-
     pub(crate) fn anagram_of(s: &str) -> Result<FormPart, Box<ParseError>> {
         Ok(FormPart::Anagram(s.parse::<Alphagram>()?))
     }
@@ -214,22 +204,20 @@ fn literal(input: &'_ str) -> PResult<'_, FormPart> {
     })
     .parse(input)
 }
-fn dot(input: &'_ str) -> PResult<'_, FormPart> { parser_one_char_inner(input, &FormPart::Dot) }
-fn star(input: &'_ str) -> PResult<'_, FormPart> { parser_one_char_inner(input, &FormPart::Star) }
-fn vowel(input: &'_ str) -> PResult<'_, FormPart> { parser_one_char_inner(input, &FormPart::Vowel) }
-fn consonant(input: &'_ str) -> PResult<'_, FormPart> { parser_one_char_inner(input, &FormPart::Consonant) }
+fn dot(input: &'_ str) -> PResult<'_, FormPart> { parser_one_char_inner(input, ".", FormPart::Dot) }
+fn star(input: &'_ str) -> PResult<'_, FormPart> { parser_one_char_inner(input, "*", FormPart::Star) }
+fn vowel(input: &'_ str) -> PResult<'_, FormPart> { parser_one_char_inner(input, "@", FormPart::Vowel) }
+fn consonant(input: &'_ str) -> PResult<'_, FormPart> { parser_one_char_inner(input, "#", FormPart::Consonant) }
 
 // single-char tokens share the same shape
 fn parser_one_char_inner<'a>(
     input: &'a str,
-    form_part: &FormPart
+    tag_str: &'static str,
+    form_part: FormPart
 ) -> PResult<'a, FormPart> {
-    // safe while only called for variants which have tag strings (i.e., Dot/Star/Vowel/Consonant)
-    let tag_str = form_part.get_tag_string()  // TODO? make a FormPart subclass for those with tag strings (then get_tag_string wouldn't need to return an Option)
-        .expect("parser_one_char_inner called with FormPart that has no tag");
     map(
         tag(tag_str),
-        |_| form_part.clone()
+        move |_| form_part.clone()
     ).parse(input)
 }
 
