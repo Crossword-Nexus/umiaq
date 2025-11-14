@@ -1,15 +1,54 @@
 use crate::bindings::Bindings;
-use crate::errors::ParseError;
-use crate::solver::solve_equation;
+use crate::solver::{solve_equation, SolverError};
 use crate::word_list::WordList;
 use crate::log::init_logger;
 use wasm_bindgen::prelude::*;
 
 use serde_wasm_bindgen::to_value;
 
-/// Implement `Box<ParseError>` for `JsValue`s
-impl From<Box<ParseError>> for JsValue {
-    fn from(e: Box<ParseError>) -> JsValue { JsValue::from_str(format!("[parse error] {}", *e).as_str()) }
+/// Structured error information for JavaScript consumers
+#[derive(serde::Serialize)]
+struct WasmError {
+    /// Error code (e.g., "E001", "S002")
+    code: String,
+    /// Display message
+    message: String,
+    /// Short description of error type
+    description: String,
+    /// Detailed explanation
+    details: String,
+    /// Optional helpful suggestion
+    #[serde(skip_serializing_if = "Option::is_none")]
+    help: Option<String>,
+}
+
+impl From<SolverError> for WasmError {
+    fn from(e: SolverError) -> Self {
+        // For ParseFailure, extract the nested ParseError details
+        match &e {
+            SolverError::ParseFailure(pe) => WasmError {
+                code: pe.code().to_string(),
+                message: pe.to_string(),
+                description: pe.description().to_string(),
+                details: pe.details().to_string(),
+                help: pe.help().map(|s| s.to_string()),
+            },
+            _ => WasmError {
+                code: e.code().to_string(),
+                message: e.to_string(),
+                description: e.description().to_string(),
+                details: e.details().to_string(),
+                help: e.help().map(|s| s.to_string()),
+            },
+        }
+    }
+}
+
+impl From<WasmError> for JsValue {
+    fn from(e: WasmError) -> Self {
+        serde_wasm_bindgen::to_value(&e)
+            .unwrap_or_else(|_| JsValue::from_str(&format!("Error serialization failed: {}", e.message)))
+    }
 }
 
 #[wasm_bindgen(start)]
@@ -45,12 +84,21 @@ pub fn solve_equation_wasm(
 ) -> Result<JsValue, JsValue> {
     // word_list: string[] -> Vec<String>
     let words: Vec<String> = serde_wasm_bindgen::from_value(word_list)
-        .map_err(|e| JsValue::from_str(&format!("word_list must be string[]: {e}")))?;
+        .map_err(|e| {
+            // Create a structured error for deserialization failures
+            WasmError {
+                code: "WASM001".to_string(),
+                message: format!("word_list must be string[]: {e}"),
+                description: "Invalid word list format".to_string(),
+                details: "The word_list parameter must be a JavaScript array of strings.".to_string(),
+                help: Some("Ensure you're passing a valid string array, e.g., ['cat', 'dog', 'fish']".to_string()),
+            }
+        })?;
     // Borrow as &[&str] for the solver
     let refs: Vec<&str> = words.iter().map(|s| s.as_str()).collect();
 
     let result = solve_equation(input, &refs, num_results_requested)
-        .map_err(|e| JsValue::from_str(&format!("solver error: {e}")))?;
+        .map_err(|e| WasmError::from(e))?;
 
     let status = match result.status {
         crate::solver::SolveStatus::FoundEnough => "found_enough".to_string(),
@@ -69,7 +117,15 @@ pub fn solve_equation_wasm(
     };
 
     serde_wasm_bindgen::to_value(&wasm_result)
-        .map_err(|e| JsValue::from_str(&format!("serialization failed: {e}")))
+        .map_err(|e| {
+            WasmError {
+                code: "WASM002".to_string(),
+                message: format!("serialization failed: {e}"),
+                description: "Failed to serialize result".to_string(),
+                details: "The solver result could not be converted to JavaScript format.".to_string(),
+                help: Some("This is an internal error. Please report this issue.".to_string()),
+            }.into()
+        })
 }
 
 /// Parse a newline-separated word list string into a `WordList`.
@@ -85,7 +141,15 @@ pub fn solve_equation_wasm(
 pub fn parse_word_list(text: &str, min_score: i32) -> Result<JsValue, JsValue> {
     let word_list = WordList::parse_from_str(text, min_score);
     to_value(&word_list.entries)
-        .map_err(|e| JsValue::from_str(&format!("serialization failed: {e}")))
+        .map_err(|e| {
+            WasmError {
+                code: "WASM003".to_string(),
+                message: format!("serialization failed: {e}"),
+                description: "Failed to serialize word list".to_string(),
+                details: "The word list could not be converted to JavaScript format.".to_string(),
+                help: Some("This is an internal error. Please report this issue.".to_string()),
+            }.into()
+        })
 }
 
 /// Generate a debug report for troubleshooting.
@@ -112,38 +176,38 @@ pub fn get_debug_info(
     use std::fmt::Write;
     let mut report = String::new();
 
-    // NB: .unwrap() calls below are safe because writing to a String never fails
-    // (String's write implementation is infallible and only returns Err for type compatibility)
-    writeln!(&mut report, "=== UMIAQ DEBUG REPORT ===").unwrap();
-    writeln!(&mut report, "Version: {}", env!("CARGO_PKG_VERSION")).unwrap();
-    writeln!(&mut report, "Generated: {}", js_sys::Date::new_0().to_iso_string().as_string().unwrap_or_else(|| "unknown".to_string())).unwrap();
-    writeln!(&mut report).unwrap();
+    // NB: writing to a String never fails (infallible operation)
+    // we use `let _ =` to explicitly ignore the Result without panicking
+    let _ = writeln!(&mut report, "=== UMIAQ DEBUG REPORT ===");
+    let _ = writeln!(&mut report, "Version: {}", env!("CARGO_PKG_VERSION"));
+    let _ = writeln!(&mut report, "Generated: {}", js_sys::Date::new_0().to_iso_string().as_string().unwrap_or_else(|| "unknown".to_string()));
+    let _ = writeln!(&mut report);
 
-    writeln!(&mut report, "## Error").unwrap();
-    writeln!(&mut report, "{}", error_message).unwrap();
-    writeln!(&mut report).unwrap();
+    let _ = writeln!(&mut report, "## Error");
+    let _ = writeln!(&mut report, "{}", error_message);
+    let _ = writeln!(&mut report);
 
-    writeln!(&mut report, "## Input").unwrap();
-    writeln!(&mut report, "Pattern: {}", input_pattern).unwrap();
-    writeln!(&mut report, "Word List Size: {}", word_list_size).unwrap();
-    writeln!(&mut report, "Results Requested: {}", num_results_requested).unwrap();
-    writeln!(&mut report).unwrap();
+    let _ = writeln!(&mut report, "## Input");
+    let _ = writeln!(&mut report, "Pattern: {}", input_pattern);
+    let _ = writeln!(&mut report, "Word List Size: {}", word_list_size);
+    let _ = writeln!(&mut report, "Results Requested: {}", num_results_requested);
+    let _ = writeln!(&mut report);
 
-    writeln!(&mut report, "## Environment").unwrap();
+    let _ = writeln!(&mut report, "## Environment");
     if let Some(window) = web_sys::window() {
         if let Ok(user_agent) = window.navigator().user_agent() {
-            writeln!(&mut report, "User Agent: {}", user_agent).unwrap();
+            let _ = writeln!(&mut report, "User Agent: {}", user_agent);
         }
-        writeln!(&mut report, "Location: {}", window.location().href().unwrap_or_else(|_| "unknown".to_string())).unwrap();
+        let _ = writeln!(&mut report, "Location: {}", window.location().href().unwrap_or_else(|_| "unknown".to_string()));
     }
-    writeln!(&mut report).unwrap();
+    let _ = writeln!(&mut report);
 
-    writeln!(&mut report, "## Instructions").unwrap();
-    writeln!(&mut report, "Please copy this entire report and paste it when reporting the issue.").unwrap();
-    writeln!(&mut report, "GitHub Issues: https://github.com/Crossword-Nexus/umiaq-rust/issues").unwrap();
-    writeln!(&mut report).unwrap();
+    let _ = writeln!(&mut report, "## Instructions");
+    let _ = writeln!(&mut report, "Please copy this entire report and paste it when reporting the issue.");
+    let _ = writeln!(&mut report, "GitHub Issues: https://github.com/Crossword-Nexus/umiaq-rust/issues");
+    let _ = writeln!(&mut report);
 
-    writeln!(&mut report, "=== END DEBUG REPORT ===").unwrap();
+    let _ = writeln!(&mut report, "=== END DEBUG REPORT ===");
 
     report
 }

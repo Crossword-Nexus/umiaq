@@ -1,5 +1,5 @@
+#[cfg(not(target_arch = "wasm32"))]
 use log::LevelFilter;
-
 #[cfg(not(target_arch = "wasm32"))]
 use env_logger;
 #[cfg(target_arch = "wasm32")]
@@ -10,13 +10,21 @@ use console_log;
 /// # Behavior
 /// - **Native (CLI):** respects `debug_enabled` or `RUST_LOG`.
 /// - **WASM:** always logs at `Debug` level (so all messages appear in the console).
-pub fn init_logger(debug_enabled: bool) {
+pub fn init_logger(#[cfg_attr(target_arch = "wasm32", allow(unused_variables))] debug_enabled: bool) {
     #[cfg(target_arch = "wasm32")]
     {
         // Always log everything in the browser for better visibility.
-        console_log::init_with_level(log::Level::Debug)
-            .expect("failed to initialize console_log");
-        log::info!("WASM logger initialized (always DEBUG level)");
+        match console_log::init_with_level(log::Level::Debug) {
+            Ok(_) => {
+                log::info!("WASM logger initialized (always DEBUG level)");
+            }
+            Err(e) => {
+                // If console_log fails, try to log error via web_sys and continue.
+                // This provides graceful degradation rather than crashing the module.
+                let msg = format!("Failed to initialize console_log: {}. Logging will be unavailable.", e);
+                web_sys::console::error_1(&msg.into());
+            }
+        }
     }
 
     #[cfg(not(target_arch = "wasm32"))]

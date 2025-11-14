@@ -24,18 +24,20 @@ use crate::errors::ParseError;
 ///   too many colons, or an unparsable length range when one was expected).
 pub(crate) fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint), Box<ParseError>> {
 
-    // ensure there's only one equals sign
-    let eq_count = form.chars().filter(|&c| c == '=').count();
-    if eq_count != 1 {
+    // check that `form` has at least 1 '='
+    let (var_raw, rhs_raw) = form.split_once('=').ok_or_else(|| {
+        Box::new(ParseError::InvalidComplexConstraint {
+            str: "expected 1 equals sign (not 0)".to_string(),
+        })
+    })?;
+
+    // check that `form` had at most 1 '='
+    if rhs_raw.contains('=') {
+        let eq_count = form.chars().filter(|&c| c == '=').count();
         return Err(Box::new(ParseError::InvalidComplexConstraint {
             str: format!("expected 1 equals sign (not {eq_count})"),
         }));
     }
-
-    // safe to unwrap b/c eq_count == 1 is checked above
-    let (var_raw, rhs_raw) = form
-        .split_once('=')
-        .expect("split_once should succeed after validating eq_count == 1");
 
     // Find the variable (ensuring there is only one)
     let mut chars = var_raw.chars();
