@@ -177,7 +177,7 @@ fn main() -> std::io::Result<()> {
         // Optionally print a few solutions from the *last* run (outside timing).
         if cli.print_limit > 0 && !last_solutions.is_empty() {
             for sol in last_solutions.iter().take(cli.print_limit) {
-                let display = solver::solution_to_string(sol).map_err(|pe| *pe)?;
+                let display = solver::solution_to_string(sol)?;
                 println!("{display}");
             }
         }

@@ -112,6 +112,8 @@ pub fn get_debug_info(
     use std::fmt::Write;
     let mut report = String::new();
 
+    // NB: .unwrap() calls below are safe because writing to a String never fails
+    // (String's write implementation is infallible and only returns Err for type compatibility)
     writeln!(&mut report, "=== UMIAQ DEBUG REPORT ===").unwrap();
     writeln!(&mut report, "Version: {}", env!("CARGO_PKG_VERSION")).unwrap();
     writeln!(&mut report, "Generated: {}", js_sys::Date::new_0().to_iso_string().as_string().unwrap_or_else(|| "unknown".to_string())).unwrap();

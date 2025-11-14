@@ -160,13 +160,23 @@ use crate::errors::ParseError;
 use crate::joint_constraints::JointConstraints;
 use crate::parser::{match_equation_all, ParsedForm};
 use crate::patterns::{Pattern, EquationContext};
-use crate::errors::ParseError::ParseFailure;
 use instant::Instant;
 use log::{debug, error, info, warn};
 use std::collections::hash_map::{DefaultHasher, Entry};
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
+
+/// helper macro for invariant checks: panic in debug, warn in release
+macro_rules! check_invariant {
+    ($cond:expr, $fmt:literal $(, $arg:expr)*) => {
+        debug_assert!($cond, $fmt $(, $arg)*);
+        #[cfg(not(debug_assertions))]
+        if !($cond) {
+            warn!(concat!("Invariant violation: ", $fmt) $(, $arg)*);
+        }
+    };
+}
 use std::time::Duration;
 
 // The amount of time (in seconds) we allow the query to run
@@ -303,6 +313,13 @@ impl SolverError {
     }
 }
 
+impl From<SolverError> for std::io::Error {
+    fn from(se: SolverError) -> Self {
+        // String version is the least fragile (no Send/Sync bounds issues)
+        std::io::Error::new(std::io::ErrorKind::InvalidInput, se.to_string())
+    }
+}
+
 /// Bucket key for indexing candidates by the subset of variables that must agree.
 /// - `None` means "no lookup constraints for this pattern" (Python's `words[i][None]`).
 /// - When present, we store a *sorted* `(var_char, var_val)` list so the key is deterministic
@@ -310,6 +327,14 @@ impl SolverError {
 ///   `frozenset(dict(...).items())`, but with a stable order.
 /// - The sort happens once when we construct the key, not on hash/compare.
 pub type LookupKey = Vec<(char, Rc<str>)>;
+
+/// Result of attempting to build a lookup key from a binding
+enum LookupKeyResult {
+    /// successfully built the lookup key (empty if no keys needed)
+    Complete(LookupKey),
+    /// a required key variable was not found in the binding
+    MissingKey,
+}
 
 /// Context for a `recursive_join` call
 struct JoinCtx<'a> {
@@ -337,11 +362,19 @@ pub struct CandidateBuckets {
 ///
 /// # Errors
 ///
-/// Will return `Box<ParseError>` if the bound word cannot be found for one of the `Bindings`
-/// objects in `solution`.
-pub fn solution_to_string(solution: &[Bindings]) -> Result<String, Box<ParseError>> {
+/// Returns [`SolverError::MaterializationError`] if the bound word cannot be found for one of
+/// the `Bindings` objects in `solution`. This indicates an internal solver bug where a solution
+/// was accepted without proper word bindings.
+pub fn solution_to_string(solution: &[Bindings]) -> Result<String, SolverError> {
     let str = solution.iter()
-        .map(|b| b.get_word().ok_or_else(|| Box::new(ParseFailure { s : format!("cannot find solution in bindings {b}") })).map(|c| c.to_ascii_uppercase()))
+        .enumerate()
+        .map(|(i, b)| {
+            b.get_word()
+                .ok_or_else(|| SolverError::MaterializationError {
+                    context: format!("Solution missing word binding at index {i}: {b}")
+                })
+                .map(|c| c.to_ascii_uppercase())
+        })
         .collect::<Result<Vec<_>, _>>()?
         .join(" • ");
 
@@ -352,23 +385,24 @@ pub fn solution_to_string(solution: &[Bindings]) -> Result<String, Box<ParseErro
 ///
 /// Uses the whole word binding (`WORD_SENTINEL`) to compute the hash.
 ///
-/// # Panics
-/// Panics if any binding in the solution lacks a word binding. The solver ensures
-/// all solutions have word bindings set, so this panic indicates a programming error.
-fn solution_key(solution: &[Bindings]) -> u64 {
+/// # Errors
+/// Returns an error if any binding in the solution lacks a word binding.
+/// This indicates a solver bug where a solution was accepted without word bindings.
+fn solution_key(solution: &[Bindings]) -> Result<u64, SolverError> {
     let mut hasher = DefaultHasher::new();
 
-    for b in solution {
-        if let Some(w) = b.get_word() {
-            w.hash(&mut hasher);
-        } else {
-            panic!("solution_key: no '*' binding found in solution: {solution:?}");
-        }
+    for (i, b) in solution.iter().enumerate() {
+        let w = b.get_word().ok_or_else(|| {
+            SolverError::MaterializationError {
+                context: format!("Solution missing word binding at pattern index {i}: {solution:?}")
+            }
+        })?;
+        w.hash(&mut hasher);
         // Separator between patterns to avoid ambiguity like ["ab","c"] vs ["a","bc"]
         HASH_SPLIT.hash(&mut hasher);
     }
 
-    hasher.finish()
+    Ok(hasher.finish())
 }
 
 /// Simple helper to enforce a wall-clock time limit.
@@ -431,7 +465,7 @@ fn lookup_key_from_env(
     env: &HashMap<char, Rc<str>>,
     keys: &HashSet<char>,
 ) -> Option<LookupKey> {
-    debug_assert!(
+    check_invariant!(
         keys.iter().all(char::is_ascii_uppercase),
         "All key variables must be one of uppercase A-Z"
     );
@@ -440,7 +474,7 @@ fn lookup_key_from_env(
     for &var_char in keys {
         match env.get(&var_char) {
             Some(var_val) => {
-                debug_assert!(!var_val.is_empty(), "Variable bindings must be non-empty strings");
+                check_invariant!(!var_val.is_empty(), "Variable bindings must be non-empty strings");
                 pairs.push((var_char, Rc::clone(var_val)));
             }
             None => return None, // required key missing
@@ -448,7 +482,7 @@ fn lookup_key_from_env(
     }
 
     pairs.sort_unstable_by_key(|(c, _)| *c);
-    debug_assert!(
+    check_invariant!(
         pairs.windows(2).all(|w| w[0].0 < w[1].0),
         "Sorted pairs must be strictly increasing"
     );
@@ -457,19 +491,17 @@ fn lookup_key_from_env(
 
 /// Build the deterministic lookup key for a binding given the pattern's lookup vars.
 ///
-/// Returns a `LookupKey` (alias for `Vec<(char, Rc<str>)>`) sorted by `var_char`.
+/// Returns `LookupKeyResult::Complete` with a sorted key, or `LookupKeyResult::MissingKey`
+/// if a required variable is not bound.
 ///
-/// Conventions:
-/// - If `keys` is empty, returns an empty `LookupKey` (unkeyed bucket).
-/// - If any required key is missing in the binding, also returns an empty `LookupKey`;
-///   callers must check `keys.is_empty()` to distinguish this case.
-///   TODO: perhaps avoid pushing this responsibility on callers (via an enum return type?)
-/// - Otherwise, returns the full normalized key.
+/// # Return values
+/// - `Complete(key)` - Successfully built the key (may be empty if `keys` is empty)
+/// - `MissingKey` - A required key variable was not found in the binding
 fn lookup_key_for_binding(
     binding: &Bindings,
     keys: &HashSet<char>,
-) -> LookupKey {
-    debug_assert!(
+) -> LookupKeyResult {
+    check_invariant!(
         keys.iter().all(char::is_ascii_uppercase),
         "All key variables must be one of uppercase A-Z"
     );
@@ -478,25 +510,25 @@ fn lookup_key_for_binding(
     for &var_char in keys {
         match binding.get(var_char) {
             Some(var_val) => {
-                debug_assert!(!var_val.is_empty(), "Variable bindings must be non-empty strings");
+                check_invariant!(!var_val.is_empty(), "Variable bindings must be non-empty strings");
                 pairs.push((var_char, Rc::clone(var_val)));
             }
-            None => return Vec::new(), // required key missing
+            None => return LookupKeyResult::MissingKey,
         }
     }
 
     pairs.sort_unstable_by_key(|(c, _)| *c);
-    debug_assert!(
+    check_invariant!(
         pairs.windows(2).all(|w| w[0].0 < w[1].0),
         "Sorted pairs must be strictly increasing"
     );
-    pairs
+    LookupKeyResult::Complete(pairs)
 }
 
 /// Push a binding into the appropriate bucket and bump the count.
 fn push_binding(words: &mut [CandidateBuckets], i: usize, key: LookupKey, binding: Bindings) {
-    debug_assert!(i < words.len(), "Pattern index {} out of bounds (len={})", i, words.len());
-    debug_assert!(
+    check_invariant!(i < words.len(), "Pattern index {} out of bounds (len={})", i, words.len());
+    check_invariant!(
         binding.get_word().is_some(),
         "Binding must have a word set before being pushed"
     );
@@ -545,21 +577,22 @@ fn scan_batch(
     budget: &TimeBudget,
 ) -> Result<usize, SolverError> {
     // precondition checks
-    debug_assert!(
+    check_invariant!(
         start_idx <= word_list.len(),
         "start_idx ({}) must be <= word_list.len() ({})",
         start_idx, word_list.len()
     );
-    debug_assert_eq!(
-        words.len(), equation_context.len(),
-        "words slice length must match equation_context pattern count"
+    check_invariant!(
+        words.len() == equation_context.len(),
+        "words slice length ({}) must match equation_context pattern count ({})",
+        words.len(), equation_context.len()
     );
-    debug_assert!(batch_size > 0, "batch_size must be positive");
+    check_invariant!(batch_size > 0, "batch_size must be positive");
 
     let mut i_word = start_idx;
     let end = start_idx.saturating_add(batch_size).min(word_list.len());
 
-    debug_assert!(
+    check_invariant!(
         end <= word_list.len(),
         "end ({}) must be <= word_list.len() ({})",
         end, word_list.len()
@@ -594,14 +627,14 @@ fn scan_batch(
             for binding in matches {
                 timed_stop!(budget, i_word);
 
-                let key = lookup_key_for_binding(&binding, &p.lookup_keys);
-
-                // If a required key is missing, skip
-                if key.is_empty() && !p.lookup_keys.is_empty() {
-                    continue;
+                match lookup_key_for_binding(&binding, &p.lookup_keys) {
+                    LookupKeyResult::Complete(key) => {
+                        push_binding(words, i, key, binding);
+                    }
+                    LookupKeyResult::MissingKey => {
+                        // required key variable not found--skip this binding
+                    }
                 }
-
-                push_binding(words, i, key, binding);
             }
         }
 
@@ -788,9 +821,10 @@ fn recursive_join_inner(
                     binding.set_rc(var_char, Rc::clone(var_val));
                 } else {
                     // this should never happen--indicates a logic error in solver
-                    debug_assert!(
+                    check_invariant!(
                         false,
-                        "Variable '{var_char}' in lookup_keys but not in env--solver invariant violated"
+                        "Variable '{}' in lookup_keys but not in env--solver invariant violated",
+                        var_char
                     );
                 }
             }
@@ -866,7 +900,7 @@ fn recursive_join_inner(
     } else {
         // Base case: if we've placed all patterns, `selected` is a full solution.
         if ctx.joint_constraints.all_strictly_satisfied_for_parts(selected)
-            && seen.insert(solution_key(selected)) {
+            && seen.insert(solution_key(selected)?) {
             debug!("Found solution #{}: {} patterns matched", results.len() + 1, selected.len());
             results.push(selected.clone());
         }
@@ -920,11 +954,11 @@ fn solve_equation_with_budget(
     if input.is_empty() {
         return Err(SolverError::ParseFailure(Box::new(ParseError::EmptyForm)));
     }
-    debug_assert!(
+    check_invariant!(
         num_results_requested > 0,
         "num_results_requested must be positive"
     );
-    debug_assert!(
+    check_invariant!(
         word_list.iter().all(|w| !w.is_empty()),
         "All words in word list must be non-empty"
     );
@@ -1239,7 +1273,7 @@ mod tests {
         let bindings_list = vec![b1, b2];
         let actual = solution_to_string(&bindings_list);
 
-        assert!(matches!(*actual.unwrap_err(), ParseFailure { s } if s == "cannot find solution in bindings [A→a]" ));
+        assert!(matches!(actual.unwrap_err(), SolverError::MaterializationError { context } if context == "Solution missing word binding at index 1: [A→a]"));
     }
 
     #[test]
@@ -1899,9 +1933,10 @@ mod tests {
 
             assert!(result.is_err());
             if let Err(SolverError::ParseFailure(pe)) = result {
-                assert!(matches!(*pe, ParseError::ContradictoryBounds { min: 11, max: 5 }));
+                assert!(matches!(*pe, ParseError::JointConstraintContradiction { constraint, reason }
+                    if constraint == "|AB|=5" && reason == "sum of minimum lengths (11) exceeds target (5). Individual constraints: |A|>=10, |B|>=1"));
             } else {
-                panic!("Expected ParseFailure with ContradictoryBounds, got {:?}", result);
+                panic!("Expected ParseFailure with JointConstraintContradiction, got {:?}", result);
             }
         }
 
