@@ -1,15 +1,54 @@
 use crate::bindings::Bindings;
-use crate::errors::ParseError;
-use crate::solver::solve_equation;
+use crate::solver::{solve_equation, SolverError};
 use crate::word_list::WordList;
 use crate::log::init_logger;
 use wasm_bindgen::prelude::*;
 
 use serde_wasm_bindgen::to_value;
 
-/// Implement `Box<ParseError>` for `JsValue`s
-impl From<Box<ParseError>> for JsValue {
-    fn from(e: Box<ParseError>) -> JsValue { JsValue::from_str(format!("[parse error] {}", *e).as_str()) }
+/// Structured error information for JavaScript consumers
+#[derive(serde::Serialize)]
+struct WasmError {
+    /// Error code (e.g., "E001", "S002")
+    code: String,
+    /// Display message
+    message: String,
+    /// Short description of error type
+    description: String,
+    /// Detailed explanation
+    details: String,
+    /// Optional helpful suggestion
+    #[serde(skip_serializing_if = "Option::is_none")]
+    help: Option<String>,
+}
+
+impl From<SolverError> for WasmError {
+    fn from(e: SolverError) -> Self {
+        // For ParseFailure, extract the nested ParseError details
+        match &e {
+            SolverError::ParseFailure(pe) => WasmError {
+                code: pe.code().to_string(),
+                message: pe.to_string(),
+                description: pe.description().to_string(),
+                details: pe.details().to_string(),
+                help: pe.help().map(|s| s.to_string()),
+            },
+            _ => WasmError {
+                code: e.code().to_string(),
+                message: e.to_string(),
+                description: e.description().to_string(),
+                details: e.details().to_string(),
+                help: e.help().map(|s| s.to_string()),
+            },
+        }
+    }
+}
+
+impl From<WasmError> for JsValue {
+    fn from(e: WasmError) -> Self {
+        serde_wasm_bindgen::to_value(&e)
+            .unwrap_or_else(|_| JsValue::from_str(&format!("Error serialization failed: {}", e.message)))
+    }
 }
 
 #[wasm_bindgen(start)]
@@ -45,12 +84,21 @@ pub fn solve_equation_wasm(
 ) -> Result<JsValue, JsValue> {
     // word_list: string[] -> Vec<String>
     let words: Vec<String> = serde_wasm_bindgen::from_value(word_list)
-        .map_err(|e| JsValue::from_str(&format!("word_list must be string[]: {e}")))?;
+        .map_err(|e| {
+            // Create a structured error for deserialization failures
+            WasmError {
+                code: "WASM001".to_string(),
+                message: format!("word_list must be string[]: {e}"),
+                description: "Invalid word list format".to_string(),
+                details: "The word_list parameter must be a JavaScript array of strings.".to_string(),
+                help: Some("Ensure you're passing a valid string array, e.g., ['cat', 'dog', 'fish']".to_string()),
+            }
+        })?;
     // Borrow as &[&str] for the solver
     let refs: Vec<&str> = words.iter().map(|s| s.as_str()).collect();
 
     let result = solve_equation(input, &refs, num_results_requested)
-        .map_err(|e| JsValue::from_str(&format!("solver error: {e}")))?;
+        .map_err(|e| WasmError::from(e))?;
 
     let status = match result.status {
         crate::solver::SolveStatus::FoundEnough => "found_enough".to_string(),
@@ -69,7 +117,15 @@ pub fn solve_equation_wasm(
     };
 
     serde_wasm_bindgen::to_value(&wasm_result)
-        .map_err(|e| JsValue::from_str(&format!("serialization failed: {e}")))
+        .map_err(|e| {
+            WasmError {
+                code: "WASM002".to_string(),
+                message: format!("serialization failed: {e}"),
+                description: "Failed to serialize result".to_string(),
+                details: "The solver result could not be converted to JavaScript format.".to_string(),
+                help: Some("This is an internal error. Please report this issue.".to_string()),
+            }.into()
+        })
 }
 
 /// Parse a newline-separated word list string into a `WordList`.
@@ -85,7 +141,15 @@ pub fn solve_equation_wasm(
 pub fn parse_word_list(text: &str, min_score: i32) -> Result<JsValue, JsValue> {
     let word_list = WordList::parse_from_str(text, min_score);
     to_value(&word_list.entries)
-        .map_err(|e| JsValue::from_str(&format!("serialization failed: {e}")))
+        .map_err(|e| {
+            WasmError {
+                code: "WASM003".to_string(),
+                message: format!("serialization failed: {e}"),
+                description: "Failed to serialize word list".to_string(),
+                details: "The word list could not be converted to JavaScript format.".to_string(),
+                help: Some("This is an internal error. Please report this issue.".to_string()),
+            }.into()
+        })
 }
 
 /// Generate a debug report for troubleshooting.
