@@ -23,7 +23,6 @@ use crate::errors::ParseError;
 /// - `InvalidComplexConstraint` if the input is malformed (e.g., no `=`, no variable,
 ///   too many colons, or an unparsable length range when one was expected).
 pub(crate) fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint), Box<ParseError>> {
-
     // check that `form` has at least 1 '='
     let (var_raw, rhs_raw) = form.split_once('=').ok_or_else(|| {
         Box::new(ParseError::InvalidComplexConstraint {
@@ -49,12 +48,16 @@ pub(crate) fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint)
     }
     let var = var_char;
 
-    // Allow optional surrounding parentheses
+    // complex constraints must have surrounding parentheses
     let rhs = rhs_raw.trim();
     let rhs = rhs
         .strip_prefix('(')
         .and_then(|s| s.strip_suffix(')'))
-        .unwrap_or(rhs);
+        .ok_or_else(|| {
+            Box::new(ParseError::InvalidComplexConstraint {
+                str: format!("A complex constraint requires parentheses: perhaps use '{var_char}=({rhs})' not '{form}'"),
+            })
+        })?;
 
     let (bounds, form_str_opt) = if let Some((lhs, rhs_after_colon)) = rhs.split_once(':') {
         if rhs_after_colon.contains(':') {
