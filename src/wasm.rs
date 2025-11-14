@@ -46,8 +46,19 @@ impl From<SolverError> for WasmError {
 
 impl From<WasmError> for JsValue {
     fn from(e: WasmError) -> Self {
-        serde_wasm_bindgen::to_value(&e)
-            .unwrap_or_else(|_| JsValue::from_str(&format!("Error serialization failed: {}", e.message)))
+        // Format a comprehensive error message
+        let mut msg = format!("Error {}: {}", e.code, e.message);
+
+        if !e.details.is_empty() {
+            msg.push_str(&format!("\n\n{}", e.details));
+        }
+
+        if let Some(help) = e.help {
+            msg.push_str(&format!("\n\nSuggestion: {}", help));
+        }
+
+        // Create a JavaScript Error object with the formatted message
+        js_sys::Error::new(&msg).into()
     }
 }
 
