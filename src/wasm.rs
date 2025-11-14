@@ -176,38 +176,38 @@ pub fn get_debug_info(
     use std::fmt::Write;
     let mut report = String::new();
 
-    // NB: .unwrap() calls below are safe because writing to a String never fails
-    // (String's write implementation is infallible and only returns Err for type compatibility)
-    writeln!(&mut report, "=== UMIAQ DEBUG REPORT ===").unwrap();
-    writeln!(&mut report, "Version: {}", env!("CARGO_PKG_VERSION")).unwrap();
-    writeln!(&mut report, "Generated: {}", js_sys::Date::new_0().to_iso_string().as_string().unwrap_or_else(|| "unknown".to_string())).unwrap();
-    writeln!(&mut report).unwrap();
+    // NB: writing to a String never fails (infallible operation)
+    // we use `let _ =` to explicitly ignore the Result without panicking
+    let _ = writeln!(&mut report, "=== UMIAQ DEBUG REPORT ===");
+    let _ = writeln!(&mut report, "Version: {}", env!("CARGO_PKG_VERSION"));
+    let _ = writeln!(&mut report, "Generated: {}", js_sys::Date::new_0().to_iso_string().as_string().unwrap_or_else(|| "unknown".to_string()));
+    let _ = writeln!(&mut report);
 
-    writeln!(&mut report, "## Error").unwrap();
-    writeln!(&mut report, "{}", error_message).unwrap();
-    writeln!(&mut report).unwrap();
+    let _ = writeln!(&mut report, "## Error");
+    let _ = writeln!(&mut report, "{}", error_message);
+    let _ = writeln!(&mut report);
 
-    writeln!(&mut report, "## Input").unwrap();
-    writeln!(&mut report, "Pattern: {}", input_pattern).unwrap();
-    writeln!(&mut report, "Word List Size: {}", word_list_size).unwrap();
-    writeln!(&mut report, "Results Requested: {}", num_results_requested).unwrap();
-    writeln!(&mut report).unwrap();
+    let _ = writeln!(&mut report, "## Input");
+    let _ = writeln!(&mut report, "Pattern: {}", input_pattern);
+    let _ = writeln!(&mut report, "Word List Size: {}", word_list_size);
+    let _ = writeln!(&mut report, "Results Requested: {}", num_results_requested);
+    let _ = writeln!(&mut report);
 
-    writeln!(&mut report, "## Environment").unwrap();
+    let _ = writeln!(&mut report, "## Environment");
     if let Some(window) = web_sys::window() {
         if let Ok(user_agent) = window.navigator().user_agent() {
-            writeln!(&mut report, "User Agent: {}", user_agent).unwrap();
+            let _ = writeln!(&mut report, "User Agent: {}", user_agent);
         }
-        writeln!(&mut report, "Location: {}", window.location().href().unwrap_or_else(|_| "unknown".to_string())).unwrap();
+        let _ = writeln!(&mut report, "Location: {}", window.location().href().unwrap_or_else(|_| "unknown".to_string()));
     }
-    writeln!(&mut report).unwrap();
+    let _ = writeln!(&mut report);
 
-    writeln!(&mut report, "## Instructions").unwrap();
-    writeln!(&mut report, "Please copy this entire report and paste it when reporting the issue.").unwrap();
-    writeln!(&mut report, "GitHub Issues: https://github.com/Crossword-Nexus/umiaq-rust/issues").unwrap();
-    writeln!(&mut report).unwrap();
+    let _ = writeln!(&mut report, "## Instructions");
+    let _ = writeln!(&mut report, "Please copy this entire report and paste it when reporting the issue.");
+    let _ = writeln!(&mut report, "GitHub Issues: https://github.com/Crossword-Nexus/umiaq-rust/issues");
+    let _ = writeln!(&mut report);
 
-    writeln!(&mut report, "=== END DEBUG REPORT ===").unwrap();
+    let _ = writeln!(&mut report, "=== END DEBUG REPORT ===");
 
     report
 }
