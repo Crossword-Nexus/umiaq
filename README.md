@@ -45,7 +45,7 @@ Umiaq is designed for crossword constructors, wordplay enthusiasts, and puzzle m
 - `gr[a-e]y` → matches **gray**, **grey**
 - `A~A` → even-length palindromes like **noon**, **redder**
 - `A.~A` → odd-length palindromes like **non**, **radar**
-- `AB;|A|=2;|B|=2;!=AB` → 4-letters entries made up of two concatenated distinct 2-letter substrings
+- `AB;|A|=2;|B|=2;!=AB` → 4-letter entries made up of two concatenated distinct 2-letter substrings
 - `A@#A` → entries with some string, then a vowel, then a consonant, then the initial string again
 - `/triangle` → any anagram of "triangle"
 - `A;AB;|AB|=7;A=(3-4:g*)` → 7-letter entries starting with a 3–to-4-letter entry that begins with **g**
@@ -61,5 +61,4 @@ Umiaq is designed for crossword constructors, wordplay enthusiasts, and puzzle m
 ## License
 
 - **Code**: MIT License
-- **entry list (Spread the entry list)**: CC BY-NC-SA 4.0  
-
+- **Word list (Spread the Word List)**: CC BY-NC-SA 4.0
