@@ -119,6 +119,7 @@ impl FromStr for FormKind {
             let var_chars: Vec<_> = cap[1].chars().collect();
             Ok(FormKind::NeqConstraint { var_chars })
         // 3. Complex constraints (delegate to helper)
+        // note: swallows InvalidComplexConstraint errors // TODO? handle this better?
         } else if let Ok((var_char, vc)) = get_complex_constraint(s) {
             Ok(FormKind::ComplexConstraint { var_char, vc })
         // 4. Joint constraints: |AB|=7
