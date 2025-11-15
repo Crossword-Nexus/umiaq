@@ -78,13 +78,13 @@ fn is_valid_binding(
 /// Returns `ParseError::PrefilterFailed` if the regex prefilter fails to execute.
 /// Returns `ParseError::AnagramCheckFailed` if anagram validation encounters an error.
 pub fn match_equation_exists(
-    word: &str,
+    entry: &str,
     parts: &ParsedForm,
     constraints: &VarConstraints,
     joint_constraints: &JointConstraints,
 ) -> Result<bool, Box<ParseError>> {
     let mut results: Vec<Bindings> = Vec::with_capacity(1); // at most 1 result when all_matches=false
-    match_equation_internal(word, parts, false, &mut results, constraints, joint_constraints)?;
+    match_equation_internal(entry, parts, false, &mut results, constraints, joint_constraints)?;
     Ok(!results.is_empty())
 }
 
@@ -94,20 +94,20 @@ pub fn match_equation_exists(
 /// Returns `ParseError::PrefilterFailed` if the regex prefilter fails to execute.
 /// Returns `ParseError::AnagramCheckFailed` if anagram validation encounters an error.
 pub fn match_equation_all(
-    word: &str,
+    entry: &str,
     parts: &ParsedForm,
     constraints: &VarConstraints,
     joint_constraints: &JointConstraints,
 ) -> Result<Vec<Bindings>, Box<ParseError>> {
     let mut results: Vec<Bindings> = Vec::new();
-    match_equation_internal(word, parts, true, &mut results, constraints, joint_constraints)?;
+    match_equation_internal(entry, parts, true, &mut results, constraints, joint_constraints)?;
     Ok(results)
 }
 
 /// Core entry point for the backtracking search.
 ///
-/// This function coordinates matching a `word` against a parsed form:
-/// - **Prefilter step:** quickly reject the word if it cannot possibly match,
+/// This function coordinates matching an `entry` against a parsed form:
+/// - **Prefilter step:** quickly reject the entry if it cannot possibly match,
 ///   using the compiled regex stored in the `ParsedForm`.
 /// - **Recursive search:** initialize a `HelperParams` context and invoke
 ///   its `recurse` method, which handles binding variables, matching literals,
@@ -116,7 +116,7 @@ pub fn match_equation_all(
 ///   If `all_matches` is false, the recursion will stop after the first match.
 ///
 /// Arguments:
-/// - `word`: the candidate word to test.
+/// - `entry`: the candidate entry to test.
 /// - `parsed_form`: the form (sequence of `FormPart`s) we are matching against.
 /// - `all_matches`: if `true`, collect all possible bindings; if `false`, stop
 ///   once a single valid binding is found.
@@ -128,7 +128,7 @@ pub fn match_equation_all(
 /// Returns `ParseError::PrefilterFailed` if the regex prefilter fails to execute.
 /// Returns `ParseError::AnagramCheckFailed` if anagram validation encounters an error.
 fn match_equation_internal(
-    word: &str,
+    entry: &str,
     parsed_form: &ParsedForm,
     all_matches: bool,
     results: &mut Vec<Bindings>,
@@ -136,13 +136,13 @@ fn match_equation_internal(
     joint_constraints: &JointConstraints,
 ) -> Result<(), Box<ParseError>> {
     // === PREFILTER STEP ===
-    // Use the regex prefilter on the parsed form to quickly discard words
+    // Use the regex prefilter on the parsed form to quickly discard entries
     // that cannot possibly match. This helps avoid expensive recursive searching.
     // Instead of silently treating errors as "no match", propagate them.
-    match parsed_form.prefilter.is_match(word) {
+    match parsed_form.prefilter.is_match(entry) {
         Ok(false) => return Ok(()), // No match, return early
         Err(e) => {
-            error!("Prefilter regex failed for word '{word}': {e}");
+            error!("Prefilter regex failed for entry '{entry}': {e}");
             return Err(Box::new(ParseError::PrefilterFailed(e)));
         }
         Ok(true) => { /* Continue matching */ }
@@ -155,14 +155,14 @@ fn match_equation_internal(
         bindings: &mut Bindings::default(),
         results,
         all_matches,
-        word,
+        entry,
         constraints,
         joint_constraints,
     };
 
     // === RECURSIVE SEARCH ===
-    // Convert the word to a Vec<char> for indexed access, and start recursion.
-    hp.recurse(&word.chars().collect::<Vec<_>>(), &parsed_form.parts)?;
+    // Convert the entry to a Vec<char> for indexed access, and start recursion.
+    hp.recurse(&entry.chars().collect::<Vec<_>>(), &parsed_form.parts)?;
 
     Ok(())
 }
@@ -173,7 +173,7 @@ struct HelperParams<'a> {
     bindings: &'a mut Bindings,
     results: &'a mut Vec<Bindings>,
     all_matches: bool,
-    word: &'a str,
+    entry: &'a str,
     constraints: &'a VarConstraints,
     joint_constraints: &'a JointConstraints,
 }
@@ -284,7 +284,7 @@ impl HelperParams<'_> {
                 // Check the joint constraints (if any)
                 if self.joint_constraints.all_satisfied(self.bindings) {
                     let mut full_result = self.bindings.clone();
-                    full_result.set_word(self.word);
+                    full_result.set_entry(self.entry);
                     self.results.push(full_result);
                     return Ok(!self.all_matches); // Stop early if only one match needed
                 }
@@ -422,7 +422,7 @@ mod tests {
         }
 
         #[test]
-        fn test_pattern_longer_than_word() {
+        fn test_pattern_longer_than_entry() {
             // min len: 10
             let pf = "ABCDEFGHIJ".parse::<ParsedForm>().unwrap();
             assert!(!match_equation_exists("cat", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
@@ -461,7 +461,7 @@ mod tests {
         }
 
         #[test]
-        fn test_single_char_word() {
+        fn test_single_char_entry() {
             let pf = "A".parse::<ParsedForm>().unwrap();
             assert!(match_equation_exists("a", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
 
@@ -470,13 +470,13 @@ mod tests {
         }
 
         #[test]
-        fn test_very_long_word() {
-            let long_word = "a".repeat(1000);
+        fn test_very_long_entry() {
+            let long_entry = "a".repeat(1000);
             let pf = "A".parse::<ParsedForm>().unwrap();
-            assert!(match_equation_exists(&long_word, &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(match_equation_exists(&long_entry, &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
 
             let pf2 = "A*B".parse::<ParsedForm>().unwrap();
-            assert!(match_equation_exists(&long_word, &pf2, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(match_equation_exists(&long_entry, &pf2, &VarConstraints::default(), &JointConstraints::default()).unwrap());
         }
 
         #[test]
@@ -539,16 +539,16 @@ mod tests {
         }
 
         #[test]
-        fn test_anagram_shorter_than_word() {
-            // Anagram of 3 chars, but word has more
+        fn test_anagram_shorter_than_entry() {
+            // Anagram of 3 chars, but entry has more
             let pf = "/abc".parse::<ParsedForm>().unwrap();
-            // Word "abcd" has 4 chars, anagram needs exactly 3
+            // Entry "abcd" has 4 chars, anagram needs exactly 3
             assert!(!match_equation_exists("abcd", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
         }
 
         #[test]
-        fn test_anagram_longer_than_word() {
-            // Anagram of 5 chars, but word only has 3
+        fn test_anagram_longer_than_entry() {
+            // Anagram of 5 chars, but entry only has 3
             let pf = "/abcde".parse::<ParsedForm>().unwrap();
             assert!(!match_equation_exists("abc", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
         }

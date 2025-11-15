@@ -2,18 +2,18 @@ use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::rc::Rc;
 
-pub(crate) const WORD_SENTINEL: char = '*';
-const WORD_SENTINEL_INDEX: usize = 26;
+pub(crate) const ENTRY_SENTINEL: char = '*';
+const ENTRY_SENTINEL_INDEX: usize = 26;
 const NUM_SLOTS: usize = 27; // 26 letters + 1 sentinel
 
 /// `Bindings` maps a variable name (char) to the string it's bound to.
-/// Special variable `'*'` is reserved for the bound word.
+/// Special variable `'*'` is reserved for the bound entry.
 ///
 /// Uses `Rc<str>` for values to avoid expensive string cloning in hot paths.
 /// Uses array-based storage instead of `HashMap` since variables are limited to 'A'-'Z' + '*'.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Bindings {
-    /// Array storage: index 0-25 for 'A'-'Z', index 26 for '*' (word sentinel)
+    /// Array storage: index 0-25 for 'A'-'Z', index 26 for '*' (entry sentinel)
     slots: [Option<Rc<str>>; NUM_SLOTS],
 }
 
@@ -38,7 +38,7 @@ impl Default for Bindings {
 fn char_to_index(c: char) -> usize {
     match c {
         'A'..='Z' => (c as u8 - b'A') as usize,
-        '*' => WORD_SENTINEL_INDEX,
+        '*' => ENTRY_SENTINEL_INDEX,
         _ => {
             panic!("Invalid variable character: '{c}' (parser should have validated this)")
         }
@@ -73,23 +73,23 @@ impl Bindings {
         self.slots[i] = None;
     }
 
-    /// Assign the word binding to '*'
-    pub(crate) fn set_word(&mut self, word: &str) {
-        self.slots[WORD_SENTINEL_INDEX] = Some(Rc::from(word));
+    /// Assign the entry binding to '*'
+    pub(crate) fn set_entry(&mut self, entry: &str) {
+        self.slots[ENTRY_SENTINEL_INDEX] = Some(Rc::from(entry));
     }
 
-    /// Retrieve the bound word, if any
+    /// Retrieve the bound entry, if any
     #[must_use]
-    pub fn get_word(&self) -> Option<&Rc<str>> {
-        self.slots[WORD_SENTINEL_INDEX].as_ref()
+    pub fn get_entry(&self) -> Option<&Rc<str>> {
+        self.slots[ENTRY_SENTINEL_INDEX].as_ref()
     }
 
     /// Iterate over the bindings (returns owned char since we compute it from index)
     pub(crate) fn iter(&self) -> impl Iterator<Item = (char, &Rc<str>)> {
         self.slots.iter().enumerate().filter_map(|(i, opt)| {
             opt.as_ref().map(|val| {
-                let c = if i == WORD_SENTINEL_INDEX {
-                    WORD_SENTINEL
+                let c = if i == ENTRY_SENTINEL_INDEX {
+                    ENTRY_SENTINEL
                 } else {
                     (b'A' + i as u8) as char
                 };
@@ -131,11 +131,11 @@ mod tests {
     }
 
     #[test]
-    fn test_bindings_word_sentinel() {
+    fn test_bindings_entry_sentinel() {
         let mut b = Bindings::default();
-        b.set_word("hello");
+        b.set_entry("hello");
 
-        assert_eq!(b.get_word().map(|s| s.as_ref()), Some("hello"));
+        assert_eq!(b.get_entry().map(|s| s.as_ref()), Some("hello"));
     }
 
     #[test]
@@ -143,18 +143,18 @@ mod tests {
         let mut b = Bindings::default();
         b.set_rc('A', Rc::from("alpha"));
         b.set_rc('B', Rc::from("beta"));
-        b.set_word("word");
+        b.set_entry("entry");
 
         let items: Vec<_> = b.iter().collect();
-        assert_eq!(items.len(), 3); // A, B, and * (word sentinel)
+        assert_eq!(items.len(), 3); // A, B, and * (entry sentinel)
 
         let has_a = items.iter().any(|(c, v)| *c == 'A' && v.as_ref() == "alpha");
         let has_b = items.iter().any(|(c, v)| *c == 'B' && v.as_ref() == "beta");
-        let has_word = items.iter().any(|(c, v)| *c == WORD_SENTINEL && v.as_ref() == "word");
+        let has_entry = items.iter().any(|(c, v)| *c == ENTRY_SENTINEL && v.as_ref() == "entry");
 
         assert!(has_a);
         assert!(has_b);
-        assert!(has_word);
+        assert!(has_entry);
     }
 
     #[test]
@@ -219,12 +219,12 @@ mod tests {
     fn test_bindings_clone() {
         let mut b1 = Bindings::default();
         b1.set_rc('A', Rc::from("test"));
-        b1.set_word("word");
+        b1.set_entry("entry");
 
         let b2 = b1.clone();
 
         assert_eq!(b1.get('A'), b2.get('A'));
-        assert_eq!(b1.get_word(), b2.get_word());
+        assert_eq!(b1.get_entry(), b2.get_entry());
 
         // should share same Rc
         assert!(Rc::ptr_eq(b1.get('A').unwrap(), b2.get('A').unwrap()));
@@ -249,7 +249,7 @@ mod tests {
             assert!(i < 26, "Index {} for '{}' should be < 26", i, c);
         }
 
-        assert_eq!(char_to_index(WORD_SENTINEL), WORD_SENTINEL_INDEX);
+        assert_eq!(char_to_index(ENTRY_SENTINEL), ENTRY_SENTINEL_INDEX);
     }
 
     #[test]

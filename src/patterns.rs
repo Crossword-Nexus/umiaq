@@ -65,7 +65,7 @@ enum FormKind {
     JointConstraint { jc: JointConstraint },
 
     /// A normal parsed pattern (non-constraint), represented as a
-    /// `ParsedForm` ready for matching against candidate words.
+    /// `ParsedForm` ready for matching against candidate entries.
     Pattern { parsed_form: ParsedForm },
 }
 

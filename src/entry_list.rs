@@ -1,17 +1,17 @@
-//! `word_list` — Module to load and preprocess the crossword word list for Umiaq
+//! `entry_list` — Module to load and preprocess the crossword entry list for Umiaq
 //!
-//! This module is responsible for reading a word list (either from a file, or from an in-memory
+//! This module is responsible for reading an entry list (either from a file, or from an in-memory
 //! string — the latter is important for WebAssembly/browser builds, since direct file I/O
 //! isn't allowed there).
 //!
-//! The output is a `WordList` struct containing a flat `Vec<String>` of lowercase words.
-//! We do NOT store scores, because the solver only needs the word strings themselves.
+//! The output is an `EntryList` struct containing a flat `Vec<String>` of lowercase entries.
+//! We do NOT store scores, because the solver only needs the entry strings themselves.
 //!
 //! The parsing logic:
-//! - Each line in the input is expected to be in the format `word;score`.
+//! - Each line in the input is expected to be in the format `entry;score`.
 //! - Lines without a semicolon are skipped silently.
-//! - `score` is parsed as an integer, and words with scores below `min_score` are skipped.
-//! - All words are normalized to lowercase.
+//! - `score` is parsed as an integer, and entries with scores below `min_score` are skipped.
+//! - All entries are normalized to lowercase.
 //! - The final list is deduplicated and sorted by length first, then alphabetically.
 //!
 //! This module is designed to be **WASM-friendly** — no `std::fs` calls are made unless
@@ -22,47 +22,47 @@
 //! If compiled with `target_arch = "wasm32"`, only the WASM-safe parsing method is available
 //! and `parse_from_str` is not (as it's currently unused in WASM builds)
 
-/// Struct representing a processed, ready-to-use word list.
+/// Struct representing a processed, ready-to-use entry list.
 ///
-/// The `entries` vector contains all valid words (filtered, normalized, deduplicated),
+/// The `entries` vector contains all valid entries (filtered, normalized, deduplicated),
 /// already sorted by (length, alphabetical).
 ///
-/// We intentionally store just the words themselves (`String`) because in this design
+/// We intentionally store just the entries themselves (`String`) because in this design
 /// the solver does not require the associated scores during pattern matching.
 #[derive(Debug, Clone)]
-pub struct WordList {
-    /// List of lowercase words.
+pub struct EntryList {
+    /// List of lowercase entries.
     /// Example: `["able", "acid", "acorn", ...]`
     pub entries: Vec<String>,
 }
 
-impl WordList {
-    /// Parse a raw word list from an in-memory string.
+impl EntryList {
+    /// Parse a raw entry list from an in-memory string.
     ///
     /// This is **WASM-safe** because it doesn't touch the filesystem —
     /// you can pass the contents of a file fetched via JavaScript `fetch()` or read
     /// from the File API directly into this function.
     ///
     /// # Arguments
-    /// * `contents`  — The raw file contents as a `&str`. Each line should be `word;score`.
-    /// * `min_score` — Words with scores lower than this are skipped.
+    /// * `contents`  — The raw file contents as a `&str`. Each line should be `entry;score`.
+    /// * `min_score` — Entries with scores lower than this are skipped.
     ///
     /// # Returns
-    /// * `WordList` — Struct containing all valid entries.
+    /// * `EntryList` — Struct containing all valid entries.
     ///
     /// # Behavior:
     /// 1. Splits the input into lines.
     /// 2. Skips empty lines and lines without a `;` separator.
-    /// 3. Splits each valid line into `word` and `score` parts.
+    /// 3. Splits each valid line into `entry` and `score` parts.
     /// 4. Parses the score and filters by `min_score`.
-    /// 5. Converts `word` to lowercase.
+    /// 5. Converts `entry` to lowercase.
     /// 6. Deduplicates the list (case-insensitive because we lowercase early).
     /// 7. Sorts by length, then alphabetically.
     pub(crate) fn parse_from_str(
         contents: &str,
         min_score: i32,
-    ) -> WordList {
-        // Steps 1–5: Collect valid words into a Vec<String>.
+    ) -> EntryList {
+        // Steps 1–5: Collect valid entries into a Vec<String>.
         //
         // We use `filter_map` instead of `filter` + `map` separately
         // because it allows us to skip invalid lines in one pass.
@@ -75,27 +75,27 @@ impl WordList {
                 // Skip empty lines early — no work needed.
                 if line.is_empty() {
                     None
-                // Split into two parts: `word` and `score`.
-                // Note that splitting ont he first occurrence of ';' means that words containing
+                // Split into two parts: `entry` and `score`.
+                // Note that splitting ont he first occurrence of ';' means that entries containing
                 // semicolons later (unlikely, but robust) won't break parsing.
-                } else if let Some((word_raw, score_raw)) = line.split_once(';') {
+                } else if let Some((entry_raw, score_raw)) = line.split_once(';') {
                     // Try to parse the score as an integer.
                     // If parsing fails (e.g., "abc" instead of a number), skip the line.
                     let score: i32 = score_raw.trim().parse().ok()?;
 
-                    // Skip words with scores below `min_score`.
+                    // Skip entries with scores below `min_score`.
                     if score < min_score {
                         None
                     } else {
-                        // Convert the word to lowercase.
-                        let word = word_raw.trim().to_lowercase();
+                        // Convert the entry to lowercase.
+                        let entry = entry_raw.trim().to_lowercase();
 
-                        // At this point, we have a valid, normalized word—include it.
-                        Some(word)
+                        // At this point, we have a valid, normalized entry—include it.
+                        Some(entry)
                     }
                 } else {
                     // Skip lines without a semicolon.
-                    // These are invalid because our format is `word;score`.
+                    // These are invalid because our format is `entry;score`.
                     None
                 }
             })
@@ -125,8 +125,8 @@ impl WordList {
             }
         });
 
-        // Return the final processed list wrapped in a WordList struct.
-        WordList { entries }
+        // Return the final processed list wrapped in an EntryList struct.
+        EntryList { entries }
     }
 
     /// Native-only convenience method: read from a file path and parse.
@@ -135,8 +135,8 @@ impl WordList {
     /// cannot read files from arbitrary paths.
     ///
     /// # Example:
-    /// `let word_list = WordList::load_from_path("xwordlist.txt", 50, 21)?;`
-    /// `println!("Loaded {} words", word_list.entries.len());`
+    /// `let entry_list = EntryList::load_from_path("xwordlist.txt", 50, 21)?;`
+    /// `println!("Loaded {} entries", entry_list.entries.len());`
     ///
     /// # Errors
     ///
@@ -145,7 +145,7 @@ impl WordList {
     pub fn load_from_path<P: AsRef<std::path::Path>>(
         path: P,
         min_score: i32,
-    ) -> std::io::Result<WordList> {
+    ) -> std::io::Result<EntryList> {
         let path_ref = path.as_ref();
 
         // Read the entire file into a single string.
@@ -153,7 +153,7 @@ impl WordList {
         let data = std::fs::read_to_string(path_ref).map_err(|e| {
             std::io::Error::new(
                 e.kind(),
-                format!("failed to read word list from '{}': {}", path_ref.display(), e)
+                format!("failed to read entry list from '{}': {}", path_ref.display(), e)
             )
         })?;
 
@@ -169,91 +169,91 @@ mod tests {
     #[test]
     fn test_parse_basic() {
         let input = "cat;50\ndog;60\nbird;40";
-        let word_list = WordList::parse_from_str(input, 45);
+        let entry_list = EntryList::parse_from_str(input, 45);
 
-        assert_eq!(word_list.entries, vec!["cat", "dog"]);
+        assert_eq!(entry_list.entries, vec!["cat", "dog"]);
     }
 
     #[test]
     fn test_parse_filters_low_scores() {
         let input = "apple;100\nbanana;20\ncherry;80";
-        let word_list = WordList::parse_from_str(input, 50);
+        let entry_list = EntryList::parse_from_str(input, 50);
 
-        assert_eq!(word_list.entries.len(), 2);
-        assert_eq!(word_list.entries, vec!["apple", "cherry"]);
+        assert_eq!(entry_list.entries.len(), 2);
+        assert_eq!(entry_list.entries, vec!["apple", "cherry"]);
     }
 
     #[test]
     fn test_parse_deduplicates() {
         let input = "cat;50\ndog;60\ncat;70\ncat;80";
-        let word_list = WordList::parse_from_str(input, 45);
+        let entry_list = EntryList::parse_from_str(input, 45);
 
-        // assert_eq!(word_list.entries.len(), 2);
-        // assert_eq!(word_list.entries.iter().filter(|w| *w == "cat").count(), 1);
-        assert_eq!(word_list.entries, vec!["cat", "dog"]);
+        // assert_eq!(entry_list.entries.len(), 2);
+        // assert_eq!(entry_list.entries.iter().filter(|w| *w == "cat").count(), 1);
+        assert_eq!(entry_list.entries, vec!["cat", "dog"]);
     }
 
     #[test]
     fn test_parse_sorts_by_length_then_alpha() {
         let input = "dog;50\napple;50\ncat;50\nab;50\nzebra;50";
-        let word_list = WordList::parse_from_str(input, 45);
+        let entry_list = EntryList::parse_from_str(input, 45);
 
-        assert_eq!(word_list.entries, vec!["ab", "cat", "dog", "apple", "zebra"]);
+        assert_eq!(entry_list.entries, vec!["ab", "cat", "dog", "apple", "zebra"]);
     }
 
     #[test]
     fn test_parse_normalizes_to_lowercase() {
         let input = "CAT;50\nDog;60\nBIRD;70";
-        let word_list = WordList::parse_from_str(input, 45);
+        let entry_list = EntryList::parse_from_str(input, 45);
 
-        assert_eq!(word_list.entries, vec!["cat", "dog", "bird"]);
+        assert_eq!(entry_list.entries, vec!["cat", "dog", "bird"]);
     }
 
     #[test]
     fn test_parse_skips_empty_lines() {
         let input = "cat;50\n\n\ndog;60\n\n";
-        let word_list = WordList::parse_from_str(input, 45);
+        let entry_list = EntryList::parse_from_str(input, 45);
 
-        assert_eq!(word_list.entries, vec!["cat", "dog"]);
+        assert_eq!(entry_list.entries, vec!["cat", "dog"]);
     }
 
     #[test]
     fn test_parse_skips_malformed_lines() {
         let input = "cat;50\ninvalid_line\ndog;60\nno_semicolon\napple;bad_score";
-        let word_list = WordList::parse_from_str(input, 45);
+        let entry_list = EntryList::parse_from_str(input, 45);
 
-        assert_eq!(word_list.entries, vec!["cat", "dog"]);
+        assert_eq!(entry_list.entries, vec!["cat", "dog"]);
     }
 
     #[test]
     fn test_parse_empty_input() {
         let input = "";
-        let word_list = WordList::parse_from_str(input, 45);
+        let entry_list = EntryList::parse_from_str(input, 45);
 
-        assert!(word_list.entries.is_empty());
+        assert!(entry_list.entries.is_empty());
     }
 
     #[test]
     fn test_parse_handles_whitespace() {
         let input = "  cat  ;  50  \n  dog  ;  60  ";
-        let word_list = WordList::parse_from_str(input, 45);
+        let entry_list = EntryList::parse_from_str(input, 45);
 
-        assert_eq!(word_list.entries, vec!["cat", "dog"]);
+        assert_eq!(entry_list.entries, vec!["cat", "dog"]);
     }
 
     #[test]
     fn test_parse_negative_scores() {
         let input = "cat;-10\ndog;60\nbird;-5";
-        let word_list = WordList::parse_from_str(input, 0);
+        let entry_list = EntryList::parse_from_str(input, 0);
 
-        assert_eq!(word_list.entries, vec!["dog"]);
+        assert_eq!(entry_list.entries, vec!["dog"]);
     }
 
     #[test]
     fn test_parse_zero_min_score() {
         let input = "cat;0\ndog;10\nbird;-5";
-        let word_list = WordList::parse_from_str(input, 0);
+        let entry_list = EntryList::parse_from_str(input, 0);
 
-        assert_eq!(word_list.entries, vec!["cat", "dog"]);
+        assert_eq!(entry_list.entries, vec!["cat", "dog"]);
     }
 }

@@ -267,7 +267,7 @@ mod tests {
     }
 
     #[test]
-    fn test_prefilter_upgrade_prunes_nonmatching_words() {
+    fn test_prefilter_upgrade_prunes_nonmatching_entries() {
         let mut pf = "A".parse::<ParsedForm>().unwrap();
         let mut vcs = VarConstraints::default();
         let vc = VarConstraint { form: Some("x*a".to_string()), ..Default::default() };

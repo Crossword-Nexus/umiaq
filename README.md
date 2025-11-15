@@ -1,7 +1,7 @@
 # Umiaq
 
-**Umiaq** is an open-source solver and word-pattern matching tool.
-Umiaq is designed for crossword constructors, wordplay enthusiasts, and puzzle makers who want to search large word lists using expressive patterns, variables, and constraints.
+**Umiaq** is an open-source solver and entry-pattern matching tool.
+Umiaq is designed for crossword constructors, wordplay enthusiasts, and puzzle makers who want to search large entry lists using expressive patterns, variables, and constraints.
 
 👉 [Try the web interface](https://crossword-nexus.github.io/umiaq/)
 
@@ -12,7 +12,7 @@ Umiaq is designed for crossword constructors, wordplay enthusiasts, and puzzle m
 ## Features
 
 - **Expressive pattern matching**  
-  Match words against patterns with variables, wildcards, and constraints.
+  Match entries against patterns with variables, wildcards, and constraints.
 
 - **Variable binding**  
   Use uppercase letters (`A`–`Z`) as variables that can bind to substrings and be reused.
@@ -41,14 +41,14 @@ Umiaq is designed for crossword constructors, wordplay enthusiasts, and puzzle m
 
 ## Examples
 
-- `l.x` → words like **lax**, **lox**
+- `l.x` → entries like **lax**, **lox**
 - `gr[a-e]y` → matches **gray**, **grey**
 - `A~A` → even-length palindromes like **noon**, **redder**
 - `A.~A` → odd-length palindromes like **non**, **radar**
-- `AB;|A|=2;|B|=2;!=AB` → 4-letters words made up of two concatenated distinct 2-letter substrings
-- `A@#A` → words with some string, then a vowel, then a consonant, then the initial string again
+- `AB;|A|=2;|B|=2;!=AB` → 4-letters entries made up of two concatenated distinct 2-letter substrings
+- `A@#A` → entries with some string, then a vowel, then a consonant, then the initial string again
 - `/triangle` → any anagram of "triangle"
-- `A;AB;|AB|=7;A=(3-4:g*)` → 7-letter words starting with a 3–to-4-letter word that begins with **g**
+- `A;AB;|AB|=7;A=(3-4:g*)` → 7-letter entries starting with a 3–to-4-letter entry that begins with **g**
 
 ## Development
 
@@ -61,5 +61,5 @@ Umiaq is designed for crossword constructors, wordplay enthusiasts, and puzzle m
 ## License
 
 - **Code**: MIT License
-- **Word list (Spread the Word List)**: CC BY-NC-SA 4.0  
+- **entry list (Spread the entry list)**: CC BY-NC-SA 4.0  
 
