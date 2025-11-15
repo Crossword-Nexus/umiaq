@@ -32,7 +32,7 @@ Example: Use 'A*B' or '*cat*' instead of empty string
 
 ### S002: Equation has only constraints, no patterns to solve
 
-**Details:** The equation contains only constraints (like `|A|=3`) but no actual patterns to match against words. Add at least one pattern like `A*B` or `*cat*`.
+**Details:** The equation contains only constraints (like `|A|=3`) but no actual patterns to match against entries. Add at least one pattern like `A*B` or `*cat*`.
 
 **How to fix:**
 ```

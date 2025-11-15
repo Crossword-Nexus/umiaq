@@ -3,7 +3,7 @@
 //! # Core Functionality
 //!
 //! The main entry point is [`solver::solve_equation`], which takes a pattern string and
-//! a word list, returning matching solutions.
+//! an entry list, returning matching solutions.
 //!
 //! # Error Handling
 //!
@@ -17,8 +17,8 @@
 //! ```
 //! use umiaq::solver;
 //!
-//! let words = vec!["cat", "dog", "catalog"];
-//! let result = solver::solve_equation("A*B", &words, 10)?;
+//! let entries = vec!["cat", "dog", "catalog"];
+//! let result = solver::solve_equation("A*B", &entries, 10)?;
 //!
 //! for solution in result.solutions {
 //!     println!("{}", solver::solution_to_string(&solution)?);
@@ -31,8 +31,8 @@
 //! ```
 //! use umiaq::solver::{self, SolverError};
 //!
-//! let words = vec!["test"];
-//! let result = solver::solve_equation("", &words, 10);
+//! let entries = vec!["test"];
+//! let result = solver::solve_equation("", &entries, 10);
 //!
 //! match result {
 //!     Ok(r) => println!("Found {} solutions", r.solutions.len()),
@@ -51,8 +51,8 @@
 //! use umiaq::solver::{self, SolverError};
 //! use umiaq::errors::ParseError;
 //!
-//! let words = vec!["test"];
-//! match solver::solve_equation("BAD(PATTERN", &words, 10) {
+//! let entries = vec!["test"];
+//! match solver::solve_equation("BAD(PATTERN", &entries, 10) {
 //!     Err(SolverError::ParseFailure(parse_err)) => {
 //!         // Access the specific ParseError
 //!         match &*parse_err {
@@ -81,7 +81,7 @@ pub mod patterns;
 mod scan_hints;
 pub mod solver;
 pub mod umiaq_char;
-pub mod word_list;
+pub mod entry_list;
 pub mod complex_constraints;
 
 // Compile the wasm glue only when targeting wasm32.

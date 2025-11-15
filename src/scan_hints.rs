@@ -9,7 +9,7 @@
 //   • joint group constraints from JointConstraints that refer ONLY to vars
 //     present in THIS form (e.g., "|AB|=6").
 //
-// The result can be used as a cheap prefilter: if a candidate word's length does
+// The result can be used as a cheap prefilter: if a candidate entry's length does
 // not satisfy these bounds, you can skip calling the heavy matcher altogether.
 //
 // Design notes:
@@ -206,8 +206,8 @@ impl FormContext<'_> {
 enum Extreme { Min, Max }
 
 impl PatternLenHints {
-    /// Quick check for a candidate word length against this hint.
-    pub(crate) fn is_word_len_possible(&self, len: usize) -> bool {
+    /// Quick check for a candidate entry length against this hint.
+    pub(crate) fn is_entry_len_possible(&self, len: usize) -> bool {
         len >= self.min_len && self.max_len_opt.is_none_or(|max_len| len <= max_len)
     }
 }
@@ -449,8 +449,8 @@ mod tests {
             max_len_opt: Some(5),
         };
         assert_eq!(expected, hints);
-        assert!(hints.is_word_len_possible(5));
-        assert!(!hints.is_word_len_possible(4));
+        assert!(hints.is_entry_len_possible(5));
+        assert!(!hints.is_entry_len_possible(4));
     }
 
     #[test]
@@ -724,16 +724,16 @@ mod tests {
     }
 
     #[test]
-    fn test_is_word_len_possible_boundary_cases() {
+    fn test_is_entry_len_possible_boundary_cases() {
         let hints = PatternLenHints {
             min_len: 5,
             max_len_opt: Some(10),
         };
 
-        assert!(!hints.is_word_len_possible(4)); // Below min
-        assert!(hints.is_word_len_possible(5));  // At min
-        assert!(hints.is_word_len_possible(10)); // At max
-        assert!(!hints.is_word_len_possible(11)); // Above max
+        assert!(!hints.is_entry_len_possible(4)); // Below min
+        assert!(hints.is_entry_len_possible(5));  // At min
+        assert!(hints.is_entry_len_possible(10)); // At max
+        assert!(!hints.is_entry_len_possible(11)); // Above max
     }
 
 }

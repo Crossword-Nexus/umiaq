@@ -65,13 +65,13 @@
 //!     Ok(c as usize - 'a' as usize)
 //! }
 //!
-//! fn parse_high_level(word: &str) -> Result<Vec<usize>, Box<ParseError>> {
-//!     word.chars().map(|c| {
+//! fn parse_high_level(entry: &str) -> Result<Vec<usize>, Box<ParseError>> {
+//!     entry.chars().map(|c| {
 //!         parse_low_level(c).map_err(|e| {
 //!             // Wrap with additional context
 //!             if let ParseError::InvalidLowercaseChar { invalid_char } = *e {
 //!                 Box::new(ParseError::InvalidAnagramChars {
-//!                     anagram: word.to_string(),
+//!                     anagram: entry.to_string(),
 //!                     invalid_char
 //!                 })
 //!             } else {
