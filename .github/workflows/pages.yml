@@ -40,7 +40,7 @@ jobs:
           wasm-pack build --release --target web --out-dir web/pkg
 
       - name: Stage data assets
-        # Copy word list(s) into web/data so the site can fetch them
+        # Copy entry list(s) into web/data so the site can fetch them
         run: |
           mkdir -p web/data
           cp -f data/spreadthewordlist.dict web/data/

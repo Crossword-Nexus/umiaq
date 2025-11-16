@@ -5,8 +5,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Umiaq Solver</title>
-  <!-- Word list processing -->
-  <script src="./word-list.js" type="text/javascript"></script>
+  <!-- Entry list processing -->
+  <script src="entry-list.js" type="text/javascript"></script>
   <!-- Styles -->
   <link rel="stylesheet" href="./skeleton.min.css" />
   <link rel="stylesheet" href="./umiaq.css" />
@@ -40,7 +40,7 @@
       <button class="button-primary" type="submit">Search</button>
     </form>
 
-    <button type="submit" id="word-list-button" value="Upload word list">(Optional) Upload word list</button>
+    <button type="submit" id="entry-list-button" value="Upload entry list">(Optional) Upload entry list</button>
 
     <div id="results_loading"></div>
     <div id="results"></div>
@@ -88,14 +88,14 @@
   </p>
 
   <script type="module">
-    // load and process the default word list
-    import init, { parse_word_list, get_debug_info } from './pkg/umiaq.js';
+    // load and process the default entry list
+    import init, { parse_entry_list, get_debug_info } from './pkg/umiaq.js';
 
-    async function getLocalWordList() {
+    async function getLocalEntryList() {
       const url = './data/spreadthewordlist.dict';
       const minScore = 50;
       await init(); // ensure WASM is loaded
-      window.parse_word_list = parse_word_list; // make it available to classic scripts
+      window.parse_entry_list = parse_entry_list; // make it available to classic scripts
 
       try {
         const resp = await fetch(url, { cache: 'no-cache' });
@@ -103,14 +103,14 @@
         const text = await resp.text();
 
         // Call into Rust instead of JS parsing:
-        window.word_list = parse_word_list(text, minScore); // returns a JS Array<string>
+        window.entry_list = parse_entry_list(text, minScore); // returns a JS Array<string>
       } catch (err) {
         console.error(err);
         alert(`Could not load "${url}". Check the path and CORS/MIME type.`);
       }
     }
 
-    await getLocalWordList();
+    await getLocalEntryList();
 
     // Set up the web worker
     const worker = new Worker(new URL('./solver.worker.js', import.meta.url), { type: 'module' });
@@ -157,7 +157,7 @@
         const debugInfo = get_debug_info(
           inputEl.value.trim(),
           e.data.error,
-          window.word_list?.length || 0,
+          window.entry_list?.length || 0,
           parseInt(document.getElementById('numResults').value)
         );
         document.getElementById('debug-output').textContent = debugInfo;
@@ -181,7 +181,7 @@
       worker.postMessage({
         type: 'solve',
         input: inputEl.value.trim(),
-        wordList: window.word_list,
+        entryList: window.entry_list,
         numResults: parseInt(numResultsEl.value),
       });
     }
@@ -241,7 +241,7 @@
         document.getElementById("examples-container").innerHTML = html;
       });
     // attach listener
-    document.getElementById('word-list-button').addEventListener('click', createWordListModal);
+    document.getElementById('entry-list-button').addEventListener('click', createEntryListModal);
   </script>
 
 </body>

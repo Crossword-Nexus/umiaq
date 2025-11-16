@@ -1,6 +1,6 @@
 use crate::bindings::Bindings;
 use crate::solver::{solve_equation, SolverError};
-use crate::word_list::WordList;
+use crate::entry_list::EntryList;
 use crate::log::init_logger;
 use wasm_bindgen::prelude::*;
 
@@ -73,9 +73,9 @@ fn init() {
     log::info!("WASM module initialized");
 }
 
-// Pull just the bound word ("*") out of a Bindings
-fn binding_to_word(b: &Bindings) -> Option<String> {
-    b.get_word().map(|rc| rc.to_string())
+// Pull just the bound entry ("*") out of a Bindings
+fn binding_to_entry(b: &Bindings) -> Option<String> {
+    b.get_entry().map(|rc| rc.to_string())
 }
 
 #[derive(serde::Serialize)]
@@ -85,35 +85,35 @@ struct WasmSolveResult {
     readable_equation_context: String,
 }
 
-/// JS entry: (input: string, word_list: string[], num_results_requested: number)
-/// returns Array<Array<string>> — only the bound words
+/// JS entry: (input: string, entry_list: string[], num_results_requested: number)
+/// returns Array<Array<string>> — only the bound entries
 #[wasm_bindgen]
 pub fn solve_equation_wasm(
     input: &str,
-    word_list: JsValue,
+    entry_list: JsValue,
     num_results_requested: usize,
 ) -> Result<JsValue, JsValue> {
-    // word_list: string[] -> Vec<String>
-    let words: Vec<String> = serde_wasm_bindgen::from_value(word_list)
+    // entry_list: string[] -> Vec<String>
+    let entries: Vec<String> = serde_wasm_bindgen::from_value(entry_list)
         .map_err(|e| {
             // Create a structured error for deserialization failures
             WasmError {
                 code: "WASM001".to_string(),
-                message: format!("word_list must be string[]: {e}"),
-                description: "Invalid word list format".to_string(),
-                details: "The word_list parameter must be a JavaScript array of strings.".to_string(),
+                message: format!("entry_list must be string[]: {e}"),
+                description: "Invalid entry-list format".to_string(),
+                details: "The entry_list parameter must be a JavaScript array of strings.".to_string(),
                 help: Some("Ensure you're passing a valid string array, e.g., ['cat', 'dog', 'fish']".to_string()),
             }
         })?;
     // Borrow as &[&str] for the solver
-    let refs: Vec<&str> = words.iter().map(|s| s.as_str()).collect();
+    let refs: Vec<&str> = entries.iter().map(|s| s.as_str()).collect();
 
     let result = solve_equation(input, &refs, num_results_requested)
         .map_err(|e| WasmError::from(e))?;
 
     let status = match result.status {
         crate::solver::SolveStatus::FoundEnough => "found_enough".to_string(),
-        crate::solver::SolveStatus::WordListExhausted => "word_list_exhausted".to_string(),
+        crate::solver::SolveStatus::EntryListExhausted => "entry_list_exhausted".to_string(),
         crate::solver::SolveStatus::TimedOut { .. } => "timed_out".to_string(),
     };
 
@@ -121,7 +121,7 @@ pub fn solve_equation_wasm(
         solutions: result
             .solutions
             .iter()
-            .map(|row| row.iter().filter_map(binding_to_word).collect())
+            .map(|row| row.iter().filter_map(binding_to_entry).collect())
             .collect(),
         status,
         readable_equation_context: result.readable_equation_context,
@@ -139,25 +139,25 @@ pub fn solve_equation_wasm(
         })
 }
 
-/// Parse a newline-separated word list string into a `WordList`.
+/// Parse a newline-separated entry list string into an `EntryList`.
 ///
-/// Each line of the input should be in the `word;score` format.
-/// Words with a score below `min_score` are filtered out.
+/// Each line of the input should be in the `entry;score` format.
+/// Entries with a score below `min_score` are filtered out.
 /// Returns the surviving entries as a `JsValue` array of strings,
 /// suitable for consumption in JavaScript.
 ///
 /// # Errors
 /// Returns a `JsValue` error if parsing fails (e.g. malformed input).
 #[wasm_bindgen]
-pub fn parse_word_list(text: &str, min_score: i32) -> Result<JsValue, JsValue> {
-    let word_list = WordList::parse_from_str(text, min_score);
-    to_value(&word_list.entries)
+pub fn parse_entry_list(text: &str, min_score: i32) -> Result<JsValue, JsValue> {
+    let entry_list = EntryList::parse_from_str(text, min_score);
+    to_value(&entry_list.entries)
         .map_err(|e| {
             WasmError {
                 code: "WASM003".to_string(),
                 message: format!("serialization failed: {e}"),
-                description: "Failed to serialize word list".to_string(),
-                details: "The word list could not be converted to JavaScript format.".to_string(),
+                description: "Failed to serialize entry list".to_string(),
+                details: "The entry list could not be converted to JavaScript format.".to_string(),
                 help: Some("This is an internal error. Please report this issue.".to_string()),
             }.into()
         })
@@ -172,7 +172,7 @@ pub fn parse_word_list(text: &str, min_score: i32) -> Result<JsValue, JsValue> {
 /// # Arguments
 /// * `input_pattern` - The equation pattern that was being solved
 /// * `error_message` - The error message that was displayed
-/// * `word_list_size` - Number of words in the word list
+/// * `entry_list_size` - Number of entries in the entry list
 /// * `num_results_requested` - How many results were requested
 ///
 /// # Returns
@@ -181,7 +181,7 @@ pub fn parse_word_list(text: &str, min_score: i32) -> Result<JsValue, JsValue> {
 pub fn get_debug_info(
     input_pattern: &str,
     error_message: &str,
-    word_list_size: usize,
+    entry_list_size: usize,
     num_results_requested: usize,
 ) -> String {
     use std::fmt::Write;
@@ -200,7 +200,7 @@ pub fn get_debug_info(
 
     let _ = writeln!(&mut report, "## Input");
     let _ = writeln!(&mut report, "Pattern: {}", input_pattern);
-    let _ = writeln!(&mut report, "Word List Size: {}", word_list_size);
+    let _ = writeln!(&mut report, "Entry List Size: {}", entry_list_size);
     let _ = writeln!(&mut report, "Results Requested: {}", num_results_requested);
     let _ = writeln!(&mut report);
 
@@ -244,7 +244,7 @@ mod tests {
         assert_eq!(lines[6], "");
         assert_eq!(lines[7], "## Input");
         assert_eq!(lines[8], "Pattern: AB;BA");
-        assert_eq!(lines[9], "Word List Size: 1000");
+        assert_eq!(lines[9], "Entry List Size: 1000");
         assert_eq!(lines[10], "Results Requested: 100");
         assert_eq!(lines[11], "");
         assert_eq!(lines[12], "## Environment");
@@ -284,7 +284,7 @@ mod tests {
         // Find input section and verify exact pattern
         let input_idx = lines.iter().position(|&l| l == "## Input").unwrap();
         assert_eq!(lines[input_idx + 1], "Pattern: A;B;|A|>5;!=AB;[abc]");
-        assert_eq!(lines[input_idx + 2], "Word List Size: 2000");
+        assert_eq!(lines[input_idx + 2], "Entry List Size: 2000");
         assert_eq!(lines[input_idx + 3], "Results Requested: 200");
     }
 
@@ -297,7 +297,7 @@ mod tests {
 
         let input_idx = lines.iter().position(|&l| l == "## Input").unwrap();
         assert_eq!(lines[input_idx + 1], "Pattern: ");
-        assert_eq!(lines[input_idx + 2], "Word List Size: 0");
+        assert_eq!(lines[input_idx + 2], "Entry List Size: 0");
         assert_eq!(lines[input_idx + 3], "Results Requested: 1");
     }
 
@@ -309,7 +309,7 @@ mod tests {
         let lines: Vec<&str> = report.lines().collect();
 
         let input_idx = lines.iter().position(|&l| l == "## Input").unwrap();
-        assert_eq!(lines[input_idx + 2], "Word List Size: 999999");
+        assert_eq!(lines[input_idx + 2], "Entry List Size: 999999");
         assert_eq!(lines[input_idx + 3], "Results Requested: 88888");
     }
 }

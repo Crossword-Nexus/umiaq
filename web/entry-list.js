@@ -1,5 +1,5 @@
 /**
-* Modal boxes (currently only for word lists)
+* Modal boxes (currently only for entry lists)
 **/
 
 // Close the modal box
@@ -57,9 +57,9 @@ function createModalBox(title, content, button_text = 'Close') {
      */
 }
 
-/** Assign a click action to the word list button **/
-function handleWordListClick() {
-  let files = document.getElementById('word-list-file').files; // FileList object
+/** Assign a click action to the entry-list button **/
+function handleEntryListClick() {
+  let files = document.getElementById('entry-list-file').files; // FileList object
   let minScore = document.getElementById('min-score').value;
   minScore = parseInt(minScore);
 
@@ -72,8 +72,8 @@ function handleWordListClick() {
           r.onload = (function () {
               return function (e) {
                   let contents = e.target.result;
-                  // parse the word list using the Rust function
-                  window.word_list = window.parse_word_list(contents, minScore);
+                  // parse the entry list using the Rust function
+                  window.entry_list = window.parse_entry_list(contents, minScore);
                   closeModalBox();
               };
           })(f);
@@ -84,18 +84,18 @@ function handleWordListClick() {
   }
 }
 
-function createWordListModal() {
-  let title = 'Upload your own word list';
+function createEntryListModal() {
+  let title = 'Upload your own entry list';
   let html = `
-  <input type="file" id="word-list-file"  accept=".txt,.dict" />
+  <input type="file" id="entry-list-file"  accept=".txt,.dict" />
   <label for="min-score">Min score:</label>
   <input type="number" id="min-score" name="min-score" value="50">
   <br /><br />
-  <button value="Submit" class="button-primary" id="submit-word-list">Upload</button>
+  <button value="Submit" class="button-primary" id="submit-entry-list">Upload</button>
   `;
   createModalBox(title, html);
 
   // add a listener to the submit button
-  document.getElementById('submit-word-list').addEventListener('click', handleWordListClick);
+  document.getElementById('submit-entry-list').addEventListener('click', handleEntryListClick);
 
 }

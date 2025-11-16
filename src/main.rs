@@ -4,7 +4,7 @@ use std::time::Instant;
 
 use umiaq::solver;
 use umiaq::solver::SolveStatus;
-use umiaq::word_list;
+use umiaq::entry_list;
 
 /// Umiaq equation solver
 #[derive(Parser, Debug)]
@@ -13,13 +13,13 @@ struct Cli {
     /// The equation to solve (e.g., "AB;BA;|A|=2;|B|=2;!=AB")
     equation: String,
 
-    /// Path to the word list file (word;score per line)
+    /// Path to the entry list file (entry;score per line)
     #[arg(
         short,
         long,
         default_value = concat!(env!("CARGO_MANIFEST_DIR"), "/data/spreadthewordlist.dict")
     )]
-    word_list: String,
+    entry_list: String,
 
     /// Minimum score filter
     #[arg(short = 'm', long, default_value_t = 50)]
@@ -60,28 +60,28 @@ fn main() -> ExitCode {
 ///
 /// Steps:
 /// 1. Parse CLI arguments with Clap.
-/// 2. Load the word list from disk, applying the minimum score filter.
-/// 3. Solve the given pattern against the word list.
+/// 2. Load the entry list from disk, applying the minimum score filter.
+/// 3. Solve the given pattern against the entry list.
 /// 4. Print each solution on stdout.
 /// 5. Print performance metrics (timings, counts) on stderr.
 ///
 /// Returns `Ok(())` on success or an error (e.g., invalid pattern,
-/// failed regex parse, missing word list file) which bubbles up to [`main`].
+/// failed regex parse, missing entry-list file) which bubbles up to [`main`].
 fn try_main() -> Result<(), Box<dyn std::error::Error>> {
     // Parse command-line arguments
     let cli = Cli::parse();
 
-    // 1. Load the word list from disk, filtering out low-score entries
+    // 1. Load the entry list from disk, filtering out low-score entries
     let t_load = Instant::now();
-    let word_list = word_list::WordList::load_from_path(&cli.word_list, cli.min_score)?;
+    let entry_list = entry_list::EntryList::load_from_path(&cli.entry_list, cli.min_score)?;
     let load_secs = t_load.elapsed().as_secs_f64();
 
-    // Build a Vec<&str> of word references for the solver
-    let words_ref: Vec<_> = word_list.entries.iter().map(String::as_str).collect();
+    // Build a Vec<&str> of entry references for the solver
+    let entries_ref: Vec<_> = entry_list.entries.iter().map(String::as_str).collect();
 
-    // 2. Solve the equation against the word list
+    // 2. Solve the equation against the entry list
     let t_solve = Instant::now();
-    let solve_result = solver::solve_equation(&cli.equation, &words_ref, cli.num_results_requested)?;
+    let solve_result = solver::solve_equation(&cli.equation, &entries_ref, cli.num_results_requested)?;
     let solve_secs = t_solve.elapsed().as_secs_f64();
 
     // 3. Print each solution on stdout
@@ -96,15 +96,15 @@ fn try_main() -> Result<(), Box<dyn std::error::Error>> {
         SolveStatus::FoundEnough => {
             eprintln!("✓ Stopped after finding {}/{} requested solutions", solve_result.solutions.len(), cli.num_results_requested);
         }
-        SolveStatus::WordListExhausted => {
-            eprintln!("✓ Word list exhausted (no more solutions)");
+        SolveStatus::EntryListExhausted => {
+            eprintln!("✓ Entry list exhausted (no more solutions)");
         }
     }
 
-    // 4. Print diagnostics (word list size, timings, number of results) to stderr
+    // 4. Print diagnostics (entry-list size, timings, number of results) to stderr
     eprintln!(
-        "Loaded {} words in {:.3}s; solved in {:.3}s ({} tuples).",
-        word_list.entries.len(),
+        "Loaded {} entries in {:.3}s; solved in {:.3}s ({} tuples).",
+        entry_list.entries.len(),
         load_secs,
         solve_secs,
         solve_result.solutions.len()

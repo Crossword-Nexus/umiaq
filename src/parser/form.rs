@@ -63,13 +63,13 @@ fn lc_letter_to_num(c: char) -> Result<usize, Box<ParseError>> {
 }
 
 impl Alphagram {
-    pub(crate) fn is_anagram(&self, other_word: &[char]) -> Result<bool, Box<ParseError>> {
-        if self.len != other_word.len() {
+    pub(crate) fn is_anagram(&self, other_entry: &[char]) -> Result<bool, Box<ParseError>> {
+        if self.len != other_entry.len() {
             return Ok(false);
         }
 
         let mut char_counts = self.char_counts;
-        for &c in other_word {
+        for &c in other_entry {
             let c_as_num = lc_letter_to_num(c)?;
             if char_counts[c_as_num] == 0 {
                 return Ok(false);
@@ -84,16 +84,16 @@ impl Alphagram {
 impl FromStr for Alphagram {
     type Err = Box<ParseError>;
 
-    // NB: throws error if lowercase_word contains anything but lowercase letters
-    fn from_str(lowercase_word: &str) -> Result<Self, Self::Err> {
+    // NB: throws error if lowercase_entry contains anything but lowercase letters
+    fn from_str(lowercase_entry: &str) -> Result<Self, Self::Err> {
         let mut len = 0;
         let mut char_counts = [0u8; ALPHABET_SIZE];
-        for c in lowercase_word.chars() {
+        for c in lowercase_entry.chars() {
             let c_as_num = lc_letter_to_num(c).map_err(|e| {
                 // Wrap the lower-level error with anagram context
                 if let ParseError::InvalidLowercaseChar { invalid_char } = *e {
                     Box::new(ParseError::InvalidAnagramChars {
-                        anagram: lowercase_word.to_string(),
+                        anagram: lowercase_entry.to_string(),
                         invalid_char
                     })
                 } else {
@@ -104,7 +104,7 @@ impl FromStr for Alphagram {
             len += 1;
         }
 
-        Ok(Alphagram { char_counts, as_string: lowercase_word.to_string(), len })
+        Ok(Alphagram { char_counts, as_string: lowercase_entry.to_string(), len })
     }
 }
 
@@ -130,7 +130,7 @@ impl ParsedForm {
         self.parts.iter()
     }
 
-    /// If this form is deterministic, build the concrete word using `env`.
+    /// If this form is deterministic, build the concrete entry using `env`.
     /// Returns `None` if any required var is unbound or if a nondeterministic part is present.
     pub(crate) fn materialize_deterministic_with_env(
         &self,
@@ -312,8 +312,8 @@ mod tests {
     fn test_is_anagram_negative_case() {
         let ag = FormPart::anagram_of("abc").unwrap();
         if let FormPart::Anagram(agi) = ag {
-            let word: Vec<char> = "abd".chars().collect();
-            assert!(!agi.is_anagram(&word).unwrap());
+            let entry: Vec<char> = "abd".chars().collect();
+            assert!(!agi.is_anagram(&entry).unwrap());
         }
     }
 
@@ -599,8 +599,8 @@ mod tests {
             // "abc" is anagram of "bca"
             let ag = FormPart::anagram_of("abc").unwrap();
             if let FormPart::Anagram(agi) = ag {
-                let word: Vec<char> = "bca".chars().collect();
-                assert!(agi.is_anagram(&word).unwrap());
+                let entry: Vec<char> = "bca".chars().collect();
+                assert!(agi.is_anagram(&entry).unwrap());
             }
         }
 
@@ -608,8 +608,8 @@ mod tests {
         fn test_is_anagram_different_length() {
             let ag = FormPart::anagram_of("abc").unwrap();
             if let FormPart::Anagram(agi) = ag {
-                let word: Vec<char> = "ab".chars().collect();
-                assert!(!agi.is_anagram(&word).unwrap());
+                let entry: Vec<char> = "ab".chars().collect();
+                assert!(!agi.is_anagram(&entry).unwrap());
             }
         }
 
@@ -617,8 +617,8 @@ mod tests {
         fn test_is_anagram_different_chars() {
             let ag = FormPart::anagram_of("abc").unwrap();
             if let FormPart::Anagram(agi) = ag {
-                let word: Vec<char> = "xyz".chars().collect();
-                assert!(!agi.is_anagram(&word).unwrap());
+                let entry: Vec<char> = "xyz".chars().collect();
+                assert!(!agi.is_anagram(&entry).unwrap());
             }
         }
 
