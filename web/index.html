@@ -162,12 +162,30 @@
 
         } else if (e.data.type === 'err') {
             loadingEl.innerHTML = '';
-            resultsEl.textContent = 'Error: ' + e.data.error;
 
-            // Generate debug information
+            const error = e.data.error;
+
+            // Format error display with structured information
+            let errorDisplay = '';
+            if (error.code) {
+                errorDisplay = `Error ${error.code}: ${error.message || 'Unknown error'}`;
+                if (error.details) {
+                    errorDisplay += `\n\n${error.details}`;
+                }
+                if (error.help) {
+                    errorDisplay += `\n\nSuggestion: ${error.help}`;
+                }
+            } else {
+                // Fallback for non-structured errors
+                errorDisplay = 'Error: ' + (error.message || String(error));
+            }
+
+            resultsEl.textContent = errorDisplay;
+
+            // Generate debug information (pass formatted error message)
             const debugInfo = get_debug_info(
                 inputEl.value.trim(),
-                e.data.error,
+                errorDisplay,
                 window.entry_list?.length || 0,
                 parseInt(document.getElementById('numResults').value)
             );

@@ -15,7 +15,8 @@ self.onmessage = async (e) => {
             const out = solve_equation_wasm(input, entryList, numResults);
             self.postMessage({ type: 'ok', results: out });
         } catch (err) {
-            self.postMessage({ type: 'err', error: String(err) });
+            // Pass the structured error object directly (not converted to string)
+            self.postMessage({ type: 'err', error: err });
         }
     }
 };

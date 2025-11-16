@@ -46,19 +46,14 @@ impl From<SolverError> for WasmError {
 
 impl From<WasmError> for JsValue {
     fn from(e: WasmError) -> Self {
-        // Format a comprehensive error message
-        let mut msg = format!("Error {}: {}", e.code, e.message);
-
-        if !e.details.is_empty() {
-            msg.push_str(&format!("\n\n{}", e.details));
-        }
-
-        if let Some(help) = e.help {
-            msg.push_str(&format!("\n\nSuggestion: {}", help));
-        }
-
-        // Create a JavaScript Error object with the formatted message
-        js_sys::Error::new(&msg).into()
+        // Serialize as JSON to preserve error structure for JavaScript
+        // This allows the frontend to access error.code, error.message, etc. separately
+        serde_wasm_bindgen::to_value(&e)
+            .unwrap_or_else(|_| {
+                // Fallback: if serialization fails, create a plain error message
+                let msg = format!("Error {}: {} (serialization failed)", e.code, e.message);
+                js_sys::Error::new(&msg).into()
+            })
     }
 }
 
