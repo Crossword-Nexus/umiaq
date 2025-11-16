@@ -91,7 +91,9 @@ impl Bindings {
                 let c = if i == ENTRY_SENTINEL_INDEX {
                     ENTRY_SENTINEL
                 } else {
-                    (b'A' + i as u8) as char
+                    let idx = u8::try_from(i)
+                        .expect("slot index must fit in u8 (slots has 27 elements, max index is 26)");
+                    (b'A' + idx) as char
                 };
                 (c, val)
             })

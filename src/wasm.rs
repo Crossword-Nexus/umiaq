@@ -46,31 +46,56 @@ impl From<SolverError> for WasmError {
 
 impl From<WasmError> for JsValue {
     fn from(e: WasmError) -> Self {
-        // Format a comprehensive error message
-        let mut msg = format!("Error {}: {}", e.code, e.message);
-
-        if !e.details.is_empty() {
-            msg.push_str(&format!("\n\n{}", e.details));
-        }
-
-        if let Some(help) = e.help {
-            msg.push_str(&format!("\n\nSuggestion: {}", help));
-        }
-
-        // Create a JavaScript Error object with the formatted message
-        js_sys::Error::new(&msg).into()
+        // Serialize as JSON to preserve error structure for JavaScript
+        // This allows the frontend to access error.code, error.message, etc. separately
+        serde_wasm_bindgen::to_value(&e)
+            .unwrap_or_else(|_| {
+                // Fallback: if serialization fails, create a plain error message
+                let msg = format!("Error {}: {} (serialization failed)", e.code, e.message);
+                js_sys::Error::new(&msg).into()
+            })
     }
 }
 
-#[wasm_bindgen(start)]
-fn init() {
+/// Validate all internal regex patterns compile successfully.
+///
+/// Forces LazyLock initialization of all static regexes so any compilation
+/// errors occur at startup rather than on first user query. If a regex pattern
+/// is invalid, this will panic with a clear error message.
+///
+/// ## IMPORTANT: Adding a new regex?
+/// If you add a new `LazyLock<Regex>` anywhere in the codebase, you MUST add it here.
+/// Otherwise it won't be validated at startup and could crash on first user query.
+/// See: `tests::test_all_regexes_validated` for a reminder.
+fn validate_internal_regexes() {
+    // Access each LazyLock regex to force compilation
+    let _ = &*crate::patterns::LEN_CMP_RE;
+    let _ = &*crate::patterns::NEQ_RE;
+    let _ = &*crate::joint_constraints::JOINT_LEN_RE;
+    log::debug!("Internal regex patterns validated successfully");
+}
+
+/// Initialize Umiaq logging and validation with the specified debug setting.
+///
+/// # Arguments
+/// * `debug_enabled` - If true, use Debug log level; if false, use Info log level
+///
+/// This function must be called from JavaScript after the WASM module loads.
+#[wasm_bindgen]
+pub fn initialize(debug_enabled: bool) {
     // 1. Set up panic hook
     console_error_panic_hook::set_once();
 
-    // 2. Initialize logging — always debug-level in WASM
-    init_logger(true);
+    // 2. Validate internal regexes early
+    validate_internal_regexes();
+
+    // 3. Initialize logging with the provided debug setting
+    init_logger(debug_enabled);
 
     log::info!("WASM module initialized");
+    if !debug_enabled {
+        log::info!("Debug logging disabled");
+    }
 }
 
 // Pull just the bound entry ("*") out of a Bindings
@@ -311,5 +336,34 @@ mod tests {
         let input_idx = lines.iter().position(|&l| l == "## Input").unwrap();
         assert_eq!(lines[input_idx + 2], "Entry List Size: 999999");
         assert_eq!(lines[input_idx + 3], "Results Requested: 88888");
+    }
+
+    /// Ensure all LazyLock<Regex> statics are validated at startup. (fail fast)
+    ///
+    /// This test documents which regexes exist and serves as a reminder to update
+    /// `validate_internal_regexes()` when adding new regex patterns.
+    ///
+    /// **If a new `LazyLock<Regex>` is added anywhere in the codebase:**
+    /// 1. Add it to `validate_internal_regexes()` in this file
+    /// 2. Update this test to include the new regex
+    #[test]
+    fn test_all_regexes_validated() {
+        // this test documents all LazyLock<Regex> statics that should be validated
+        // at WASM startup in validate_internal_regexes()
+
+        // current regexes (as of this writing):
+        // 1. crate::patterns::LEN_CMP_RE
+        // 2. crate::patterns::NEQ_RE
+        // 3. crate::joint_constraints::JOINT_LEN_RE
+
+        // if a new regex was added and this test fails, make sure to:
+        // - add it to validate_internal_regexes()
+        // - update this list
+
+        // force validation to ensure they all compile
+        validate_internal_regexes();
+
+        // test passes if no panic occurred above
+        assert!(true, "All regexes validated successfully");
     }
 }

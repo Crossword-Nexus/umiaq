@@ -23,7 +23,10 @@ const LEN_CMP_PATTERN: &str = r"^\|([A-Z])\|\s*(<=|>=|=|<|>)\s*(\d+)$";
 
 /// Matches comparative length constraints like `|A|>4`, `|A|<=7`, etc.
 /// (Whitespace is permitted around operator.)
-static LEN_CMP_RE: LazyLock<Regex> =
+///
+/// NB: This regex is validated at WASM startup in `wasm::validate_internal_regexes()`.
+/// If a new `LazyLock<Regex>` is added, add it there too!
+pub(crate) static LEN_CMP_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(LEN_CMP_PATTERN)
         .unwrap_or_else(|e| panic!(
             "BUG: Failed to compile LEN_CMP_RE regex pattern '{LEN_CMP_PATTERN}': {e}."
@@ -33,7 +36,10 @@ static LEN_CMP_RE: LazyLock<Regex> =
 const NEQ_PATTERN: &str = r"^!=([A-Z]+)$";
 
 /// Matches inequality constraints like `!=AB`
-static NEQ_RE: LazyLock<Regex> =
+///
+/// NB: This regex is validated at WASM startup in `wasm::validate_internal_regexes()`.
+/// If a new `LazyLock<Regex>` is added, add it there too!
+pub(crate) static NEQ_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(NEQ_PATTERN)
         .unwrap_or_else(|e| panic!(
             "BUG: Failed to compile NEQ_RE regex pattern '{NEQ_PATTERN}': {e}."
@@ -318,9 +324,8 @@ pub struct EquationContext {
 }
 
 impl EquationContext {
-
     /// Return a readable version of the equation context
-    pub fn readable_context(&self) -> String {
+    pub(crate) fn readable_context(&self) -> String {
         self.to_string()
     }
 
@@ -439,8 +444,8 @@ impl EquationContext {
                     let vc = self.var_constraints.ensure(var_char);
                     vc.constrain_by(&cc_vc)?;
 
-                    // If the complex constraint carries a subform, ensure consistency
-                    // with any prior form assigned to this variable.
+                    // if the complex constraint carries a subform, disallow multiple
+                    // *different* complex constraints with forms for the same variable
                     if let Some(f) = cc_vc.form {
                         if let Some(old_form) = &vc.form {
                             if *old_form != f {
@@ -450,6 +455,9 @@ impl EquationContext {
                                     newer: f,
                                 }));
                             }
+                            // if there was already a form (`old_form`) for this variable
+                            // (`var_char`), but it exactly matches the new form (`f`), we silently
+                            // deduplicate (i.e., ignore the duplicate copy)
                         } else {
                             vc.form = Some(f);
                         }
