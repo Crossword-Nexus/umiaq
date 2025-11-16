@@ -439,8 +439,8 @@ impl EquationContext {
                     let vc = self.var_constraints.ensure(var_char);
                     vc.constrain_by(&cc_vc)?;
 
-                    // If the complex constraint carries a subform, ensure consistency
-                    // with any prior form assigned to this variable.
+                    // if the complex constraint carries a subform, disallow multiple
+                    // *different* complex constraints with forms for the same variable
                     if let Some(f) = cc_vc.form {
                         if let Some(old_form) = &vc.form {
                             if *old_form != f {
@@ -450,6 +450,9 @@ impl EquationContext {
                                     newer: f,
                                 }));
                             }
+                            // if there was already a form (`old_form`) for this variable
+                            // (`var_char`), but it exactly matches the new form (`f`), we silently
+                            // deduplicate (i.e., ignore the duplicate copy)
                         } else {
                             vc.form = Some(f);
                         }
