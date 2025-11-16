@@ -183,13 +183,12 @@
             resultsEl.textContent = errorDisplay;
 
             // Generate debug information (pass formatted error message)
-            const debugInfo = get_debug_info(
+            document.getElementById('debug-output').textContent = get_debug_info(
                 inputEl.value.trim(),
                 errorDisplay,
                 window.entry_list?.length || 0,
                 parseInt(document.getElementById('numResults').value)
             );
-            document.getElementById('debug-output').textContent = debugInfo;
 
             // Show compact error message (not the full panel)
             document.getElementById('error-compact').style.display = 'block';
