@@ -324,9 +324,8 @@ pub struct EquationContext {
 }
 
 impl EquationContext {
-
     /// Return a readable version of the equation context
-    pub fn readable_context(&self) -> String {
+    pub(crate) fn readable_context(&self) -> String {
         self.to_string()
     }
 
