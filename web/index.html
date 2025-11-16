@@ -115,8 +115,10 @@
 
     await getLocalEntryList();
 
-    // Set up the web worker
-    const worker = new Worker(new URL('./solver.worker.js', import.meta.url), {type: 'module'});
+    // Set up the web worker (with cache busting)
+    const workerUrl = new URL('./solver.worker.js', import.meta.url);
+    workerUrl.searchParams.set('v', Date.now().toString()); // force reload on each page load
+    const worker = new Worker(workerUrl, {type: 'module'});
 
     // Define elements
     const resultsEl = document.getElementById("results");
@@ -176,11 +178,20 @@
 
     async function solve(e) {
         e.preventDefault();
+
+        // check if entry list is loaded
+        if (!window.entry_list) {
+            resultsEl.textContent = 'Error: Entry list not loaded. Please wait or refresh the page.';
+            return;
+        }
+
         loadingEl.innerHTML = '<span id="spinner"></span> Loading …';
         document.getElementById("results-meta").textContent = '';
         // the "numResults" element
         const numResultsEl = document.getElementById('numResults');
         searchStart = performance.now();   // mark start time
+
+        // use worker for better performance
         worker.postMessage({
             type: 'solve',
             input: inputEl.value.trim(),
