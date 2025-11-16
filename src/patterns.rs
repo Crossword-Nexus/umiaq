@@ -23,7 +23,10 @@ const LEN_CMP_PATTERN: &str = r"^\|([A-Z])\|\s*(<=|>=|=|<|>)\s*(\d+)$";
 
 /// Matches comparative length constraints like `|A|>4`, `|A|<=7`, etc.
 /// (Whitespace is permitted around operator.)
-static LEN_CMP_RE: LazyLock<Regex> =
+///
+/// NB: This regex is validated at WASM startup in `wasm::validate_internal_regexes()`.
+/// If a new `LazyLock<Regex>` is added, add it there too!
+pub(crate) static LEN_CMP_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(LEN_CMP_PATTERN)
         .unwrap_or_else(|e| panic!(
             "BUG: Failed to compile LEN_CMP_RE regex pattern '{LEN_CMP_PATTERN}': {e}."
@@ -33,7 +36,10 @@ static LEN_CMP_RE: LazyLock<Regex> =
 const NEQ_PATTERN: &str = r"^!=([A-Z]+)$";
 
 /// Matches inequality constraints like `!=AB`
-static NEQ_RE: LazyLock<Regex> =
+///
+/// NB: This regex is validated at WASM startup in `wasm::validate_internal_regexes()`.
+/// If a new `LazyLock<Regex>` is added, add it there too!
+pub(crate) static NEQ_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(NEQ_PATTERN)
         .unwrap_or_else(|e| panic!(
             "BUG: Failed to compile NEQ_RE regex pattern '{NEQ_PATTERN}': {e}."

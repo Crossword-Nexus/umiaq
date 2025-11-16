@@ -199,7 +199,10 @@ static JOINT_LEN_PATTERN: LazyLock<String> = LazyLock::new(|| {
 });
 
 /// Matches joint length constraints like `|AB|=7`
-static JOINT_LEN_RE: LazyLock<Regex> =
+///
+/// NB: This regex is validated at WASM startup in `wasm::validate_internal_regexes()`.
+/// If a new `LazyLock<Regex>` is added, add it there too!
+pub(crate) static JOINT_LEN_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(&JOINT_LEN_PATTERN)
         .unwrap_or_else(|e| panic!(
             "BUG: Failed to compile JOINT_LEN_RE regex pattern '{}': {e}.", *JOINT_LEN_PATTERN
