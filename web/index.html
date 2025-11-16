@@ -92,12 +92,18 @@
 
 <script type="module">
     // load and process the default entry list
-    import init, {parse_entry_list, get_debug_info} from './pkg/umiaq.js';
+    import init, {parse_entry_list, get_debug_info, initialize} from './pkg/umiaq.js';
+
+    // Determine debug setting from URL query parameter
+    const urlParams = new URLSearchParams(window.location.search);
+    const debugParam = urlParams.get('debug');
+    const debugEnabled = debugParam !== 'false' && debugParam !== '0';
 
     async function getLocalEntryList() {
         const url = './data/spreadthewordlist.dict';
         const minScore = 50;
-        await init(); // ensure WASM is loaded
+        await init(); // Load WASM module
+        initialize(debugEnabled); // Initialize logging with debug setting
         window.parse_entry_list = parse_entry_list; // make it available to classic scripts
 
         try {
@@ -125,7 +131,7 @@
     const inputEl = document.getElementById("input");
     const loadingEl = document.getElementById("results_loading");
 
-    worker.postMessage({type: 'init'});
+    worker.postMessage({type: 'init', debugEnabled: debugEnabled});
     worker.onmessage = (e) => {
         if (e.data.type === 'ready') {
             // Hide and show

@@ -80,18 +80,27 @@ fn validate_internal_regexes() {
     log::debug!("Internal regex patterns validated successfully");
 }
 
-#[wasm_bindgen(start)]
-fn init() {
+/// Initialize Umiaq logging and validation with the specified debug setting.
+///
+/// # Arguments
+/// * `debug_enabled` - If true, use Debug log level; if false, use Info log level
+///
+/// This function must be called from JavaScript after the WASM module loads.
+#[wasm_bindgen]
+pub fn initialize(debug_enabled: bool) {
     // 1. Set up panic hook
     console_error_panic_hook::set_once();
 
     // 2. Validate internal regexes early
     validate_internal_regexes();
 
-    // 3. Initialize logging — always debug-level in WASM
-    init_logger(true);
+    // 3. Initialize logging with the provided debug setting
+    init_logger(debug_enabled);
 
     log::info!("WASM module initialized");
+    if !debug_enabled {
+        log::info!("Debug logging disabled");
+    }
 }
 
 // Pull just the bound entry ("*") out of a Bindings

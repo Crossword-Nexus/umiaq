@@ -9,14 +9,19 @@ use console_log;
 ///
 /// # Behavior
 /// - **Native (CLI):** respects `debug_enabled` or `RUST_LOG`.
-/// - **WASM:** always logs at `Debug` level (so all messages appear in the console).
-pub fn init_logger(#[cfg_attr(target_arch = "wasm32", allow(unused_variables))] debug_enabled: bool) {
+/// - **WASM:** uses `Debug` level if `debug_enabled` is true, otherwise `Info` level.
+pub fn init_logger(debug_enabled: bool) {
     #[cfg(target_arch = "wasm32")]
     {
-        // Always log everything in the browser for better visibility.
-        match console_log::init_with_level(log::Level::Debug) {
+        let level = if debug_enabled {
+            log::Level::Debug
+        } else {
+            log::Level::Info
+        };
+
+        match console_log::init_with_level(level) {
             Ok(_) => {
-                log::info!("WASM logger initialized (always DEBUG level)");
+                log::info!("WASM logger initialized at {level:?} level");
             }
             Err(e) => {
                 // If console_log fails, try to log error via web_sys and continue.
