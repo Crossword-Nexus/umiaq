@@ -75,7 +75,7 @@
   </details>
 
   <script>
-      fetch('./README.md')
+      fetch('../README.md')
           .then(r => r.text())
           .then(md => {
               document.getElementById('readme').innerHTML = marked.parse(md);
