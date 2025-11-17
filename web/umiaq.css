@@ -366,3 +366,29 @@ hr {
     font-style:italic;
     color:#bbb;
 }
+
+/* Clickable example patterns */
+.example-pattern {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+    display: inline;
+    text-decoration: none;
+}
+
+.example-pattern:hover {
+    text-decoration: underline;
+    text-decoration-style: solid;
+    text-decoration-color: #4da3ff;
+    text-underline-offset: 2px;
+}
+
+.example-pattern:focus {
+    outline: 1px dotted #4da3ff;
+    outline-offset: 2px;
+}

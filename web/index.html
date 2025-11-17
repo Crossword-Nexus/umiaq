@@ -276,6 +276,19 @@
         .then(response => response.text())
         .then(html => {
             document.getElementById("examples-container").innerHTML = html;
+
+            // Attach click handlers to make examples clickable
+            document.querySelectorAll('.example-pattern').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const pattern = button.getAttribute('data-pattern');
+                    const inputEl = document.getElementById('input');
+                    inputEl.value = pattern;
+                    inputEl.focus();
+                    // Auto-submit the form
+                    document.querySelector('form').dispatchEvent(new Event('submit', { cancelable: true }));
+                });
+            });
         });
     // attach listener
     document.getElementById('entry-list-button').addEventListener('click', createEntryListModal);
