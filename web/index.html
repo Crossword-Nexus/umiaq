@@ -99,6 +99,24 @@
     const debugParam = urlParams.get('debug');
     const debugEnabled = debugParam !== 'false' && debugParam !== '0';
 
+    // Map error codes to README sections for "Learn more" links
+    function getHelpLinkForError(errorCode) {
+        // Map specific error codes to relevant README sections
+        const errorToSection = {
+            'E003': '#features',  // EmptyForm
+            'E005': '#features',  // InvalidComplexConstraint
+            'E009': '#features',  // InvalidCharsetRange
+            'E010': '#features',  // DanglingCharsetDash
+            'E012': '#examples',  // ClauseParseError
+            'E013': '#features',  // InvalidVariableName
+            'E014': '#features',  // InvalidLowercaseChar
+            'E015': '#features',  // InvalidAnagramChars
+        };
+
+        // Return mapped section or default to #features
+        return errorToSection[errorCode] || '#features';
+    }
+
     async function getLocalEntryList() {
         const url = './data/spreadthewordlist.dict';
         const minScore = 50;
@@ -181,6 +199,15 @@
             }
 
             resultsEl.textContent = errorDisplay;
+
+            // Add "Learn more" link for documented error codes
+            if (error.code) {
+                const helpSection = getHelpLinkForError(error.code);
+                const learnMore = document.createElement('div');
+                learnMore.style.marginTop = '1em';
+                learnMore.innerHTML = `→ <a href="../README.md${helpSection}" style="color: #4da3ff;">Learn more about Umiaq patterns</a>`;
+                resultsEl.appendChild(learnMore);
+            }
 
             // Generate debug information (pass formatted error message)
             document.getElementById('debug-output').textContent = get_debug_info(
