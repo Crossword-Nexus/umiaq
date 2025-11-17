@@ -183,6 +183,8 @@ use std::time::Duration;
 const TIME_BUDGET: u64 = 30;
 // The initial number of entries from the entry list we look through
 const DEFAULT_BATCH_SIZE: usize = 10_000;
+// Multiplier for adaptive batch size growth (doubles each iteration)
+const BATCH_SIZE_MULTIPLIER: usize = 2;
 // A constant to split up items in our hashes
 const HASH_SPLIT: u16 = 0xFFFFu16;
 // Warn when solving equations with many patterns (potentially expensive)
@@ -1129,9 +1131,9 @@ fn solve_equation_with_budget(
         }
 
         // Grow the batch size for the next round
-        // TODO: magic number, maybe adaptive resizing?
+        // TODO maybe adaptive resizing?
         let old_batch_size = batch_size;
-        batch_size = batch_size.saturating_mul(2);
+        batch_size = batch_size.saturating_mul(BATCH_SIZE_MULTIPLIER);
         if batch_size != old_batch_size {
             debug!("Increasing batch size: {old_batch_size} → {batch_size}");
         }
