@@ -75,7 +75,7 @@
   </details>
 
   <script>
-      fetch('../README.md')
+      fetch('./README.md')
           .then(r => r.text())
           .then(md => {
               document.getElementById('readme').innerHTML = marked.parse(md);
@@ -205,7 +205,7 @@
                 const helpSection = getHelpLinkForError(error.code);
                 const learnMore = document.createElement('div');
                 learnMore.style.marginTop = '1em';
-                learnMore.innerHTML = `→ <a href="../README.md${helpSection}" style="color: #4da3ff;">Learn more about Umiaq patterns</a>`;
+                learnMore.innerHTML = `→ <a href="./README.md${helpSection}" style="color: #4da3ff;">Learn more about Umiaq patterns</a>`;
                 resultsEl.appendChild(learnMore);
             }
 
