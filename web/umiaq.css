@@ -399,3 +399,35 @@ hr {
     outline: 1px dotted #4da3ff;
     outline-offset: 2px;
 }
+
+/* Settings panel */
+.settings-panel {
+    display: flex;
+    gap: 2rem;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    margin: 1.5em 0;
+    padding: 1em;
+    background-color: rgba(255, 255, 255, 0.03);
+    border-radius: 4px;
+    border: 1px solid #444;
+}
+
+.setting-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4em;
+}
+
+.setting-group label {
+    font-size: 0.9em;
+    color: #aaa;
+    font-weight: 500;
+    margin-bottom: 0;
+}
+
+.setting-group select {
+    min-width: 140px;
+    padding: 0.5em;
+    font-size: 1em;
+}
