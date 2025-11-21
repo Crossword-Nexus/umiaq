@@ -137,15 +137,8 @@
     // Load saved settings
     const settings = loadSettings();
 
-    // Determine debug setting (URL param overrides saved setting)
-    const urlParams = new URLSearchParams(window.location.search);
-    const debugParam = urlParams.get('debug');
-    let debugEnabled;
-    if (debugParam !== null) {
-        debugEnabled = debugParam !== 'false' && debugParam !== '0';
-    } else {
-        debugEnabled = settings.logLevel === 'debug';
-    }
+    // Determine debug setting from saved log level
+    const debugEnabled = settings.logLevel === 'debug';
 
     // Map error codes to README sections for "Learn more" links
     function getHelpLinkForError(errorCode) {
