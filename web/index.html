@@ -27,14 +27,33 @@
       <input class="input" id="input" type="text"/>
     </label>
 
-    <label for="numResults">Number of results</label>
-    <select id="numResults">
-      <option value="100">100</option>
-      <option value="500">500</option>
-      <option value="1000">1000</option>
-    </select>
+    <div class="settings-panel">
+      <div class="setting-group">
+        <label for="numResults">Results</label>
+        <select id="numResults">
+          <option value="100">100</option>
+          <option value="500">500</option>
+          <option value="1000">1000</option>
+        </select>
+      </div>
 
-    <br/>
+      <div class="setting-group">
+        <label for="logLevel">Log level</label>
+        <select id="logLevel">
+          <option value="off">Off</option>
+          <option value="info" selected>Info</option>
+          <option value="debug">Debug</option>
+        </select>
+      </div>
+
+      <div class="setting-group">
+        <label for="outputCase">Output case</label>
+        <select id="outputCase">
+          <option value="upper" selected>UPPERCASE</option>
+          <option value="lower">lowercase</option>
+        </select>
+      </div>
+    </div>
 
     <button class="button-primary" type="submit">Search</button>
   </form>
@@ -94,10 +113,39 @@
     // load and process the default entry list
     import init, {parse_entry_list, get_debug_info, initialize} from './pkg/umiaq.js';
 
-    // Determine debug setting from URL query parameter
+    // Settings management
+    const SETTINGS_KEY = 'umiaq-settings';
+
+    function loadSettings() {
+        const defaults = { logLevel: 'info', outputCase: 'upper' };
+        try {
+            const saved = localStorage.getItem(SETTINGS_KEY);
+            return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
+        } catch {
+            return defaults;
+        }
+    }
+
+    function saveSettings(settings) {
+        try {
+            localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+        } catch (e) {
+            console.warn('Failed to save settings:', e);
+        }
+    }
+
+    // Load saved settings
+    const settings = loadSettings();
+
+    // Determine debug setting (URL param overrides saved setting)
     const urlParams = new URLSearchParams(window.location.search);
     const debugParam = urlParams.get('debug');
-    const debugEnabled = debugParam !== 'false' && debugParam !== '0';
+    let debugEnabled;
+    if (debugParam !== null) {
+        debugEnabled = debugParam !== 'false' && debugParam !== '0';
+    } else {
+        debugEnabled = settings.logLevel === 'debug';
+    }
 
     // Map error codes to README sections for "Learn more" links
     function getHelpLinkForError(errorCode) {
@@ -155,6 +203,24 @@
             // Hide and show
             document.getElementById("loading").style.display = "none";
             document.getElementById("mainUI").style.display = "block";
+
+            // Apply saved settings to dropdowns
+            document.getElementById('logLevel').value = settings.logLevel;
+            document.getElementById('outputCase').value = settings.outputCase;
+
+            // Add event listeners for settings changes
+            document.getElementById('logLevel').addEventListener('change', (e) => {
+                settings.logLevel = e.target.value;
+                saveSettings(settings);
+                // Re-initialize worker with new log level
+                const newDebugEnabled = settings.logLevel === 'debug';
+                worker.postMessage({type: 'init', debugEnabled: newDebugEnabled});
+            });
+
+            document.getElementById('outputCase').addEventListener('change', (e) => {
+                settings.outputCase = e.target.value;
+                saveSettings(settings);
+            });
         } else if (e.data.type === 'ok') {
             loadingEl.innerHTML = '';
             // Hide error messages on successful search
@@ -164,7 +230,14 @@
             const rows = e.data.results['solutions'];
             const status = e.data.results['status'];
             const readable_context = e.data.results['readable_equation_context'];
-            resultsEl.textContent = rows.map(r => r.join(' • ').toUpperCase()).join('\n') || 'No matches found.';
+
+            // Apply output case transformation
+            const transformCase = (text) => {
+                if (settings.outputCase === 'lower') return text.toLowerCase();
+                return text.toUpperCase(); // default to uppercase
+            };
+
+            resultsEl.textContent = rows.map(r => transformCase(r.join(' • '))).join('\n') || 'No matches found.';
 
             if (searchStart !== null) {
                 const elapsed = ((performance.now() - searchStart) / 1000).toFixed(2);
