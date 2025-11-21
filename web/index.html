@@ -117,7 +117,7 @@
     const SETTINGS_KEY = 'umiaq-settings';
 
     function loadSettings() {
-        const defaults = { logLevel: 'info', outputCase: 'upper' };
+        const defaults = { logLevel: 'debug', outputCase: 'upper' };
         try {
             const saved = localStorage.getItem(SETTINGS_KEY);
             return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
