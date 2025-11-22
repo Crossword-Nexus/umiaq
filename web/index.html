@@ -40,7 +40,6 @@
       <div class="setting-group">
         <label for="logLevel">Log level</label>
         <select id="logLevel">
-          <option value="off">Off</option>
           <option value="info" selected>Info</option>
           <option value="debug">Debug</option>
         </select>
@@ -117,7 +116,7 @@
     const SETTINGS_KEY = 'umiaq-settings';
 
     function loadSettings() {
-        const defaults = { logLevel: 'info', outputCase: 'upper' };
+        const defaults = { logLevel: 'debug', outputCase: 'upper' };
         try {
             const saved = localStorage.getItem(SETTINGS_KEY);
             return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
@@ -137,15 +136,8 @@
     // Load saved settings
     const settings = loadSettings();
 
-    // Determine debug setting (URL param overrides saved setting)
-    const urlParams = new URLSearchParams(window.location.search);
-    const debugParam = urlParams.get('debug');
-    let debugEnabled;
-    if (debugParam !== null) {
-        debugEnabled = debugParam !== 'false' && debugParam !== '0';
-    } else {
-        debugEnabled = settings.logLevel === 'debug';
-    }
+    // Determine debug setting from saved log level
+    const debugEnabled = settings.logLevel === 'debug';
 
     // Map error codes to README sections for "Learn more" links
     function getHelpLinkForError(errorCode) {

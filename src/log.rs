@@ -10,7 +10,7 @@ use console_log;
 /// # Behavior
 /// - **Native (CLI):** respects `debug_enabled` or `RUST_LOG`.
 /// - **WASM:** uses `Debug` level if `debug_enabled` is true, otherwise `Info` level.
-pub fn init_logger(debug_enabled: bool) {
+pub fn init_logger(debug_enabled: bool) { // TODO? change to an enum? log::Level?
     #[cfg(target_arch = "wasm32")]
     {
         let level = if debug_enabled {
