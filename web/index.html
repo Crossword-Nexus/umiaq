@@ -1,137 +1,151 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Umiaq Solver</title>
-  <!-- Entry list processing -->
+  <!-- Word list processing -->
   <script src="entry-list.js" type="text/javascript"></script>
   <!-- Styles -->
-  <link rel="stylesheet" href="./skeleton.min.css"/>
-  <link rel="stylesheet" href="./umiaq.css"/>
+  <link rel="stylesheet" href="./skeleton.min.css" />
+  <link rel="stylesheet" href="./umiaq.css" />
   <!-- Render README -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <!-- monospace font -->
   <link href="https://fonts.googleapis.com/css2?family=Space+Mono&display=swap" rel="stylesheet">
 </head>
+
 <body>
-<!-- modal box placeholder -->
-<div class="cw-modal" id="cw-modal"></div>
-<h1>Umiaq</h1>
-<div id="loading"><span id="spinner"></span>Loading ...</div>
+  <!-- modal box placeholder -->
+  <div class="cw-modal" id="cw-modal"></div>
+  <h1>Umiaq</h1>
+  <div id="loading"><span id="spinner"></span>Loading ...</div>
 
-<div id="mainUI">
-  <form>
-    <label class="label">
-      <span class="label-text">Pattern:</span>
-      <input class="input" id="input" type="text"/>
-    </label>
+  <div id="mainUI">
+    <form>
+      <label class="label">
+        <span class="label-text">Pattern:</span>
+        <input class="input" id="input" type="text" />
+      </label>
 
-    <div class="settings-panel">
-      <div class="setting-group">
-        <label for="numResults">Results</label>
-        <select id="numResults">
-          <option value="100">100</option>
-          <option value="500">500</option>
-          <option value="1000">1000</option>
-        </select>
-      </div>
+      <button class="button-primary" type="submit">Search</button>
+    </form>
 
-      <div class="setting-group">
-        <label for="logLevel">Log level</label>
-        <select id="logLevel">
-          <option value="off">Off</option>
-          <option value="info" selected>Info</option>
-          <option value="debug">Debug</option>
-        </select>
-      </div>
+    <button type="submit" id="entry-list-button" value="Upload word list">(Optional) Upload word list</button>
 
-      <div class="setting-group">
-        <label for="outputCase">Output case</label>
-        <select id="outputCase">
-          <option value="upper" selected>UPPERCASE</option>
-          <option value="lower">lowercase</option>
-        </select>
+    <div id="results_loading"></div>
+    <div id="results"></div>
+    <div id="results-meta"></div>
+
+    <!-- Compact error message (shown initially on errors) -->
+    <div id="error-compact" style="display:none; margin-top:20px;">
+      <button type="button" id="show-debug-btn" class="button">Show Error Report</button>
+    </div>
+
+    <!-- Full debug panel (shown when user clicks "Show Error Report") -->
+    <div id="debug-panel" style="display:none; margin-top:20px; padding:15px; background:#fff3cd; border:2px solid #ffc107; border-radius:5px;">
+      <h3 style="margin-top:0; color:#856404;">⚠️ Error Debug Information</h3>
+      <p style="font-size:14px; color:#856404;">Something went wrong. Please copy this debug information when reporting
+        the issue.</p>
+      <pre id="debug-output" style="white-space: pre-wrap; font-size:12px; background:#fff; color:#000; padding:10px; border:1px solid #ddd; border-radius:3px; overflow-x:auto;"></pre>
+      <div style="margin-top:10px;">
+        <button type="button" id="copy-debug-btn" class="button-primary" style="margin-right:10px;">📋 Copy Debug Info
+        </button>
+        <button type="button" id="download-debug-btn" class="button">💾 Download Report</button>
+        <button type="button" id="hide-debug-btn" class="button" style="float:right;">Hide</button>
       </div>
     </div>
 
-    <button class="button-primary" type="submit">Search</button>
-  </form>
 
-  <button type="submit" id="entry-list-button" value="Upload entry list">(Optional) Upload entry list</button>
+    <details style="margin-bottom:1.5em;">
+      <summary>Settings</summary>
+      <div class="settings-panel">
+        <div class="setting-group">
+          <label for="numResults">Results</label>
+          <select id="numResults">
+            <option value="100">100</option>
+            <option value="500">500</option>
+            <option value="1000">1000</option>
+          </select>
+        </div>
 
-  <div id="results_loading"></div>
-  <div id="results"></div>
-  <div id="results-meta"></div>
+        <div class="setting-group">
+          <label for="logLevel">Log level</label>
+          <select id="logLevel">
+            <option value="off">Off</option>
+            <option value="info" selected>Info</option>
+            <option value="debug">Debug</option>
+          </select>
+        </div>
 
-  <!-- Compact error message (shown initially on errors) -->
-  <div id="error-compact" style="display:none; margin-top:20px;">
-    <button type="button" id="show-debug-btn" class="button">Show Error Report</button>
-  </div>
+        <div class="setting-group">
+          <label for="outputCase">Output case</label>
+          <select id="outputCase">
+            <option value="upper" selected>UPPERCASE</option>
+            <option value="lower">lowercase</option>
+          </select>
+        </div>
+      </div>
+    </details>
 
-  <!-- Full debug panel (shown when user clicks "Show Error Report") -->
-  <div id="debug-panel"
-       style="display:none; margin-top:20px; padding:15px; background:#fff3cd; border:2px solid #ffc107; border-radius:5px;">
-    <h3 style="margin-top:0; color:#856404;">⚠️ Error Debug Information</h3>
-    <p style="font-size:14px; color:#856404;">Something went wrong. Please copy this debug information when reporting
-      the issue.</p>
-    <pre id="debug-output"
-         style="white-space: pre-wrap; font-size:12px; background:#fff; color:#000; padding:10px; border:1px solid #ddd; border-radius:3px; overflow-x:auto;"></pre>
-    <div style="margin-top:10px;">
-      <button type="button" id="copy-debug-btn" class="button-primary" style="margin-right:10px;">📋 Copy Debug Info
-      </button>
-      <button type="button" id="download-debug-btn" class="button">💾 Download Report</button>
-      <button type="button" id="hide-debug-btn" class="button" style="float:right;">Hide</button>
-    </div>
-  </div>
+    <div id="examples-container"></div>
 
-  <div id="examples-container"></div>
+    <!-- Readme -->
+    <details style="margin-top:2em;">
+      <summary>Show README</summary>
+      <div id="readme"></div>
+    </details>
 
-  <!-- Readme -->
-  <details style="margin-top:2em;">
-    <summary>Show README</summary>
-    <div id="readme"></div>
-  </details>
-
-  <script>
+    <script>
       fetch('./README.md')
-          .then(r => r.text())
-          .then(md => {
-              document.getElementById('readme').innerHTML = marked.parse(md);
-          });
-  </script>
+        .then(r => r.text())
+        .then(md => {
+          document.getElementById('readme').innerHTML = marked.parse(md);
+        });
+    </script>
 
-</div>
+  </div>
 
-<p>
-  <a href="https://www.youtube.com/watch?v=cZzTHqe1n-w" target="_blank">how-to video</a>
-  •
-  <a href="https://github.com/Crossword-Nexus/umiaq" target="_blank">source code</a>
-</p>
+  <p>
+    <a href="https://www.youtube.com/watch?v=cZzTHqe1n-w" target="_blank">how-to video</a>
+    •
+    <a href="https://github.com/Crossword-Nexus/umiaq" target="_blank">source code</a>
+  </p>
 
-<script type="module">
-    // load and process the default entry list
-    import init, {parse_entry_list, get_debug_info, initialize} from './pkg/umiaq.js';
+  <script type="module">
+    // load and process the default word list
+    import init, {
+      parse_entry_list,
+      get_debug_info,
+      initialize
+    } from './pkg/umiaq.js';
 
     // Settings management
     const SETTINGS_KEY = 'umiaq-settings';
 
     function loadSettings() {
-        const defaults = { logLevel: 'info', outputCase: 'upper' };
-        try {
-            const saved = localStorage.getItem(SETTINGS_KEY);
-            return saved ? { ...defaults, ...JSON.parse(saved) } : defaults;
-        } catch {
-            return defaults;
-        }
+      const defaults = {
+        logLevel: 'info',
+        outputCase: 'upper'
+      };
+      try {
+        const saved = localStorage.getItem(SETTINGS_KEY);
+        return saved ? {
+          ...defaults,
+          ...JSON.parse(saved)
+        } : defaults;
+      } catch {
+        return defaults;
+      }
     }
 
     function saveSettings(settings) {
-        try {
-            localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-        } catch (e) {
-            console.warn('Failed to save settings:', e);
-        }
+      try {
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+      } catch (e) {
+        console.warn('Failed to save settings:', e);
+      }
     }
 
     // Load saved settings
@@ -142,47 +156,49 @@
     const debugParam = urlParams.get('debug');
     let debugEnabled;
     if (debugParam !== null) {
-        debugEnabled = debugParam !== 'false' && debugParam !== '0';
+      debugEnabled = debugParam !== 'false' && debugParam !== '0';
     } else {
-        debugEnabled = settings.logLevel === 'debug';
+      debugEnabled = settings.logLevel === 'debug';
     }
 
     // Map error codes to README sections for "Learn more" links
     function getHelpLinkForError(errorCode) {
-        // Map specific error codes to relevant README sections
-        const errorToSection = {
-            'E003': '#features',  // EmptyForm
-            'E005': '#features',  // InvalidComplexConstraint
-            'E009': '#features',  // InvalidCharsetRange
-            'E010': '#features',  // DanglingCharsetDash
-            'E012': '#examples',  // ClauseParseError
-            'E013': '#features',  // InvalidVariableName
-            'E014': '#features',  // InvalidLowercaseChar
-            'E015': '#features',  // InvalidAnagramChars
-        };
+      // Map specific error codes to relevant README sections
+      const errorToSection = {
+        'E003': '#features', // EmptyForm
+        'E005': '#features', // InvalidComplexConstraint
+        'E009': '#features', // InvalidCharsetRange
+        'E010': '#features', // DanglingCharsetDash
+        'E012': '#examples', // ClauseParseError
+        'E013': '#features', // InvalidVariableName
+        'E014': '#features', // InvalidLowercaseChar
+        'E015': '#features', // InvalidAnagramChars
+      };
 
-        // Return mapped section or default to #features
-        return errorToSection[errorCode] || '#features';
+      // Return mapped section or default to #features
+      return errorToSection[errorCode] || '#features';
     }
 
     async function getLocalEntryList() {
-        const url = './data/spreadthewordlist.dict';
-        const minScore = 50;
-        await init(); // Load WASM module
-        initialize(debugEnabled); // Initialize logging with debug setting
-        window.parse_entry_list = parse_entry_list; // make it available to classic scripts
+      const url = './data/spreadthewordlist.dict';
+      const minScore = 50;
+      await init(); // Load WASM module
+      initialize(debugEnabled); // Initialize logging with debug setting
+      window.parse_entry_list = parse_entry_list; // make it available to classic scripts
 
-        try {
-            const resp = await fetch(url, {cache: 'no-cache'});
-            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-            const text = await resp.text();
+      try {
+        const resp = await fetch(url, {
+          cache: 'no-cache'
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const text = await resp.text();
 
-            // Call into Rust instead of JS parsing:
-            window.entry_list = parse_entry_list(text, minScore); // returns a JS Array<string>
-        } catch (err) {
-            console.error(err);
-            alert(`Could not load "${url}". Check the path and CORS/MIME type.`);
-        }
+        // Call into Rust instead of JS parsing:
+        window.entry_list = parse_entry_list(text, minScore); // returns a JS Array<string>
+      } catch (err) {
+        console.error(err);
+        alert(`Could not load "${url}". Check the path and CORS/MIME type.`);
+      }
     }
 
     await getLocalEntryList();
@@ -190,137 +206,145 @@
     // Set up the web worker (with cache busting)
     const workerUrl = new URL('./solver.worker.js', import.meta.url);
     workerUrl.searchParams.set('v', Date.now().toString()); // force reload on each page load
-    const worker = new Worker(workerUrl, {type: 'module'});
+    const worker = new Worker(workerUrl, {
+      type: 'module'
+    });
 
     // Define elements
     const resultsEl = document.getElementById("results");
     const inputEl = document.getElementById("input");
     const loadingEl = document.getElementById("results_loading");
 
-    worker.postMessage({type: 'init', debugEnabled: debugEnabled});
+    worker.postMessage({
+      type: 'init',
+      debugEnabled: debugEnabled
+    });
     worker.onmessage = (e) => {
-        if (e.data.type === 'ready') {
-            // Hide and show
-            document.getElementById("loading").style.display = "none";
-            document.getElementById("mainUI").style.display = "block";
+      if (e.data.type === 'ready') {
+        // Hide and show
+        document.getElementById("loading").style.display = "none";
+        document.getElementById("mainUI").style.display = "block";
 
-            // Apply saved settings to dropdowns
-            document.getElementById('logLevel').value = settings.logLevel;
-            document.getElementById('outputCase').value = settings.outputCase;
+        // Apply saved settings to dropdowns
+        document.getElementById('logLevel').value = settings.logLevel;
+        document.getElementById('outputCase').value = settings.outputCase;
 
-            // Add event listeners for settings changes
-            document.getElementById('logLevel').addEventListener('change', (e) => {
-                settings.logLevel = e.target.value;
-                saveSettings(settings);
-                // Re-initialize worker with new log level
-                const newDebugEnabled = settings.logLevel === 'debug';
-                worker.postMessage({type: 'init', debugEnabled: newDebugEnabled});
-            });
+        // Add event listeners for settings changes
+        document.getElementById('logLevel').addEventListener('change', (e) => {
+          settings.logLevel = e.target.value;
+          saveSettings(settings);
+          // Re-initialize worker with new log level
+          const newDebugEnabled = settings.logLevel === 'debug';
+          worker.postMessage({
+            type: 'init',
+            debugEnabled: newDebugEnabled
+          });
+        });
 
-            document.getElementById('outputCase').addEventListener('change', (e) => {
-                settings.outputCase = e.target.value;
-                saveSettings(settings);
-            });
-        } else if (e.data.type === 'ok') {
-            loadingEl.innerHTML = '';
-            // Hide error messages on successful search
-            document.getElementById('error-compact').style.display = 'none';
-            document.getElementById('debug-panel').style.display = 'none';
+        document.getElementById('outputCase').addEventListener('change', (e) => {
+          settings.outputCase = e.target.value;
+          saveSettings(settings);
+        });
+      } else if (e.data.type === 'ok') {
+        loadingEl.innerHTML = '';
+        // Hide error messages on successful search
+        document.getElementById('error-compact').style.display = 'none';
+        document.getElementById('debug-panel').style.display = 'none';
 
-            const rows = e.data.results['solutions'];
-            const status = e.data.results['status'];
-            const readable_context = e.data.results['readable_equation_context'];
+        const rows = e.data.results['solutions'];
+        const status = e.data.results['status'];
+        const readable_context = e.data.results['readable_equation_context'];
 
-            // Apply output case transformation
-            const transformCase = (text) => {
-                if (settings.outputCase === 'lower') return text.toLowerCase();
-                return text.toUpperCase(); // default to uppercase
-            };
+        // Apply output case transformation
+        const transformCase = (text) => {
+          if (settings.outputCase === 'lower') return text.toLowerCase();
+          return text.toUpperCase(); // default to uppercase
+        };
 
-            resultsEl.textContent = rows.map(r => transformCase(r.join(' • '))).join('\n') || 'No matches found.';
+        resultsEl.textContent = rows.map(r => transformCase(r.join(' • '))).join('\n') || 'No matches found.';
 
-            if (searchStart !== null) {
-                const elapsed = ((performance.now() - searchStart) / 1000).toFixed(2);
-                const count = rows.length;
-                let meta = `${count} result${count !== 1 ? 's' : ''} loaded in ${elapsed} seconds.`;
-                if (status === 'timed_out') {
-                    meta += "\n⚠️ Solver timed out. Results may be incomplete. ⚠️";
-                } else if (status === 'found_enough') {
-                    meta += `\nSearch terminated after finding the requested number of results.`;
-                }
-                document.getElementById("results-meta").textContent = meta;
-            }
-
-        } else if (e.data.type === 'err') {
-            loadingEl.innerHTML = '';
-
-            const error = e.data.error;
-
-            // Format error display with structured information
-            let errorDisplay = '';
-            if (error.code) {
-                errorDisplay = `Error ${error.code}: ${error.message || 'Unknown error'}`;
-                if (error.details) {
-                    errorDisplay += `\n\n${error.details}`;
-                }
-                if (error.help) {
-                    errorDisplay += `\n\nSuggestion: ${error.help}`;
-                }
-            } else {
-                // Fallback for non-structured errors
-                errorDisplay = 'Error: ' + (error.message || String(error));
-            }
-
-            resultsEl.textContent = errorDisplay;
-
-            // Add "Learn more" link for documented error codes
-            if (error.code) {
-                const helpSection = getHelpLinkForError(error.code);
-                const learnMore = document.createElement('div');
-                learnMore.style.marginTop = '1em';
-                learnMore.innerHTML = `→ <a href="./README.md${helpSection}" style="color: #4da3ff;">Learn more about Umiaq patterns</a>`;
-                resultsEl.appendChild(learnMore);
-            }
-
-            // Generate debug information (pass formatted error message)
-            document.getElementById('debug-output').textContent = get_debug_info(
-                inputEl.value.trim(),
-                errorDisplay,
-                window.entry_list?.length || 0,
-                parseInt(document.getElementById('numResults').value)
-            );
-
-            // Show compact error message (not the full panel)
-            document.getElementById('error-compact').style.display = 'block';
-            document.getElementById('debug-panel').style.display = 'none';
+        if (searchStart !== null) {
+          const elapsed = ((performance.now() - searchStart) / 1000).toFixed(2);
+          const count = rows.length;
+          let meta = `${count} result${count !== 1 ? 's' : ''} loaded in ${elapsed} seconds.`;
+          if (status === 'timed_out') {
+            meta += "\n⚠️ Solver timed out. Results may be incomplete. ⚠️";
+          } else if (status === 'found_enough') {
+            meta += `\nSearch terminated after finding the requested number of results.`;
+          }
+          document.getElementById("results-meta").textContent = meta;
         }
+
+      } else if (e.data.type === 'err') {
+        loadingEl.innerHTML = '';
+
+        const error = e.data.error;
+
+        // Format error display with structured information
+        let errorDisplay = '';
+        if (error.code) {
+          errorDisplay = `Error ${error.code}: ${error.message || 'Unknown error'}`;
+          if (error.details) {
+            errorDisplay += `\n\n${error.details}`;
+          }
+          if (error.help) {
+            errorDisplay += `\n\nSuggestion: ${error.help}`;
+          }
+        } else {
+          // Fallback for non-structured errors
+          errorDisplay = 'Error: ' + (error.message || String(error));
+        }
+
+        resultsEl.textContent = errorDisplay;
+
+        // Add "Learn more" link for documented error codes
+        if (error.code) {
+          const helpSection = getHelpLinkForError(error.code);
+          const learnMore = document.createElement('div');
+          learnMore.style.marginTop = '1em';
+          learnMore.innerHTML = `→ <a href="./README.md${helpSection}" style="color: #4da3ff;">Learn more about Umiaq patterns</a>`;
+          resultsEl.appendChild(learnMore);
+        }
+
+        // Generate debug information (pass formatted error message)
+        document.getElementById('debug-output').textContent = get_debug_info(
+          inputEl.value.trim(),
+          errorDisplay,
+          window.entry_list?.length || 0,
+          parseInt(document.getElementById('numResults').value)
+        );
+
+        // Show compact error message (not the full panel)
+        document.getElementById('error-compact').style.display = 'block';
+        document.getElementById('debug-panel').style.display = 'none';
+      }
     };
 
     // For timing
     let searchStart = null;
 
     async function solve(e) {
-        e.preventDefault();
+      e.preventDefault();
 
-        // check if entry list is loaded
-        if (!window.entry_list) {
-            resultsEl.textContent = 'Error: Entry list not loaded. Please wait or refresh the page.';
-            return;
-        }
+      // check if word list is loaded
+      if (!window.entry_list) {
+        resultsEl.textContent = 'Error: Word list not loaded. Please wait or refresh the page.';
+        return;
+      }
 
-        loadingEl.innerHTML = '<span id="spinner"></span> Loading …';
-        document.getElementById("results-meta").textContent = '';
-        // the "numResults" element
-        const numResultsEl = document.getElementById('numResults');
-        searchStart = performance.now();   // mark start time
+      loadingEl.innerHTML = '<span id="spinner"></span> Loading …';
+      document.getElementById("results-meta").textContent = '';
+      // the "numResults" element
+      const numResultsEl = document.getElementById('numResults');
+      searchStart = performance.now(); // mark start time
 
-        // use worker for better performance
-        worker.postMessage({
-            type: 'solve',
-            input: inputEl.value.trim(),
-            entryList: window.entry_list,
-            numResults: parseInt(numResultsEl.value),
-        });
+      // use worker for better performance
+      worker.postMessage({
+        type: 'solve',
+        input: inputEl.value.trim(),
+        entryList: window.entry_list,
+        numResults: parseInt(numResultsEl.value),
+      });
     }
 
     // Add listener to "submit" button
@@ -328,71 +352,75 @@
 
     // Show Error Report button handler
     document.getElementById('show-debug-btn').addEventListener('click', () => {
-        document.getElementById('error-compact').style.display = 'none';
-        document.getElementById('debug-panel').style.display = 'block';
+      document.getElementById('error-compact').style.display = 'none';
+      document.getElementById('debug-panel').style.display = 'block';
     });
 
     // Debug panel button handlers
     document.getElementById('copy-debug-btn').addEventListener('click', () => {
-        const debugText = document.getElementById('debug-output').textContent;
-        navigator.clipboard.writeText(debugText).then(() => {
-            const btn = document.getElementById('copy-debug-btn');
-            const originalText = btn.textContent;
-            btn.textContent = '✓ Copied!';
-            btn.style.backgroundColor = '#28a745';
-            setTimeout(() => {
-                btn.textContent = originalText;
-                btn.style.backgroundColor = '';
-            }, 2000);
-        }).catch(err => {
-            console.error('Failed to copy:', err);
-            alert('Failed to copy to clipboard. Please select and copy manually.');
-        });
+      const debugText = document.getElementById('debug-output').textContent;
+      navigator.clipboard.writeText(debugText).then(() => {
+        const btn = document.getElementById('copy-debug-btn');
+        const originalText = btn.textContent;
+        btn.textContent = '✓ Copied!';
+        btn.style.backgroundColor = '#28a745';
+        setTimeout(() => {
+          btn.textContent = originalText;
+          btn.style.backgroundColor = '';
+        }, 2000);
+      }).catch(err => {
+        console.error('Failed to copy:', err);
+        alert('Failed to copy to clipboard. Please select and copy manually.');
+      });
     });
 
     document.getElementById('download-debug-btn').addEventListener('click', () => {
-        const debugText = document.getElementById('debug-output').textContent;
-        const blob = new Blob([debugText], {type: 'text/plain'});
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `umiaq-debug-${Date.now()}.txt`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+      const debugText = document.getElementById('debug-output').textContent;
+      const blob = new Blob([debugText], {
+        type: 'text/plain'
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `umiaq-debug-${Date.now()}.txt`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     });
 
     document.getElementById('hide-debug-btn').addEventListener('click', () => {
-        document.getElementById('debug-panel').style.display = 'none';
-        document.getElementById('error-compact').style.display = 'block';
+      document.getElementById('debug-panel').style.display = 'none';
+      document.getElementById('error-compact').style.display = 'block';
     });
+  </script>
 
-</script>
-
-<script>
+  <script>
     // Load the examples
     fetch("./examples.html")
-        .then(response => response.text())
-        .then(html => {
-            document.getElementById("examples-container").innerHTML = html;
+      .then(response => response.text())
+      .then(html => {
+        document.getElementById("examples-container").innerHTML = html;
 
-            // Attach click handlers to make examples clickable
-            document.querySelectorAll('.example-pattern').forEach(button => {
-                button.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    const pattern = button.getAttribute('data-pattern');
-                    const inputEl = document.getElementById('input');
-                    inputEl.value = pattern;
-                    inputEl.focus();
-                    // Auto-submit the form
-                    document.querySelector('form').dispatchEvent(new Event('submit', { cancelable: true }));
-                });
-            });
+        // Attach click handlers to make examples clickable
+        document.querySelectorAll('.example-pattern').forEach(button => {
+          button.addEventListener('click', (e) => {
+            e.preventDefault();
+            const pattern = button.getAttribute('data-pattern');
+            const inputEl = document.getElementById('input');
+            inputEl.value = pattern;
+            inputEl.focus();
+            // Auto-submit the form
+            document.querySelector('form').dispatchEvent(new Event('submit', {
+              cancelable: true
+            }));
+          });
         });
+      });
     // attach listener
     document.getElementById('entry-list-button').addEventListener('click', createEntryListModal);
-</script>
+  </script>
 
 </body>
+
 </html>
