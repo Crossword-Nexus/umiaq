@@ -52,11 +52,6 @@ pub(crate) static NEQ_RE: LazyLock<Regex> =
 /// that the solver recognizes, which is produced and consumed by
 /// `EquationContext::set_var_constraints`.
 enum FormKind {
-    /// A length constraint on a single variable, e.g., `|A|=5` or `|B|>3`.
-    /// Carries the variable character, the comparison operator, and the
-    /// numeric bound.
-    LenConstraint { var_char: char, op: ComparisonOperator, bound: usize },
-
     /// An inequality constraint among a set of variables, e.g., `!=ABC`.
     /// Stores the set of variable characters that must differ.
     NeqConstraint { var_chars: Vec<char> },
@@ -89,7 +84,7 @@ impl FromStr for FormKind {
     /// dispatched on by `EquationContext::set_var_constraints`.
     ///
     /// # Order of checks
-    /// 1. Length constraints, e.g., `|A|=5` or `|B|>3`.
+    /// 1. Length comparison constraints (converted into `ComplexConstraint`), e.g., `|A|=5`.
     /// 2. Inequality constraints, e.g., `!=ABC`.
     /// 3. Complex constraints (`get_complex_constraint`).
     /// 4. Joint constraints, e.g., `|AB|=7`.
@@ -102,8 +97,8 @@ impl FromStr for FormKind {
     ///   as any recognized type.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // 1. Check for a simple length comparison constraint: |A|=5
-        // NB: this assumes that any form that matches LEN_CMP_RE is either a LenConstraint or is
-        // malformed (see the "?"s at the end of deriving op and bound)
+        // NB: this assumes that any form that matches LEN_CMP_RE is either a length comparison
+        // constraint or is malformed (see the "?"s at the end of deriving op and bound)
         if let Some(cap) = LEN_CMP_RE.captures(s).map_err(ParseError::RegexError)? {
             // safe: LEN_CMP_PATTERN has 3 capture groups, all guaranteed by successful match
             // group 1: ([A-Z]) - exactly one uppercase letter
@@ -116,7 +111,42 @@ impl FromStr for FormKind {
                 .expect("LEN_CMP_RE capture group 1 must contain at least one character");
             let op = ComparisonOperator::from_str(&cap[2])?;
             let bound = cap[3].parse::<usize>()?;
-            Ok(FormKind::LenConstraint { var_char, op, bound })
+
+            let bounds = match op {
+                ComparisonOperator::EQ => Bounds::of(bound, bound),
+                ComparisonOperator::NE => {
+                    return Err(Box::new(ParseError::UnsupportedConstraintType {
+                        constraint_type: format!("Not-equals length constraint (|{var_char}|!={bound})"),
+                    }));
+                }
+                ComparisonOperator::LE => Bounds::of(1, bound),
+                ComparisonOperator::GE => Bounds::of_unbounded(bound),
+                ComparisonOperator::LT => {
+                    if let Some(max) = bound.checked_sub(1) {
+                        Bounds::of(1, max)
+                    } else {
+                        return Err(Box::new(ParseError::NegativeLengthConstraint {
+                            constraint: s.to_string(),
+                        }));
+                    }
+                }
+                ComparisonOperator::GT => {
+                    if let Some(min) = bound.checked_add(1) {
+                        Bounds::of_unbounded(min)
+                    } else {
+                        return Err(Box::new(ParseError::LengthConstraintExceedsMax {
+                            constraint: s.to_string(),
+                        }));
+                    }
+                }
+            };
+
+            let vc = VarConstraint {
+                bounds,
+                ..Default::default()
+            };
+
+            Ok(FormKind::ComplexConstraint { var_char, vc })
         // 2. Check for inequality constraints: e.g., !=ABC
         } else if let Some(cap) = NEQ_RE.captures(s).map_err(ParseError::RegexError)? {
             // safe: NEQ_PATTERN has 1 capture group: ([A-Z]+)--one or more uppercase letters
@@ -348,7 +378,6 @@ impl EquationContext {
     ///
     /// Each form is first classified into a [`FormKind`], then dispatched here:
     ///
-    /// - [`FormKind::LenConstraint`] — variable length constraints like `|A|=5`, `|B|>3`.
     /// - [`FormKind::NeqConstraint`] — inequality constraints like `!=ABC`.
     /// - [`FormKind::ComplexConstraint`] — compound constraints (e.g., bounded length plus a sub-pattern).
     /// - [`FormKind::JointConstraint`] — constraints across multiple variables, e.g., `|AB|=7`.
@@ -373,63 +402,6 @@ impl EquationContext {
             })?;
 
             match form_kind {
-                // --- Length constraint on a single variable (e.g., |A|=5, |B|>3) ---
-                FormKind::LenConstraint { var_char, op, bound } => {
-                    // Ensure a VarConstraint object exists for this variable.
-                    // We'll tighten its bounds according to the operator.
-                    let vc = self.var_constraints.ensure(var_char);
-
-                    match op {
-                        // Exact length: interval [bound, bound].
-                        ComparisonOperator::EQ => {
-                            vc.bounds.constrain_by(Bounds::of(bound, bound))?;
-                        }
-
-                        // Not-equals length constraints are disallowed by grammar,
-                        // but we defend here just in case.
-                        ComparisonOperator::NE => {
-                            return Err(Box::new(ParseError::UnsupportedConstraintType {
-                                constraint_type: format!("Not-equals length constraint (|{var_char}|!={bound})"),
-                            }));
-                        }
-
-                        // ≤ bound: interval [1, bound].
-                        // Tighten existing bounds accordingly.
-                        ComparisonOperator::LE => {
-                            vc.bounds.constrain_by(Bounds::of(1, bound))?;
-                        }
-
-                        // ≥ bound: interval [bound, ∞).
-                        ComparisonOperator::GE => {
-                            vc.bounds.constrain_by(Bounds::of_unbounded(bound))?;
-                        }
-
-                        // < bound: interval [1, bound - 1].
-                        // Use checked_sub to avoid underflow on bound=0.
-                        ComparisonOperator::LT => {
-                            if let Some(max) = bound.checked_sub(1) {
-                                vc.bounds.constrain_by(Bounds::of(1, max))?;
-                            } else {
-                                return Err(Box::new(ParseError::NegativeLengthConstraint {
-                                    constraint: (*form).to_string(),
-                                }));
-                            }
-                        }
-
-                        // > bound: interval [bound + 1, ∞).
-                        // Use checked_add to avoid overflow on usize::MAX.
-                        ComparisonOperator::GT => {
-                            if let Some(min) = bound.checked_add(1) {
-                                vc.bounds.constrain_by(Bounds::of_unbounded(min))?;
-                            } else {
-                                return Err(Box::new(ParseError::LengthConstraintExceedsMax {
-                                    constraint: (*form).to_string(),
-                                }));
-                            }
-                        }
-                    }
-                }
-
                 // --- Inequality constraint among variables (e.g., !=ABC) ---
                 FormKind::NeqConstraint { var_chars } => {
                     for &var_char in &var_chars {
