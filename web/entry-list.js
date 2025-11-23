@@ -1,5 +1,5 @@
 /**
-* Modal boxes (currently only for entry lists)
+* Modal boxes (currently only for word lists)
 **/
 
 // Close the modal box
@@ -72,7 +72,7 @@ function handleEntryListClick() {
           r.onload = (function () {
               return function (e) {
                   let contents = e.target.result;
-                  // parse the entry list using the Rust function
+                  // parse the word list using the Rust function
                   window.entry_list = window.parse_entry_list(contents, minScore);
                   closeModalBox();
               };
@@ -85,7 +85,7 @@ function handleEntryListClick() {
 }
 
 function createEntryListModal() {
-  let title = 'Upload your own entry list';
+  let title = 'Upload your own word list';
   let html = `
   <input type="file" id="entry-list-file"  accept=".txt,.dict" />
   <label for="min-score">Min score:</label>

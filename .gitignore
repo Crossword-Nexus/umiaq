@@ -8,3 +8,4 @@
 *.xml
 pkg/README.md
 web/README.md
+.DS_Store
