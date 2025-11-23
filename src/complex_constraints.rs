@@ -112,7 +112,7 @@ pub(crate) fn get_complex_constraint(form: &str) -> Result<(char, VarConstraint)
 /// - Empty string.
 ///
 /// Errors return `ParseError::InvalidLengthRange` with the original input.
-fn parse_length_range(input: &str) -> Result<Bounds, Box<ParseError>> {
+pub(crate) fn parse_length_range(input: &str) -> Result<Bounds, Box<ParseError>> {
     // Split on dash, but preserve raw strings so we can distinguish
     // between `""` (empty) and `"junk"` (invalid).
     let raw_parts: Vec<&str> = input.split('-').collect();

@@ -1,5 +1,5 @@
 use crate::comparison_operator::ComparisonOperator;
-use crate::complex_constraints::{get_complex_constraint};
+use crate::complex_constraints::{get_complex_constraint, parse_length_range};
 use crate::constraints::{Bounds, VarConstraint, VarConstraints};
 use crate::errors::ParseError;
 use crate::parser::{FormPart, ParsedForm};
@@ -19,7 +19,7 @@ use crate::scan_hints::{form_len_hints_pf, PatternLenHints};
 pub const FORM_SEPARATOR: char = ';';
 
 /// Regex pattern for comparative length constraints like `|A|>4`, `|A|<=7`, etc.
-const LEN_CMP_PATTERN: &str = r"^\|([A-Z])\|\s*(<=|>=|=|<|>)\s*(\d+)$";
+const LEN_CMP_PATTERN: &str = r"^\|([A-Z])\|\s*(<=|>=|=|<|>)\s*([0-9]+(?:-[0-9]*)?|-?[0-9]+)$";
 
 /// Matches comparative length constraints like `|A|>4`, `|A|<=7`, etc.
 /// (Whitespace is permitted around operator.)
@@ -103,27 +103,34 @@ impl FromStr for FormKind {
             // safe: LEN_CMP_PATTERN has 3 capture groups, all guaranteed by successful match
             // group 1: ([A-Z]) - exactly one uppercase letter
             // group 2: (<=|>=|=|<|>) - comparison operator
-            // group 3: (\d+) - one or more digits
+            // group 3: ([0-9]+(?:-[0-9]*)?|-?[0-9]+) - standalone number or range shorthand
             debug_assert!(cap.get(1).is_some() && cap.get(2).is_some() && cap.get(3).is_some(),
                 "LEN_CMP_RE must have 3 capture groups");
             debug_assert!(!cap[1].is_empty(), "LEN_CMP_RE capture group 1 must be non-empty");
             let var_char = cap[1].chars().next()
                 .expect("LEN_CMP_RE capture group 1 must contain at least one character");
             let op = ComparisonOperator::from_str(&cap[2])?;
-            let bound = cap[3].parse::<usize>()?;
+            let bound_str = cap[3].to_string();
 
             let bounds = match op {
-                ComparisonOperator::EQ => Bounds::of(bound, bound),
+                ComparisonOperator::EQ => parse_length_range(&bound_str)?,
                 ComparisonOperator::NE => {
                     return Err(Box::new(ParseError::UnsupportedConstraintType {
-                        constraint_type: format!("Not-equals length constraint (|{var_char}|!={bound})"),
+                        constraint_type: format!("Not-equals length constraint (|{var_char}|!={bound_str})"),
                     }));
                 }
-                ComparisonOperator::LE => Bounds::of(1, bound),
-                ComparisonOperator::GE => Bounds::of_unbounded(bound),
+                ComparisonOperator::LE => {
+                    let bound = bound_str.parse::<usize>()?;
+                    Bounds::of(VarConstraint::DEFAULT_MIN, bound)
+                }
+                ComparisonOperator::GE => {
+                    let bound = bound_str.parse::<usize>()?;
+                    Bounds::of_unbounded(bound)
+                }
                 ComparisonOperator::LT => {
+                    let bound = bound_str.parse::<usize>()?;
                     if let Some(max) = bound.checked_sub(1) {
-                        Bounds::of(1, max)
+                        Bounds::of(VarConstraint::DEFAULT_MIN, max)
                     } else {
                         return Err(Box::new(ParseError::NegativeLengthConstraint {
                             constraint: s.to_string(),
@@ -131,6 +138,7 @@ impl FromStr for FormKind {
                     }
                 }
                 ComparisonOperator::GT => {
+                    let bound = bound_str.parse::<usize>()?;
                     if let Some(min) = bound.checked_add(1) {
                         Bounds::of_unbounded(min)
                     } else {
@@ -919,6 +927,30 @@ mod tests {
     }
 
     #[test]
+    fn test_len_eq_range_shorthand() {
+        let equation_context = "|A|=10-12;A".parse::<EquationContext>().unwrap();
+        let a = equation_context.var_constraints.get('A').unwrap();
+        assert_eq!(a.bounds.min_len, 10);
+        assert_eq!(a.bounds.max_len_opt, Some(12));
+    }
+
+    #[test]
+    fn test_len_eq_range_from_lower_bound() {
+        let equation_context = "|A|=10-;A".parse::<EquationContext>().unwrap();
+        let a = equation_context.var_constraints.get('A').unwrap();
+        assert_eq!(a.bounds.min_len, 10);
+        assert_eq!(a.bounds.max_len_opt, None);
+    }
+
+    #[test]
+    fn test_len_eq_range_to_upper_bound() {
+        let equation_context = "|A|=-10;A".parse::<EquationContext>().unwrap();
+        let a = equation_context.var_constraints.get('A').unwrap();
+        assert_eq!(a.bounds.min_len, VarConstraint::DEFAULT_MIN);
+        assert_eq!(a.bounds.max_len_opt, Some(10));
+    }
+
+    #[test]
     fn test_len_equality_then_complex_form_only() {
         // Equality first, then a complex constraint that only specifies a form
         let equation_context = "A;|A|=7;A=(x*a)".parse::<EquationContext>().unwrap();
@@ -1254,6 +1286,9 @@ mod tests {
             assert!(LEN_CMP_RE.is_match("|C|<=10").unwrap());
             assert!(LEN_CMP_RE.is_match("|Z|>=7").unwrap());
             assert!(LEN_CMP_RE.is_match("|A|<4").unwrap());
+            assert!(LEN_CMP_RE.is_match("|A|=10-").unwrap());
+            assert!(LEN_CMP_RE.is_match("|A|=-10").unwrap());
+            assert!(LEN_CMP_RE.is_match("|A|=10-12").unwrap());
 
             assert!(!LEN_CMP_RE.is_match("|AB|=5").unwrap()); // multiple vars
             assert!(!LEN_CMP_RE.is_match("|a|=5").unwrap());  // lowercase
@@ -1288,6 +1323,16 @@ mod tests {
             assert_eq!(&cap[1], "Z");
             assert_eq!(&cap[2], ">=");
             assert_eq!(&cap[3], "42");
+
+            let cap = LEN_CMP_RE.captures("|A|=10-12").unwrap().unwrap();
+            assert_eq!(&cap[1], "A");
+            assert_eq!(&cap[2], "=");
+            assert_eq!(&cap[3], "10-12");
+
+            let cap = LEN_CMP_RE.captures("|A|=-10").unwrap().unwrap();
+            assert_eq!(&cap[1], "A");
+            assert_eq!(&cap[2], "=");
+            assert_eq!(&cap[3], "-10");
         }
 
         #[test]
@@ -1301,7 +1346,7 @@ mod tests {
 
         #[test]
         fn test_len_cmp_re_pattern_const() {
-            assert_eq!(LEN_CMP_PATTERN, r"^\|([A-Z])\|\s*(<=|>=|=|<|>)\s*(\d+)$");
+            assert_eq!(LEN_CMP_PATTERN, r"^\|([A-Z])\|\s*(<=|>=|=|<|>)\s*([0-9]+(?:-[0-9]*)?|-?[0-9]+)$");
 
             // ensure pattern hasn't been accidentally modified
             // test will fail if someone changes the pattern without updating tests
