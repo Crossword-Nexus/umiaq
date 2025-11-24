@@ -1,5 +1,5 @@
 use crate::comparison_operator::ComparisonOperator;
-use crate::complex_constraints::{get_complex_constraint};
+use crate::complex_constraints::{get_complex_constraint, parse_length_range};
 use crate::constraints::{Bounds, VarConstraint, VarConstraints};
 use crate::errors::ParseError;
 use crate::parser::{FormPart, ParsedForm};
@@ -19,7 +19,7 @@ use crate::scan_hints::{form_len_hints_pf, PatternLenHints};
 pub const FORM_SEPARATOR: char = ';';
 
 /// Regex pattern for comparative length constraints like `|A|>4`, `|A|<=7`, etc.
-const LEN_CMP_PATTERN: &str = r"^\|([A-Z])\|\s*(<=|>=|=|<|>)\s*(\d+)$";
+const LEN_CMP_PATTERN: &str = r"^\|([A-Z])\|\s*(<=|>=|=|<|>)\s*([0-9]+(?:-[0-9]*)?|-?[0-9]+)$";
 
 /// Matches comparative length constraints like `|A|>4`, `|A|<=7`, etc.
 /// (Whitespace is permitted around operator.)
@@ -52,11 +52,6 @@ pub(crate) static NEQ_RE: LazyLock<Regex> =
 /// that the solver recognizes, which is produced and consumed by
 /// `EquationContext::set_var_constraints`.
 enum FormKind {
-    /// A length constraint on a single variable, e.g., `|A|=5` or `|B|>3`.
-    /// Carries the variable character, the comparison operator, and the
-    /// numeric bound.
-    LenConstraint { var_char: char, op: ComparisonOperator, bound: usize },
-
     /// An inequality constraint among a set of variables, e.g., `!=ABC`.
     /// Stores the set of variable characters that must differ.
     NeqConstraint { var_chars: Vec<char> },
@@ -89,7 +84,7 @@ impl FromStr for FormKind {
     /// dispatched on by `EquationContext::set_var_constraints`.
     ///
     /// # Order of checks
-    /// 1. Length constraints, e.g., `|A|=5` or `|B|>3`.
+    /// 1. Length comparison constraints (converted into `ComplexConstraint`), e.g., `|A|=5`.
     /// 2. Inequality constraints, e.g., `!=ABC`.
     /// 3. Complex constraints (`get_complex_constraint`).
     /// 4. Joint constraints, e.g., `|AB|=7`.
@@ -102,21 +97,64 @@ impl FromStr for FormKind {
     ///   as any recognized type.
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // 1. Check for a simple length comparison constraint: |A|=5
-        // NB: this assumes that any form that matches LEN_CMP_RE is either a LenConstraint or is
-        // malformed (see the "?"s at the end of deriving op and bound)
+        // NB: this assumes that any form that matches LEN_CMP_RE is either a length comparison
+        // constraint or is malformed (see the "?"s at the end of deriving op and bound)
         if let Some(cap) = LEN_CMP_RE.captures(s).map_err(ParseError::RegexError)? {
             // safe: LEN_CMP_PATTERN has 3 capture groups, all guaranteed by successful match
             // group 1: ([A-Z]) - exactly one uppercase letter
             // group 2: (<=|>=|=|<|>) - comparison operator
-            // group 3: (\d+) - one or more digits
+            // group 3: ([0-9]+(?:-[0-9]*)?|-?[0-9]+) - standalone number or range shorthand
             debug_assert!(cap.get(1).is_some() && cap.get(2).is_some() && cap.get(3).is_some(),
                 "LEN_CMP_RE must have 3 capture groups");
             debug_assert!(!cap[1].is_empty(), "LEN_CMP_RE capture group 1 must be non-empty");
             let var_char = cap[1].chars().next()
                 .expect("LEN_CMP_RE capture group 1 must contain at least one character");
             let op = ComparisonOperator::from_str(&cap[2])?;
-            let bound = cap[3].parse::<usize>()?;
-            Ok(FormKind::LenConstraint { var_char, op, bound })
+            let bound_str = cap[3].to_string();
+
+            let bounds = match op {
+                ComparisonOperator::EQ => parse_length_range(&bound_str)?,
+                ComparisonOperator::NE => {
+                    return Err(Box::new(ParseError::UnsupportedConstraintType {
+                        constraint_type: format!("Not-equals length constraint (|{var_char}|!={bound_str})"),
+                    }));
+                }
+                ComparisonOperator::LE => {
+                    let bound = bound_str.parse::<usize>()?;
+                    Bounds::of(VarConstraint::DEFAULT_MIN, bound)
+                }
+                ComparisonOperator::GE => {
+                    let bound = bound_str.parse::<usize>()?;
+                    Bounds::of_unbounded(bound)
+                }
+                ComparisonOperator::LT => {
+                    let bound = bound_str.parse::<usize>()?;
+                    if let Some(max) = bound.checked_sub(1) {
+                        Bounds::of(VarConstraint::DEFAULT_MIN, max)
+                    } else {
+                        return Err(Box::new(ParseError::NegativeLengthConstraint {
+                            constraint: s.to_string(),
+                        }));
+                    }
+                }
+                ComparisonOperator::GT => {
+                    let bound = bound_str.parse::<usize>()?;
+                    if let Some(min) = bound.checked_add(1) {
+                        Bounds::of_unbounded(min)
+                    } else {
+                        return Err(Box::new(ParseError::LengthConstraintExceedsMax {
+                            constraint: s.to_string(),
+                        }));
+                    }
+                }
+            };
+
+            let vc = VarConstraint {
+                bounds,
+                ..Default::default()
+            };
+
+            Ok(FormKind::ComplexConstraint { var_char, vc })
         // 2. Check for inequality constraints: e.g., !=ABC
         } else if let Some(cap) = NEQ_RE.captures(s).map_err(ParseError::RegexError)? {
             // safe: NEQ_PATTERN has 1 capture group: ([A-Z]+)--one or more uppercase letters
@@ -348,7 +386,6 @@ impl EquationContext {
     ///
     /// Each form is first classified into a [`FormKind`], then dispatched here:
     ///
-    /// - [`FormKind::LenConstraint`] — variable length constraints like `|A|=5`, `|B|>3`.
     /// - [`FormKind::NeqConstraint`] — inequality constraints like `!=ABC`.
     /// - [`FormKind::ComplexConstraint`] — compound constraints (e.g., bounded length plus a sub-pattern).
     /// - [`FormKind::JointConstraint`] — constraints across multiple variables, e.g., `|AB|=7`.
@@ -373,63 +410,6 @@ impl EquationContext {
             })?;
 
             match form_kind {
-                // --- Length constraint on a single variable (e.g., |A|=5, |B|>3) ---
-                FormKind::LenConstraint { var_char, op, bound } => {
-                    // Ensure a VarConstraint object exists for this variable.
-                    // We'll tighten its bounds according to the operator.
-                    let vc = self.var_constraints.ensure(var_char);
-
-                    match op {
-                        // Exact length: interval [bound, bound].
-                        ComparisonOperator::EQ => {
-                            vc.bounds.constrain_by(Bounds::of(bound, bound))?;
-                        }
-
-                        // Not-equals length constraints are disallowed by grammar,
-                        // but we defend here just in case.
-                        ComparisonOperator::NE => {
-                            return Err(Box::new(ParseError::UnsupportedConstraintType {
-                                constraint_type: format!("Not-equals length constraint (|{var_char}|!={bound})"),
-                            }));
-                        }
-
-                        // ≤ bound: interval [1, bound].
-                        // Tighten existing bounds accordingly.
-                        ComparisonOperator::LE => {
-                            vc.bounds.constrain_by(Bounds::of(1, bound))?;
-                        }
-
-                        // ≥ bound: interval [bound, ∞).
-                        ComparisonOperator::GE => {
-                            vc.bounds.constrain_by(Bounds::of_unbounded(bound))?;
-                        }
-
-                        // < bound: interval [1, bound - 1].
-                        // Use checked_sub to avoid underflow on bound=0.
-                        ComparisonOperator::LT => {
-                            if let Some(max) = bound.checked_sub(1) {
-                                vc.bounds.constrain_by(Bounds::of(1, max))?;
-                            } else {
-                                return Err(Box::new(ParseError::NegativeLengthConstraint {
-                                    constraint: (*form).to_string(),
-                                }));
-                            }
-                        }
-
-                        // > bound: interval [bound + 1, ∞).
-                        // Use checked_add to avoid overflow on usize::MAX.
-                        ComparisonOperator::GT => {
-                            if let Some(min) = bound.checked_add(1) {
-                                vc.bounds.constrain_by(Bounds::of_unbounded(min))?;
-                            } else {
-                                return Err(Box::new(ParseError::LengthConstraintExceedsMax {
-                                    constraint: (*form).to_string(),
-                                }));
-                            }
-                        }
-                    }
-                }
-
                 // --- Inequality constraint among variables (e.g., !=ABC) ---
                 FormKind::NeqConstraint { var_chars } => {
                     for &var_char in &var_chars {
@@ -947,6 +927,30 @@ mod tests {
     }
 
     #[test]
+    fn test_len_eq_range_shorthand() {
+        let equation_context = "|A|=10-12;A".parse::<EquationContext>().unwrap();
+        let a = equation_context.var_constraints.get('A').unwrap();
+        assert_eq!(a.bounds.min_len, 10);
+        assert_eq!(a.bounds.max_len_opt, Some(12));
+    }
+
+    #[test]
+    fn test_len_eq_range_from_lower_bound() {
+        let equation_context = "|A|=10-;A".parse::<EquationContext>().unwrap();
+        let a = equation_context.var_constraints.get('A').unwrap();
+        assert_eq!(a.bounds.min_len, 10);
+        assert_eq!(a.bounds.max_len_opt, None);
+    }
+
+    #[test]
+    fn test_len_eq_range_to_upper_bound() {
+        let equation_context = "|A|=-10;A".parse::<EquationContext>().unwrap();
+        let a = equation_context.var_constraints.get('A').unwrap();
+        assert_eq!(a.bounds.min_len, VarConstraint::DEFAULT_MIN);
+        assert_eq!(a.bounds.max_len_opt, Some(10));
+    }
+
+    #[test]
     fn test_len_equality_then_complex_form_only() {
         // Equality first, then a complex constraint that only specifies a form
         let equation_context = "A;|A|=7;A=(x*a)".parse::<EquationContext>().unwrap();
@@ -1282,6 +1286,9 @@ mod tests {
             assert!(LEN_CMP_RE.is_match("|C|<=10").unwrap());
             assert!(LEN_CMP_RE.is_match("|Z|>=7").unwrap());
             assert!(LEN_CMP_RE.is_match("|A|<4").unwrap());
+            assert!(LEN_CMP_RE.is_match("|A|=10-").unwrap());
+            assert!(LEN_CMP_RE.is_match("|A|=-10").unwrap());
+            assert!(LEN_CMP_RE.is_match("|A|=10-12").unwrap());
 
             assert!(!LEN_CMP_RE.is_match("|AB|=5").unwrap()); // multiple vars
             assert!(!LEN_CMP_RE.is_match("|a|=5").unwrap());  // lowercase
@@ -1316,6 +1323,16 @@ mod tests {
             assert_eq!(&cap[1], "Z");
             assert_eq!(&cap[2], ">=");
             assert_eq!(&cap[3], "42");
+
+            let cap = LEN_CMP_RE.captures("|A|=10-12").unwrap().unwrap();
+            assert_eq!(&cap[1], "A");
+            assert_eq!(&cap[2], "=");
+            assert_eq!(&cap[3], "10-12");
+
+            let cap = LEN_CMP_RE.captures("|A|=-10").unwrap().unwrap();
+            assert_eq!(&cap[1], "A");
+            assert_eq!(&cap[2], "=");
+            assert_eq!(&cap[3], "-10");
         }
 
         #[test]
@@ -1329,7 +1346,7 @@ mod tests {
 
         #[test]
         fn test_len_cmp_re_pattern_const() {
-            assert_eq!(LEN_CMP_PATTERN, r"^\|([A-Z])\|\s*(<=|>=|=|<|>)\s*(\d+)$");
+            assert_eq!(LEN_CMP_PATTERN, r"^\|([A-Z])\|\s*(<=|>=|=|<|>)\s*([0-9]+(?:-[0-9]*)?|-?[0-9]+)$");
 
             // ensure pattern hasn't been accidentally modified
             // test will fail if someone changes the pattern without updating tests
