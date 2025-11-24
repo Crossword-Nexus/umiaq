@@ -19,7 +19,7 @@ use crate::scan_hints::{form_len_hints_pf, PatternLenHints};
 pub const FORM_SEPARATOR: char = ';';
 
 /// Regex pattern for comparative length constraints like `|A|>4`, `|A|<=7`, etc.
-const LEN_CMP_PATTERN: &str = r"^\|([A-Z])\|\s*(<=|>=|=|<|>)\s*([0-9]+(?:-[0-9]*)?|-?[0-9]+)$";
+const LEN_CMP_PATTERN: &str = r"^\|([A-Z])\|\s*(<=|>=|=|<|>)\s*([0-9]+(?:-[0-9]*)?|-[0-9]+)$";
 
 /// Matches comparative length constraints like `|A|>4`, `|A|<=7`, etc.
 /// (Whitespace is permitted around operator.)
@@ -103,7 +103,7 @@ impl FromStr for FormKind {
             // safe: LEN_CMP_PATTERN has 3 capture groups, all guaranteed by successful match
             // group 1: ([A-Z]) - exactly one uppercase letter
             // group 2: (<=|>=|=|<|>) - comparison operator
-            // group 3: ([0-9]+(?:-[0-9]*)?|-?[0-9]+) - standalone number or range shorthand
+            // group 3: ([0-9]+(?:-[0-9]*)?|-[0-9]+) - standalone number or range shorthand
             debug_assert!(cap.get(1).is_some() && cap.get(2).is_some() && cap.get(3).is_some(),
                 "LEN_CMP_RE must have 3 capture groups");
             debug_assert!(!cap[1].is_empty(), "LEN_CMP_RE capture group 1 must be non-empty");
@@ -1346,7 +1346,7 @@ mod tests {
 
         #[test]
         fn test_len_cmp_re_pattern_const() {
-            assert_eq!(LEN_CMP_PATTERN, r"^\|([A-Z])\|\s*(<=|>=|=|<|>)\s*([0-9]+(?:-[0-9]*)?|-?[0-9]+)$");
+            assert_eq!(LEN_CMP_PATTERN, r"^\|([A-Z])\|\s*(<=|>=|=|<|>)\s*([0-9]+(?:-[0-9]*)?|-[0-9]+)$");
 
             // ensure pattern hasn't been accidentally modified
             // test will fail if someone changes the pattern without updating tests
