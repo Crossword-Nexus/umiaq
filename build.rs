@@ -35,6 +35,18 @@ fn main() {
 
     println!("cargo:rustc-env=GIT_HASH_FULL={git_hash_full}");
 
+    // capture build timestamp in ISO 8601 format (UTC)
+    let build_timestamp = {
+        use time::format_description::well_known::Rfc3339;
+        use time::OffsetDateTime;
+
+        OffsetDateTime::now_utc()
+            .format(&Rfc3339)
+            .unwrap_or_else(|_| "unknown".to_string())
+    };
+
+    println!("cargo:rustc-env=BUILD_TIMESTAMP={build_timestamp}");
+
     // rerun build script if git HEAD changes
     println!("cargo:rerun-if-changed=.git/HEAD");
 }
