@@ -216,7 +216,9 @@ pub fn get_debug_info(
     // we use `let _ =` to explicitly ignore the Result without panicking
     let _ = writeln!(&mut report, "=== UMIAQ DEBUG REPORT ===");
     let _ = writeln!(&mut report, "Version: {}", env!("CARGO_PKG_VERSION"));
-    let _ = writeln!(&mut report, "Generated: {}", js_sys::Date::new_0().to_iso_string().as_string().unwrap_or_else(|| "unknown".to_string()));
+    let _ = writeln!(&mut report, "Built: {}", env!("BUILD_TIMESTAMP"));
+    let _ = writeln!(&mut report, "Commit: {}", env!("GIT_HASH"));
+    let _ = writeln!(&mut report, "Report generated: {}", js_sys::Date::new_0().to_iso_string().as_string().unwrap_or_else(|| "unknown".to_string()));
     let _ = writeln!(&mut report);
 
     let _ = writeln!(&mut report, "## Error");
