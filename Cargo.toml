@@ -23,7 +23,7 @@ path = "src/bin/bench_local.rs"
 nom = "8.0.0"
 clap = { version = "4.5.45", features = ["derive"] }
 thiserror = "2.0.15"
-fancy-regex = "0.16.1"
+fancy-regex = "0.17.0"
 instant = { version = "0.1.13", features = ["wasm-bindgen"] }
 once_cell = "1.21.3"
 log = "0.4.28"
