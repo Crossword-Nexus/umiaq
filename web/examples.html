@@ -32,7 +32,7 @@ HARUKIMURAKAMI
 LAKEHAVASUCITY
 MILITARYPOLICE
 
-<i>Entries with a consecutive "xj"</i>
+<i>Entries containing the bigram "xj"</i>
 <button class="example-pattern" data-pattern="*xj*">> *xj*</button>
 BOXJUMPS
 ORTHODOXJEW
@@ -56,8 +56,9 @@ ANNA
 APPA
 HANNAH
 
-<i>Entries that remain entries when the
-first letter is moved to the end</i>
+<i>Pairs of entries (of length at least two)
+where the the second entry is the first entry
+with its first letter moved to the end</i>
 <button class="example-pattern" data-pattern="AB;BA;|A|=1">> AB;BA;|A|=1</button>
 APE • PEA
 BRO • ROB
@@ -65,8 +66,8 @@ CAM • AMC
 DAD • ADD
 EAR • ARE
 
-<i>Entries that remain entries when
-you replace a "k" with an "l"</i>
+<i>Pairs of entries where an inner "k" in the first entry
+is replaced with an "l" in the second entry</i>
 <button class="example-pattern" data-pattern="AkB;AlB">> AkB;AlB</button>
 SKY • SLY
 BAKE • BALE
@@ -75,7 +76,7 @@ COKE • COLE
 OUTKAST • OUTLAST
 
 <i>Entries that remain entries when you replace three
-consecutive consonants with three consecutive vowels</i>
+inner consecutive consonants with three consecutive vowels</i>
 <button class="example-pattern" data-pattern="A###B;A@@@B">> A###B;A@@@B</button>
 HDTVS • HOYAS
 MLKJR • MAYOR
