@@ -5,7 +5,9 @@
   <p style="font-style: italic; color: #999; margin-top: 0.5em;">Click any example input to try it</p>
 
   <h5>Simple pattern matching</h5>
-  <pre><button class="example-pattern" data-pattern="l.....x">> l.....x</button>
+  <pre>
+<i>Seven-letter entries starting with "l" and ending with "x"</i>
+<button class="example-pattern" data-pattern="l.....x">> l.....x</button>
 LACROIX
 LANDTAX
 LASCAUX
@@ -13,6 +15,8 @@ LILNASX
 LOOTBOX
 LOUISIX
 
+<i>Five-letter entries whose third letter is "i",
+fifth letter is "e", and fourth letter is either "s" or "z"</i>
 <button class="example-pattern" data-pattern="..i[sz]e">> ..i[sz]e</button>
 ARISE
 GUISE
@@ -20,25 +24,31 @@ LUISE
 MAIZE
 NOISE
 
+<i>Fourteen-letter entries starting with a consonant,
+alternating vowels and consonants afterward</i>
 <button class="example-pattern" data-pattern="#@#@#@#@#@#@#@">> #@#@#@#@#@#@#@</button>
 BODYPOSITIVITY
 HARUKIMURAKAMI
 LAKEHAVASUCITY
 MILITARYPOLICE
 
+<i>Entries with a consecutive "xj"</i>
 <button class="example-pattern" data-pattern="*xj*">> *xj*</button>
 BOXJUMPS
 ORTHODOXJEW
   </pre>
 
   <h5>Matching using variables</h5>
-  <pre><button class="example-pattern" data-pattern="AA">> AA</button>
+  <pre>
+<i>Reduplicative entries</i>
+<button class="example-pattern" data-pattern="AA">> AA</button>
 GAGA
 KIKI
 MAMA
 PAPA
 ZSAZSA
 
+<i>Even-length palindromes</i>
 <button class="example-pattern" data-pattern="A~A">> A~A</button>
 ABBA
 ALLA
@@ -46,6 +56,8 @@ ANNA
 APPA
 HANNAH
 
+<i>Entries that remain entries when the
+first letter is moved to the end</i>
 <button class="example-pattern" data-pattern="AB;BA;|A|=1">> AB;BA;|A|=1</button>
 APE • PEA
 BRO • ROB
@@ -53,6 +65,8 @@ CAM • AMC
 DAD • ADD
 EAR • ARE
 
+<i>Entries that remain entries when
+you replace a "k" with an "l"</i>
 <button class="example-pattern" data-pattern="AkB;AlB">> AkB;AlB</button>
 SKY • SLY
 BAKE • BALE
@@ -60,6 +74,8 @@ BIKE • BILE
 COKE • COLE
 OUTKAST • OUTLAST
 
+<i>Entries that remain entries when you replace three
+consecutive consonants with three consecutive vowels</i>
 <button class="example-pattern" data-pattern="A###B;A@@@B">> A###B;A@@@B</button>
 HDTVS • HOYAS
 MLKJR • MAYOR
