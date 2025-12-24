@@ -6,7 +6,14 @@
 //!
 //! Run with:
 //! ```bash
+//! # UNIX/Linux/macOS or Windows with UTF-8 aware shell
 //! cargo run --bin generate_error_docs > docs/ERROR_CODES.md
+//! ```
+//! 
+//! On Windows PowerShell fallbacks, ensure the output is emitted as UTF-8, e.g.:
+//! ```powershell
+//! chcp 65001>nul
+//! cargo run --bin generate_error_docs | Out-File -Encoding utf8 docs/ERROR_CODES.md
 //! ```
 
 use umiaq::errors::ParseError;

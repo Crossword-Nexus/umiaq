@@ -2,6 +2,7 @@ use crate::bindings::Bindings;
 use crate::solver::{solve_equation, SolverError};
 use crate::entry_list::EntryList;
 use crate::log::init_logger;
+use crate::patterns::EquationContext;
 use wasm_bindgen::prelude::*;
 
 use serde_wasm_bindgen::to_value;
@@ -231,6 +232,20 @@ pub fn get_debug_info(
     let _ = writeln!(&mut report, "Results Requested: {}", num_results_requested);
     let _ = writeln!(&mut report);
 
+    let _ = writeln!(&mut report, "## Equation Context");
+    match input_pattern.parse::<EquationContext>() {
+        Ok(ctx) => {
+            let _ = writeln!(&mut report, "{ctx}");
+        }
+        Err(e) => {
+            let _ = writeln!(
+                &mut report,
+                "Failed to parse equation context: {e}"
+            );
+        }
+    }
+    let _ = writeln!(&mut report);
+
     let _ = writeln!(&mut report, "## Environment");
     if let Some(window) = web_sys::window() {
         if let Ok(user_agent) = window.navigator().user_agent() {
@@ -242,7 +257,7 @@ pub fn get_debug_info(
 
     let _ = writeln!(&mut report, "## Instructions");
     let _ = writeln!(&mut report, "Please copy this entire report and paste it when reporting the issue.");
-    let _ = writeln!(&mut report, "GitHub Issues: https://github.com/Crossword-Nexus/umiaq-rust/issues");
+    let _ = writeln!(&mut report, "GitHub Issues: https://github.com/Crossword-Nexus/umiaq/issues");
     let _ = writeln!(&mut report);
 
     let _ = writeln!(&mut report, "=== END DEBUG REPORT ===");
@@ -269,18 +284,27 @@ mod tests {
         assert_eq!(lines[4], "## Error");
         assert_eq!(lines[5], "solver error: Parse error");
         assert_eq!(lines[6], "");
-        assert_eq!(lines[7], "## Input");
-        assert_eq!(lines[8], "Pattern: AB;BA");
-        assert_eq!(lines[9], "Entry List Size: 1000");
-        assert_eq!(lines[10], "Results Requested: 100");
-        assert_eq!(lines[11], "");
-        assert_eq!(lines[12], "## Environment");
-        // lines[13] and [14] are User Agent and Location (dynamic)
+        let input_idx = lines.iter().position(|&l| l == "## Input").unwrap();
+        assert_eq!(lines[input_idx + 1], "Pattern: AB;BA");
+        assert_eq!(lines[input_idx + 2], "Entry List Size: 1000");
+        assert_eq!(lines[input_idx + 3], "Results Requested: 100");
+        assert_eq!(lines[input_idx + 4], "");
+        let eq_ctx_idx = lines
+            .iter()
+            .position(|&l| l == "## Equation Context")
+            .unwrap();
+        assert!(lines[eq_ctx_idx + 1].starts_with("Patterns"));
+        let env_idx = lines
+            .iter()
+            .position(|&l| l == "## Environment")
+            .unwrap();
+        assert!(env_idx > eq_ctx_idx);
+        // lines following env_idx are User Agent and Location (dynamic)
         // Find the Instructions section
         let instructions_idx = lines.iter().position(|&l| l == "## Instructions").unwrap();
         assert_eq!(lines[instructions_idx], "## Instructions");
         assert_eq!(lines[instructions_idx + 1], "Please copy this entire report and paste it when reporting the issue.");
-        assert_eq!(lines[instructions_idx + 2], "GitHub Issues: https://github.com/Crossword-Nexus/umiaq-rust/issues");
+        assert_eq!(lines[instructions_idx + 2], "GitHub Issues: https://github.com/Crossword-Nexus/umiaq/issues");
         assert_eq!(lines[instructions_idx + 3], "");
         assert_eq!(lines[instructions_idx + 4], "=== END DEBUG REPORT ===");
     }
