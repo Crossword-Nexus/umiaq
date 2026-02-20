@@ -182,18 +182,28 @@ impl FromStr for FormKind {
 
 /// Diagnostic heuristic to explain why a clause failed to parse.
 fn get_malformed_clause_reason(s: &str) -> String {
+    // Try to extract a variable (A-Z) and a number for better suggestions
+    let var = s.chars().find(|c| c.is_ascii_uppercase()).unwrap_or('A');
+    let val = s.chars().filter(|c| c.is_ascii_digit()).collect::<String>();
+    let val = if val.is_empty() { "N".to_string() } else { val };
+
     if s.contains('=') && s.contains('|') {
-        "looks like a length constraint. Did you mean '|A|=3' or 'A=(3)'?".to_string()
+        format!("looks like a length constraint. Did you mean '|{var}|={val}' or '{var}=({val})'?")
     } else if s.contains('=') {
-        "looks like an assignment. Expected 'A=abc' or 'A=(3-5:a*)'.".to_string()
+        format!("looks like an assignment. Expected '{var}=abc' or '{var}=({val}:a*)'.")
     } else if s.contains('|') {
-        "looks like a length/joint constraint. Expected '|A|=3' or '|AB|=7'.".to_string()
+        format!("looks like a length/joint constraint. Expected '|{var}|={val}' or '|{var}B|=7'.")
     } else if s.starts_with('!') {
         "looks like an inequality. Expected '!=ABC'.".to_string()
     } else if s.contains('[') || s.contains(']') {
         "looks like a charset. Expected '[abc]' or '[a-z]'.".to_string()
     } else if s.contains('/') {
-        "looks like an anagram. Expected '/abc'.".to_string()
+        let cleaned: String = s.chars()
+            .filter(|c| c.is_ascii_alphabetic())
+            .map(|c| c.to_ascii_lowercase())
+            .collect();
+        let suggestion = if cleaned.is_empty() { "abc".to_string() } else { cleaned };
+        format!("looks like an anagram. Expected '/{suggestion}'.")
     } else {
         // Find the first illegal character for patterns
         for c in s.chars() {
@@ -1402,4 +1412,11 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_malformed_clause_reason_dynamic() {
+        assert!(get_malformed_clause_reason("B=|7|").contains("|B|=7"));
+        assert!(get_malformed_clause_reason("Z=10").contains("Z=abc"));
+        assert!(get_malformed_clause_reason("|Q|").contains("|Q|=N"));
+        assert!(get_malformed_clause_reason("/A^Bd").contains("/abd"));
+    }
 }
