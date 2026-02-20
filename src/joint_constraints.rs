@@ -113,6 +113,7 @@ impl FromStr for JointConstraint {
         parse_joint_len(s).ok_or_else(|| {
             ParseError::InvalidInput {
                 str: s.to_string(),
+                reason: "not a valid joint constraint (expected '|AB|=7' etc.)".to_string()
             }
         })
     }

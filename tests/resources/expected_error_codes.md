@@ -174,14 +174,20 @@ bad constraint (E005)
 
 **Details:** The input does not match any expected format for patterns or constraints.
 
+**How to fix:**
+```
+Check syntax: Patterns use A-Z (e.g., 'A*B'), constraints use |V|=N (e.g., '|A|=5').
+```
+
 **Example error message:**
 ```
-Invalid input: bad input
+Invalid input in 'bad input': bad input
 ```
 
 **Detailed format:**
 ```
-Invalid input: bad input (E006)
+Invalid input in 'bad input': bad input (E006)
+Check syntax: Patterns use A-Z (e.g., 'A*B'), constraints use |V|=N (e.g., '|A|=5').
 ```
 
 ---
@@ -296,12 +302,13 @@ Variable has incompatible constraints that cannot both be satisfied
 
 **Example error message:**
 ```
-Parse error in clause 'BAD(INPUT': Invalid input: BAD(INPUT
+Parse error in clause 'BAD(INPUT': Invalid input in 'BAD(INPUT': illegal character '(' in pattern
 ```
 
 **Detailed format:**
 ```
-Parse error in clause 'BAD(INPUT': Invalid input: BAD(INPUT (E012)
+Invalid input in 'BAD(INPUT': illegal character '(' in pattern (E006)
+Check syntax: Patterns use A-Z (e.g., 'A*B'), constraints use |V|=N (e.g., '|A|=5').
 ```
 
 ---
@@ -416,4 +423,3 @@ Error: <message>
 <message> (<code>)
 <help text if available>
 ```
-

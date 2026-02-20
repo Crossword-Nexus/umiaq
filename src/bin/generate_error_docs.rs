@@ -56,7 +56,7 @@ fn all_parse_error_variants() -> Vec<ParseError> {
         ParseError::EmptyForm,
         ParseError::InvalidLengthRange { input: "10-5".to_string() },
         ParseError::InvalidComplexConstraint { str: "bad constraint".to_string() },
-        ParseError::InvalidInput { str: "bad input".to_string() },
+        ParseError::InvalidInput { str: "bad input".to_string(), reason: "bad input".to_string() },
         // ParseIntError--create by parsing invalid integer
         ParseError::ParseIntError("not_a_number".parse::<usize>().unwrap_err()),
         ParseError::ContradictoryBounds { min: 5, max: 3 },
@@ -69,7 +69,7 @@ fn all_parse_error_variants() -> Vec<ParseError> {
         },
         ParseError::ClauseParseError {
             clause: "BAD(INPUT".to_string(),
-            source: Box::new(ParseError::InvalidInput { str: "BAD(INPUT".to_string() })
+            source: Box::new(ParseError::InvalidInput { str: "BAD(INPUT".to_string(), reason: "illegal character '(' in pattern".to_string() })
         },
         ParseError::InvalidVariableName { var: "1".to_string() },
         ParseError::InvalidLowercaseChar { invalid_char: 'X' },

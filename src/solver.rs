@@ -1327,15 +1327,16 @@ mod tests {
         let solver_error = solve_equation("BAD(PATTERN", &entries, 10).unwrap_err();
         // verify we get a parse error (could be wrapped in ClauseParseError)
         if let SolverError::ParseFailure(bpe) = solver_error {
-            // accept either direct InvalidInput or wrapped in ClauseParseError
+            // Since we now flatten ClauseParseError in display_detailed, we check the inner error
             match &*bpe {
-                ParseError::InvalidInput { str } if str == "BAD(PATTERN" => {
-                    // direct InvalidInput is OK
+                // It should be flattened to InvalidInput now
+                ParseError::InvalidInput { str, reason } if str == "BAD(PATTERN" => {
+                    assert!(reason.contains("illegal character"), "Expected 'illegal character' in reason, got: {}", reason);
                 }
                 ParseError::ClauseParseError { clause, source } if clause == "BAD(PATTERN" => {
-                    // wrapped in ClauseParseError--verify the source is also InvalidInput
+                    // If it's not flattened for some reason in this check, verify the source
                     assert!(
-                        matches!(**source, ParseError::InvalidInput { ref str } if str == "BAD(PATTERN"),
+                        matches!(**source, ParseError::InvalidInput { ref str, .. } if str == "BAD(PATTERN"),
                         "Expected source to be InvalidInput with 'BAD(PATTERN', got: {:?}", source
                     );
                 }
@@ -1420,21 +1421,21 @@ mod tests {
 
             match result {
                 Err(SolverError::ParseFailure(parse_err)) => {
-                    // Verify the error chain is accessible
+                    // Verify the error report is flattened
                     let detailed = SolverError::ParseFailure(parse_err).display_detailed();
                     assert!(
-                        detailed.contains("S001"),
-                        "ParseFailure should have S001 code"
+                        detailed.contains("E006"),
+                        "Detailed display should contain inner error code (E006)"
                     );
                     assert!(
-                        detailed.contains("caused by"),
-                        "ParseFailure should show error chain"
+                        !detailed.contains("Parse error in clause"),
+                        "Report should be flattened, not containing 'Parse error in clause'"
                     );
 
-                    // The underlying ParseError should have its own code
+                    // The reason should be present
                     assert!(
-                        detailed.contains("E0"),
-                        "Should contain ParseError code (E0xx)"
+                        detailed.contains("illegal character"),
+                        "Should contain the illegal character reason"
                     );
                 }
                 _ => panic!("Expected ParseFailure error"),

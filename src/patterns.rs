@@ -174,8 +174,34 @@ impl FromStr for FormKind {
             Ok(FormKind::Pattern { parsed_form })
         // Nothing matched → invalid form
         } else {
-            Err(Box::new(ParseError::InvalidInput { str: s.to_string() }))
+            let reason = get_malformed_clause_reason(s);
+            Err(Box::new(ParseError::InvalidInput { str: s.to_string(), reason }))
         }
+    }
+}
+
+/// Diagnostic heuristic to explain why a clause failed to parse.
+fn get_malformed_clause_reason(s: &str) -> String {
+    if s.contains('=') && s.contains('|') {
+        "looks like a length constraint. Did you mean '|A|=3' or 'A=(3)'?".to_string()
+    } else if s.contains('=') {
+        "looks like an assignment. Expected 'A=abc' or 'A=(3-5:a*)'.".to_string()
+    } else if s.contains('|') {
+        "looks like a length/joint constraint. Expected '|A|=3' or '|AB|=7'.".to_string()
+    } else if s.starts_with('!') {
+        "looks like an inequality. Expected '!=ABC'.".to_string()
+    } else if s.contains('[') || s.contains(']') {
+        "looks like a charset. Expected '[abc]' or '[a-z]'.".to_string()
+    } else if s.contains('/') {
+        "looks like an anagram. Expected '/abc'.".to_string()
+    } else {
+        // Find the first illegal character for patterns
+        for c in s.chars() {
+            if !c.is_ascii_uppercase() && !c.is_ascii_lowercase() && !"* .@#~/[]".contains(c) {
+                 return format!("contains illegal character '{}' for patterns", c);
+            }
+        }
+        "invalid syntax for patterns or constraints.".to_string()
     }
 }
 
