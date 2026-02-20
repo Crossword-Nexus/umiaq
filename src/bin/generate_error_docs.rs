@@ -6,43 +6,46 @@
 //!
 //! Run with:
 //! ```bash
-//! cargo run --bin generate_error_docs > docs/ERROR_CODES.md
+//! cargo run --bin generate_error_docs [OUTPUT_FILE]
 //! ```
 
 use umiaq::errors::ParseError;
 use umiaq::solver::SolverError;
+use std::fs::File;
+use std::io::{self, Write, BufWriter};
+use std::env;
 
 /// Macro to generate error documentation for any error type
-/// with `code()`, `description()`, `details()`, `help()`, and `display_detailed()` methods
+/// with `code()`, `description()`, `details()`, and `help()`, and `display_detailed()` methods
 macro_rules! generate_error_docs {
-    ($errors:expr) => {
+    ($errors:expr, $writer:expr) => {
         for error in $errors {
             let code = error.code();
             let description = error.description();
             let details = error.details();
             let help = error.help();
 
-            println!("### {}: {}\n", code, description);
-            println!("**Details:** {}\n", details);
+            writeln!($writer, "### {}: {}\n", code, description)?;
+            writeln!($writer, "**Details:** {}\n", details)?;
 
             if let Some(help_text) = help {
-                println!("**How to fix:**");
-                println!("```");
-                println!("{}", help_text);
-                println!("```\n");
+                writeln!($writer, "**How to fix:**")?;
+                writeln!($writer, "```")?;
+                writeln!($writer, "{}", help_text)?;
+                writeln!($writer, "```\n")?;
             }
 
-            println!("**Example error message:**");
-            println!("```");
-            println!("{}", error);
-            println!("```\n");
+            writeln!($writer, "**Example error message:**")?;
+            writeln!($writer, "```")?;
+            writeln!($writer, "{}", error)?;
+            writeln!($writer, "```\n")?;
 
-            println!("**Detailed format:**");
-            println!("```");
-            println!("{}", error.display_detailed());
-            println!("```\n");
+            writeln!($writer, "**Detailed format:**")?;
+            writeln!($writer, "```")?;
+            writeln!($writer, "{}", error.display_detailed())?;
+            writeln!($writer, "```\n")?;
 
-            println!("---\n");
+            writeln!($writer, "---\n")?;
         }
     };
 }
@@ -93,58 +96,62 @@ fn all_solver_error_variants() -> Vec<SolverError> {
     ]
 }
 
-fn main() {
-    println!("# Error Code Reference\n");
-    println!("**⚠️ This document is auto-generated from the source code. Do not edit manually.**\n");
+fn main() -> io::Result<()> {
+    let args: Vec<String> = env::args().collect();
+    
+    let mut writer: Box<dyn Write> = if args.len() > 1 {
+        let file = File::create(&args[1])?;
+        Box::new(BufWriter::new(file))
+    } else {
+        Box::new(BufWriter::new(io::stdout()))
+    };
 
-    println!("## Table of Contents\n");
-    println!("- [Solver Errors (S001–S003)](#solver-errors)");
-    println!("- [Parse Errors (E001–E016)](#parse-errors)");
-    println!("- [How to Use Error Codes](#how-to-use-error-codes)\n");
+    writeln!(writer, "# Error Code Reference\n")?;
+    writeln!(writer, "**⚠️ This document is auto-generated from the source code. Do not edit manually.**\n")?;
 
-    generate_solver_error_docs();
-    generate_parse_error_docs();
+    writeln!(writer, "## Table of Contents\n")?;
+    writeln!(writer, "- [Solver Errors (S001–S003)](#solver-errors)")?;
+    writeln!(writer, "- [Parse Errors (E001–E016)](#parse-errors)")?;
+    writeln!(writer, "- [How to Use Error Codes](#how-to-use-error-codes)\n")?;
 
-    println!("\n## How to Use Error Codes\n");
-    println!("When you see an error like:\n");
-    println!("```");
-    println!("Error: Empty form string (E003)");
-    println!("Example: Use 'A*B' or '*cat*' instead of empty string");
-    println!("```\n");
-    println!("1. Note the error code (e.g., `E003`)");
-    println!("2. Look it up in this document for detailed explanation");
-    println!("3. Follow the suggested resolution steps\n");
+    writeln!(writer, "## Solver Errors\n")?;
+    writeln!(writer, "Top-level errors from the solver. These wrap lower-level parse errors or indicate solver-specific issues.\n")?;
+    generate_error_docs!(all_solver_error_variants(), writer);
 
-    println!("## Error Display Formats\n");
-    println!("Errors are displayed in two formats:\n");
-    println!("### Simple Format");
-    println!("```");
-    println!("Error: <message>");
-    println!("```\n");
-    println!("### Detailed Format (via `display_detailed()`)");
-    println!("```");
-    println!("<message> (<code>)");
-    println!("<help text if available>");
-    println!("```\n");
-}
+    writeln!(writer, "## Parse Errors\n")?;
+    writeln!(writer, "Errors that occur when parsing pattern strings, constraints, or equations.\n")?;
+    generate_error_docs!(all_parse_error_variants(), writer);
 
-fn generate_solver_error_docs() {
-    println!("## Solver Errors\n");
-    println!("Top-level errors from the solver. These wrap lower-level parse errors or indicate solver-specific issues.\n");
-    generate_error_docs!(all_solver_error_variants());
-}
+    writeln!(writer, "\n## How to Use Error Codes\n")?;
+    writeln!(writer, "When you see an error like:\n")?;
+    writeln!(writer, "```")?;
+    writeln!(writer, "Error: Empty form string (E003)")?;
+    writeln!(writer, "Example: Use 'A*B' or '*cat*' instead of empty string")?;
+    writeln!(writer, "```\n")?;
+    writeln!(writer, "1. Note the error code (e.g., `E003`)")?;
+    writeln!(writer, "2. Look it up in this document for detailed explanation")?;
+    writeln!(writer, "3. Follow the suggested resolution steps\n")?;
 
-fn generate_parse_error_docs() {
-    println!("## Parse Errors\n");
-    println!("Errors that occur when parsing pattern strings, constraints, or equations.\n");
-    generate_error_docs!(all_parse_error_variants());
+    writeln!(writer, "## Error Display Formats\n")?;
+    writeln!(writer, "Errors are displayed in two formats:\n")?;
+    writeln!(writer, "### Simple Format")?;
+    writeln!(writer, "```")?;
+    writeln!(writer, "Error: <message>")?;
+    writeln!(writer, "```\n")?;
+    writeln!(writer, "### Detailed Format (via `display_detailed()`)")?;
+    writeln!(writer, "```")?;
+    writeln!(writer, "<message> (<code>)")?;
+    writeln!(writer, "<help text if available>")?;
+    writeln!(writer, "```\n")?;
+
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use std::io::Write;
 
-    /// Captures stdout during documentation generation
+    /// Captures output during documentation generation
     fn generate_docs_to_string() -> String {
         use std::process::{Command, Stdio};
 
@@ -163,20 +170,24 @@ mod tests {
         let generated = generate_docs_to_string();
         let expected = include_str!("../../tests/resources/expected_error_codes.md");
 
-        if generated != expected {
+        // Normalize line endings for cross-platform comparison
+        let normalized_generated = generated.replace("\r\n", "\n");
+        let normalized_expected = expected.replace("\r\n", "\n");
+
+        if normalized_generated != normalized_expected {
             // Write the diff to a file for easier debugging
             let mut diff_file = std::fs::File::create("tests/resources/error_codes_diff.txt")
                 .expect("Failed to create diff file");
             writeln!(diff_file, "=== EXPECTED ===").unwrap();
-            writeln!(diff_file, "{}", expected).unwrap();
+            writeln!(diff_file, "{}", normalized_expected).unwrap();
             writeln!(diff_file, "\n=== GENERATED ===").unwrap();
-            writeln!(diff_file, "{}", generated).unwrap();
+            writeln!(diff_file, "{}", normalized_generated).unwrap();
 
             panic!(
                 "Generated error documentation does not match expected.\n\
                  Diff written to tests/resources/error_codes_diff.txt\n\
                  If the changes are intentional, update the baseline:\n\
-                 cargo run --bin generate_error_docs > tests/resources/expected_error_codes.md"
+                 cargo run --bin generate_error_docs tests/resources/expected_error_codes.md"
             );
         }
     }
