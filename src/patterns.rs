@@ -181,6 +181,7 @@ impl FromStr for FormKind {
 }
 
 /// Diagnostic heuristic to explain why a clause failed to parse.
+// TODO: improve heuristic
 fn get_malformed_clause_reason(s: &str) -> String {
     // Try to extract a variable (A-Z) and a number for better suggestions
     let var = s.chars().find(|c| c.is_ascii_uppercase()).unwrap_or('A');
@@ -190,20 +191,20 @@ fn get_malformed_clause_reason(s: &str) -> String {
     if s.contains('=') && s.contains('|') {
         format!("looks like a length constraint. Did you mean '|{var}|={val}' or '{var}=({val})'?")
     } else if s.contains('=') {
-        format!("looks like an assignment. Expected '{var}=abc' or '{var}=({val}:a*)'.")
+        format!("looks like an assignment. Expected something like '{var}=abc' or '{var}=({val}:a*)'.")
     } else if s.contains('|') {
-        format!("looks like a length/joint constraint. Expected '|{var}|={val}' or '|{var}B|=7'.")
+        format!("looks like a length/joint constraint. Expected something like '|{var}|={val}' or '|{var}B|=7'.")
     } else if s.starts_with('!') {
-        "looks like an inequality. Expected '!=ABC'.".to_string()
+        "looks like an inequality. Expected something like '!=ABC'.".to_string()
     } else if s.contains('[') || s.contains(']') {
-        "looks like a charset. Expected '[abc]' or '[a-z]'.".to_string()
+        "looks like a charset. Expected something like '[abc]' or '[a-z]'.".to_string()
     } else if s.contains('/') {
         let cleaned: String = s.chars()
             .filter(|c| c.is_ascii_alphabetic())
             .map(|c| c.to_ascii_lowercase())
             .collect();
         let suggestion = if cleaned.is_empty() { "abc".to_string() } else { cleaned };
-        format!("looks like an anagram. Expected '/{suggestion}'.")
+        format!("looks like an anagram. Expected something like '/{suggestion}'.")
     } else {
         // Find the first illegal character for patterns
         for c in s.chars() {

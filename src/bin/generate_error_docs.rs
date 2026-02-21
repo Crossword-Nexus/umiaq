@@ -16,7 +16,7 @@ use std::io::{self, Write, BufWriter};
 use std::env;
 
 /// Macro to generate error documentation for any error type
-/// with `code()`, `description()`, `details()`, and `help()`, and `display_detailed()` methods
+/// with `code()`, `description()`, `details()`, `help()`, and `display_detailed()` methods
 macro_rules! generate_error_docs {
     ($errors:expr, $writer:expr) => {
         for error in $errors {
@@ -98,7 +98,7 @@ fn all_solver_error_variants() -> Vec<SolverError> {
 
 fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();
-    
+
     let mut writer: Box<dyn Write> = if args.len() > 1 {
         let file = File::create(&args[1])?;
         Box::new(BufWriter::new(file))
@@ -171,6 +171,7 @@ mod tests {
         let expected = include_str!("../../tests/resources/expected_error_codes.md");
 
         // Normalize line endings for cross-platform comparison
+        // TODO: is this the right way to handle this?
         let normalized_generated = generated.replace("\r\n", "\n");
         let normalized_expected = expected.replace("\r\n", "\n");
 
