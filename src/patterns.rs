@@ -194,10 +194,17 @@ fn get_malformed_clause_reason(s: &str) -> String {
         format!("looks like an assignment. Expected something like '{var}=abc' or '{var}=({val}:a*)'.")
     } else if s.contains('|') {
         format!("looks like a length/joint constraint. Expected something like '|{var}|={val}' or '|{var}B|=7'.")
-    } else if s.starts_with('!') {
-        "looks like an inequality. Expected something like '!=ABC'.".to_string()
+    } else if s.contains('!') {
+        let vars: String = s.chars().filter(|c| c.is_ascii_uppercase()).collect();
+        let suggestion = if vars.is_empty() { "ABC".to_string() } else { vars };
+        format!("looks like an inequality. Expected something like '!={suggestion}'.")
     } else if s.contains('[') || s.contains(']') {
-        "looks like a charset. Expected something like '[abc]' or '[a-z]'.".to_string()
+        let chars: String = s.chars()
+            .filter(|c| c.is_ascii_alphabetic() || *c == '-')
+            .map(|c| c.to_ascii_lowercase())
+            .collect();
+        let suggestion = if chars.is_empty() { "abc".to_string() } else { chars };
+        format!("looks like a charset. Expected something like '[{suggestion}]'.")
     } else if s.contains('/') {
         let cleaned: String = s.chars()
             .filter(|c| c.is_ascii_alphabetic())
@@ -1419,5 +1426,7 @@ mod tests {
         assert!(get_malformed_clause_reason("Z=10").contains("Z=abc"));
         assert!(get_malformed_clause_reason("|Q|").contains("|Q|=N"));
         assert!(get_malformed_clause_reason("/A^Bd").contains("/abd"));
+        assert!(get_malformed_clause_reason("!AB").contains("!=AB"));
+        assert!(get_malformed_clause_reason("[A-Z]").contains("[a-z]"));
     }
 }
