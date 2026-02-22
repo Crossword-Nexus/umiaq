@@ -56,8 +56,8 @@
 //!     Err(SolverError::ParseFailure(parse_err)) => {
 //!         // Access the specific ParseError
 //!         match &*parse_err {
-//!             ParseError::InvalidInput { str } => {
-//!                 println!("Invalid input: {}", str);
+//!             ParseError::InvalidInput { str, reason } => {
+//!                 println!("Invalid input in '{}': {}", str, reason);
 //!             }
 //!             ParseError::ClauseParseError { clause, source } => {
 //!                 println!("Error in clause '{}': {}", clause, source);
@@ -89,4 +89,3 @@ mod comparison_operator;
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
 pub mod log;
-

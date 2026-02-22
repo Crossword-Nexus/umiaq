@@ -105,8 +105,8 @@ pub enum ParseError {
     #[error("{str}")]
     InvalidComplexConstraint { str: String },
 
-    #[error("Invalid input: {str}")]
-    InvalidInput { str: String },
+    #[error("Invalid input in '{str}': {reason}")]
+    InvalidInput { str: String, reason: String },
 
     #[error("int-parsing error: {0}")]
     ParseIntError(#[from] ParseIntError),
@@ -304,6 +304,7 @@ impl ParseError {
             ParseError::InvalidVariableName { .. } => Some("Variable names must be single uppercase letters A-Z"),
             ParseError::InvalidLowercaseChar { .. } => Some("Only lowercase letters a-z are allowed"),
             ParseError::InvalidAnagramChars { .. } => Some("Anagrams must contain only lowercase letters a-z"),
+            ParseError::InvalidInput { .. } => Some("Check syntax: Patterns use A-Z (e.g., 'A*B'), constraints use |V|=N (e.g., '|A|=5')."),
             ParseError::PrefilterFailed(_) => Some("This is an internal error. The prefilter regex should have been validated during pattern parsing."),
             ParseError::AnagramCheckFailed(_) => Some("Ensure anagram patterns contain only lowercase letters a-z"),
             ParseError::UnsupportedConstraintType { .. } => Some("Try using a different constraint type."),
@@ -317,7 +318,13 @@ impl ParseError {
     /// Formats the error with code and optional help text
     #[must_use]
     pub fn display_detailed(&self) -> String {
-        format_error_with_code_and_help(&self.to_string(), self.code(), self.help())
+        match self {
+            ParseError::ClauseParseError { clause: _, source } => {
+                // Flatten the report if it's a clause wrap to avoid redundancy
+                source.display_detailed()
+            }
+            _ => format_error_with_code_and_help(&self.to_string(), self.code(), self.help()),
+        }
     }
 }
 
@@ -361,7 +368,7 @@ mod tests {
         let errors: Vec<ParseError> = vec![
             ParseError::ParseFailure { s: "test".to_string() },
             ParseError::EmptyForm,
-            ParseError::InvalidInput { str: "test".to_string() },
+            ParseError::InvalidInput { str: "test".to_string(), reason: "test".to_string() },
             ParseError::InvalidVariableName { var: "1".to_string() },
             ParseError::ContradictoryBounds { min: 5, max: 3 },
             ParseError::InvalidLengthRange { input: "bad".to_string() },
@@ -397,7 +404,7 @@ mod tests {
         let errors: Vec<ParseError> = vec![
             ParseError::EmptyForm,
             ParseError::ContradictoryBounds { min: 5, max: 3 },
-            ParseError::InvalidInput { str: "test".to_string() },
+            ParseError::InvalidInput { str: "test".to_string(), reason: "test".to_string() },
         ];
 
         for err in errors {
@@ -423,7 +430,7 @@ mod tests {
         let errors: Vec<ParseError> = vec![
             ParseError::EmptyForm,
             ParseError::ContradictoryBounds { min: 5, max: 3 },
-            ParseError::InvalidInput { str: "test".to_string() },
+            ParseError::InvalidInput { str: "test".to_string(), reason: "test".to_string() },
             ParseError::InvalidVariableName { var: "1".to_string() },
             ParseError::InvalidLengthRange { input: "bad".to_string() },
         ];
@@ -494,7 +501,7 @@ mod tests {
     /// Test error chain construction for `ClauseParseError`
     #[test]
     fn test_clause_parse_error_chain() {
-        let source = ParseError::InvalidInput { str: "bad".to_string() };
+        let source = ParseError::InvalidInput { str: "bad".to_string(), reason: "test reason".to_string() };
         let err = ParseError::ClauseParseError {
             clause: "bad".to_string(),
             source: Box::new(source),
@@ -502,16 +509,22 @@ mod tests {
 
         let detailed = err.display_detailed();
 
-        // should show the clause
+        // should NOT show the "Parse error in clause 'bad'" part now, should be flattened
         assert!(
-            detailed.contains("bad"),
-            "ClauseParseError should show the problematic clause"
+            !detailed.contains("Parse error in clause"),
+            "ClauseParseError should be flattened in display_detailed"
         );
 
-        // should show error codes from both levels
+        // should show the inner reason
         assert!(
-            detailed.contains(err.code()),
-            "Should show outer error code"
+            detailed.contains("test reason"),
+            "Detailed output should contain the underlying reason"
+        );
+
+        // should show error codes
+        assert!(
+            detailed.contains(err.code()) || detailed.contains("E006"),
+            "Should show some error code"
         );
     }
 
@@ -609,7 +622,7 @@ mod tests {
         let errors: Vec<ParseError> = vec![
             ParseError::ParseFailure { s: "test".to_string() },
             ParseError::EmptyForm,
-            ParseError::InvalidInput { str: "test".to_string() },
+            ParseError::InvalidInput { str: "test".to_string(), reason: "test".to_string() },
             ParseError::InvalidVariableName { var: "1".to_string() },
             ParseError::ContradictoryBounds { min: 5, max: 3 },
             ParseError::InvalidLengthRange { input: "bad".to_string() },

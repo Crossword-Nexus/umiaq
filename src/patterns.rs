@@ -174,8 +174,52 @@ impl FromStr for FormKind {
             Ok(FormKind::Pattern { parsed_form })
         // Nothing matched → invalid form
         } else {
-            Err(Box::new(ParseError::InvalidInput { str: s.to_string() }))
+            let reason = get_malformed_clause_reason(s);
+            Err(Box::new(ParseError::InvalidInput { str: s.to_string(), reason }))
         }
+    }
+}
+
+/// Diagnostic heuristic to explain why a clause failed to parse.
+// TODO: improve heuristic
+fn get_malformed_clause_reason(s: &str) -> String {
+    // Try to extract a variable (A-Z) and a number for better suggestions
+    let var = s.chars().find(|c| c.is_ascii_uppercase()).unwrap_or('A');
+    let val = s.chars().filter(|c| c.is_ascii_digit()).collect::<String>();
+    let val = if val.is_empty() { "N".to_string() } else { val };
+
+    if s.contains('=') && s.contains('|') {
+        format!("looks like a length constraint. Did you mean '|{var}|={val}' or '{var}=({val})'?")
+    } else if s.contains('=') {
+        format!("looks like an assignment. Expected something like '{var}=abc' or '{var}=({val}:a*)'.")
+    } else if s.contains('|') {
+        format!("looks like a length/joint constraint. Expected something like '|{var}|={val}' or '|{var}B|=7'.")
+    } else if s.contains('!') {
+        let vars: String = s.chars().filter(|c| c.is_ascii_uppercase()).collect();
+        let suggestion = if vars.is_empty() { "ABC".to_string() } else { vars };
+        format!("looks like an inequality. Expected something like '!={suggestion}'.")
+    } else if s.contains('[') || s.contains(']') {
+        let chars: String = s.chars()
+            .filter(|c| c.is_ascii_alphabetic() || *c == '-')
+            .map(|c| c.to_ascii_lowercase())
+            .collect();
+        let suggestion = if chars.is_empty() { "abc".to_string() } else { chars };
+        format!("looks like a charset. Expected something like '[{suggestion}]'.")
+    } else if s.contains('/') {
+        let cleaned: String = s.chars()
+            .filter(|c| c.is_ascii_alphabetic())
+            .map(|c| c.to_ascii_lowercase())
+            .collect();
+        let suggestion = if cleaned.is_empty() { "abc".to_string() } else { cleaned };
+        format!("looks like an anagram. Expected something like '/{suggestion}'.")
+    } else {
+        // Find the first illegal character for patterns
+        for c in s.chars() {
+            if !c.is_ascii_uppercase() && !c.is_ascii_lowercase() && !"* .@#~/[]".contains(c) {
+                 return format!("contains illegal character '{}' for patterns", c);
+            }
+        }
+        "invalid syntax for patterns or constraints.".to_string()
     }
 }
 
@@ -1376,4 +1420,13 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_malformed_clause_reason_dynamic() {
+        assert!(get_malformed_clause_reason("B=|7|").contains("|B|=7"));
+        assert!(get_malformed_clause_reason("Z=10").contains("Z=abc"));
+        assert!(get_malformed_clause_reason("|Q|").contains("|Q|=N"));
+        assert!(get_malformed_clause_reason("/A^Bd").contains("/abd"));
+        assert!(get_malformed_clause_reason("!AB").contains("!=AB"));
+        assert!(get_malformed_clause_reason("[A-Z]").contains("[a-z]"));
+    }
 }

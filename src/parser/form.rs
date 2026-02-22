@@ -1,6 +1,5 @@
 use super::prefilter::{form_to_regex_str, get_regex};
 use crate::errors::ParseError;
-use crate::errors::ParseError::ParseFailure;
 use crate::parser::utils::letter_to_num;
 use crate::umiaq_char::{ALPHABET_SIZE, LITERAL_CHARS, VARIABLE_CHARS};
 use fancy_regex::Regex;
@@ -176,7 +175,10 @@ impl FromStr for ParsedForm {
                 }
                 Err(_) => {
                     // fall back to generic ParseFailure for other cases
-                    return Err(Box::new(ParseFailure { s: rest.to_string() }));
+                    return Err(Box::new(ParseError::InvalidInput {
+                        str: rest.to_string(),
+                        reason: format!("illegal character '{}' in pattern", rest.chars().next().unwrap_or('?'))
+                    }));
                 }
             }
         }
@@ -270,7 +272,7 @@ mod tests {
     }
 
     #[test] fn test_parse_failure_error() {
-        assert!(matches!(*"[".parse::<ParsedForm>().unwrap_err(), ParseFailure { s } if s == "[" ));
+        assert!(matches!(*"[".parse::<ParsedForm>().unwrap_err(), ParseError::InvalidInput { ref str, .. } if str == "[" ));
     }
 
     #[test] fn test_parse_form_basic() {
