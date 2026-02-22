@@ -8,6 +8,7 @@
 //! ```bash
 //! cargo run --bin generate_error_docs [OUTPUT_FILE]
 //! ```
+//! Defaults to `docs/ERROR_CODES.md`. Use `-` for stdout.
 
 use umiaq::errors::ParseError;
 use umiaq::solver::SolverError;
@@ -99,11 +100,17 @@ fn all_solver_error_variants() -> Vec<SolverError> {
 fn main() -> io::Result<()> {
     let args: Vec<String> = env::args().collect();
 
-    let mut writer: Box<dyn Write> = if args.len() > 1 {
-        let file = File::create(&args[1])?;
-        Box::new(BufWriter::new(file))
+    let output_path = if args.len() > 1 {
+        &args[1]
     } else {
+        "docs/ERROR_CODES.md"
+    };
+
+    let mut writer: Box<dyn Write> = if output_path == "-" {
         Box::new(BufWriter::new(io::stdout()))
+    } else {
+        let file = File::create(output_path)?;
+        Box::new(BufWriter::new(file))
     };
 
     writeln!(writer, "# Error Code Reference\n")?;
@@ -156,7 +163,7 @@ mod tests {
         use std::process::{Command, Stdio};
 
         let output = Command::new("cargo")
-            .args(&["run", "--bin", "generate_error_docs"])
+            .args(&["run", "--bin", "generate_error_docs", "--", "-"])
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
             .output()
