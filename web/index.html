@@ -108,6 +108,8 @@
 
   <p>
     <a href="https://github.com/Crossword-Nexus/umiaq" target="_blank">source code</a>
+    &nbsp;|&nbsp;
+    <span id="version-display" style="color:#888; font-size:0.9em;"></span>
   </p>
 
   <script type="module">
@@ -115,6 +117,7 @@
     import init, {
       parse_entry_list,
       get_debug_info,
+      get_version,
       initialize
     } from './pkg/umiaq.js';
 
@@ -181,6 +184,7 @@
       const minScore = 50;
       await init(); // Load WASM module
       initialize(debugEnabled); // Initialize logging with debug setting
+      document.getElementById('version-display').textContent = 'v' + get_version();
       window.parse_entry_list = parse_entry_list; // make it available to classic scripts
 
       try {
