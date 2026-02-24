@@ -601,6 +601,39 @@ mod tests {
             assert!(!match_equation_exists("b", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
         }
 
+        #[test]
+        fn test_negated_charset_matching() {
+            let pf = "[^abc]".parse::<ParsedForm>().unwrap();
+            assert!(!match_equation_exists("a", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(!match_equation_exists("b", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(!match_equation_exists("c", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(match_equation_exists("d", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(match_equation_exists("z", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+        }
+
+        #[test]
+        fn test_negated_charset_range_matching() {
+            let pf = "[^a-c]".parse::<ParsedForm>().unwrap();
+            assert!(!match_equation_exists("a", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(!match_equation_exists("c", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+            assert!(match_equation_exists("d", &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap());
+        }
+
+        #[test]
+        fn test_negated_charset_complex_matching() {
+            let pf = "[^pb-mr]".parse::<ParsedForm>().unwrap();
+            // all 14 excluded chars
+            for s in ["p", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "r"] {
+                assert!(!match_equation_exists(s, &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap(),
+                    "{s} should not match");
+            }
+            // all 12 included chars
+            for s in ["a", "n", "o", "q", "s", "t", "u", "v", "w", "x", "y", "z"] {
+                assert!(match_equation_exists(s, &pf, &VarConstraints::default(), &JointConstraints::default()).unwrap(),
+                    "{s} should match");
+            }
+        }
+
         // Vowel and consonant edge cases
         #[test]
         fn test_vowel_matching() {

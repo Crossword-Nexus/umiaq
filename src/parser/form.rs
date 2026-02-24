@@ -8,9 +8,9 @@ use nom::{
     branch::alt,
     bytes::complete::tag,
     character::complete::one_of,
-    combinator::map,
+    combinator::{map, opt},
     multi::many1,
-    sequence::{delimited, preceded},
+    sequence::preceded,
     IResult,
     Parser,
 };
@@ -246,9 +246,14 @@ fn expand_charset(body: &str) -> Result<HashSet<char>, Box<ParseError>> {
 }
 
 fn charset(input: &'_ str) -> PResult<'_, FormPart> {
-    let (input, body) = delimited(tag("["), is_a("-abcdefghijklmnopqrstuvwxyz"), tag("]")).parse(input)?;
-    // Expand ranges
-    let chars = expand_charset(body).map_err(nom::Err::Failure)?;
+    let (input, _) = tag("[")(input)?;
+    let (input, negated) = opt(tag("^")).parse(input)?;
+    let (input, body) = is_a("-abcdefghijklmnopqrstuvwxyz").parse(input)?;
+    let (input, _) = tag("]")(input)?;
+    let mut chars = expand_charset(body).map_err(nom::Err::Failure)?;
+    if negated.is_some() {
+        chars = ('a'..='z').filter(|c| !chars.contains(c)).collect();
+    }
     Ok((input, FormPart::Charset(chars)))
 }
 
@@ -535,6 +540,59 @@ mod tests {
                 assert!(chars.contains(&'f'));
                 assert!(chars.contains(&'g'));
                 assert!(!chars.contains(&'d'));
+            }
+        }
+
+        #[test]
+        fn test_negated_charset_basic() {
+            let result = "[^abc]".parse::<ParsedForm>();
+            assert!(result.is_ok());
+            let parsed = result.unwrap();
+            if let FormPart::Charset(chars) = &parsed.parts[0] {
+                assert_eq!(chars.len(), 23);
+                assert!(!chars.contains(&'a'));
+                assert!(!chars.contains(&'b'));
+                assert!(!chars.contains(&'c'));
+                assert!(chars.contains(&'d'));
+                assert!(chars.contains(&'z'));
+            } else {
+                panic!("expected Charset");
+            }
+        }
+
+        #[test]
+        fn test_negated_charset_range() {
+            let result = "[^a-c]".parse::<ParsedForm>();
+            assert!(result.is_ok());
+            let parsed = result.unwrap();
+            if let FormPart::Charset(chars) = &parsed.parts[0] {
+                assert_eq!(chars.len(), 23);
+                assert!(!chars.contains(&'a'));
+                assert!(!chars.contains(&'b'));
+                assert!(!chars.contains(&'c'));
+                assert!(chars.contains(&'d'));
+                assert!(chars.contains(&'z'));
+            } else {
+                panic!("expected Charset");
+            }
+        }
+
+        #[test]
+        fn test_negated_charset_complex() {
+            // [^pb-mr] excludes p, b–m (12 chars), r → complement is 12 chars: anoqs-z
+            let result = "[^pb-mr]".parse::<ParsedForm>();
+            assert!(result.is_ok());
+            let parsed = result.unwrap();
+            if let FormPart::Charset(chars) = &parsed.parts[0] {
+                assert_eq!(chars.len(), 12);
+                for c in ['p', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'r'] {
+                    assert!(!chars.contains(&c), "{c} should be excluded");
+                }
+                for c in ['a', 'n', 'o', 'q', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'] {
+                    assert!(chars.contains(&c), "{c} should be included");
+                }
+            } else {
+                panic!("expected Charset");
             }
         }
 
