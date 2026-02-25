@@ -188,6 +188,12 @@ pub fn parse_entry_list(text: &str, min_score: i32) -> Result<JsValue, JsValue> 
         })
 }
 
+/// Returns the current version of Umiaq.
+#[wasm_bindgen]
+pub fn get_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
 /// Generate a debug report for troubleshooting.
 ///
 /// This function creates a formatted debug report that users can copy/paste
