@@ -23,6 +23,6 @@
 * **character-class core**: a concatenation of **simple character-class core**s
 * **regex character**†: one of a lowercase letter, a **wildcard**
 * **simple character-class core**: a lowercase letter or a **character-class range**
-* **character-class range**: concatelation of a lowercase letter, a hyphen (`–`), and a lowercase letter
+* **character-class range**: concatenation of a lowercase letter, a hyphen (`–`), and a lowercase letter
 
 †only the regular expressions described here are supported
