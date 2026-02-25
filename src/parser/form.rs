@@ -223,8 +223,16 @@ fn parser_one_char_inner<'a>(
     ).parse(input)
 }
 
-/// Expand a string like "abcx-z" into a set of characters.
-/// Supports ranges like a-e (inclusive).
+/// Expands a raw charset body string (like "abc" or "a-e") into a set of characters.
+///
+/// This function handles:
+/// - Individual characters: "abc" -> {a, b, c}
+/// - Ranges: "a-e" -> {a, b, c, d, e}
+/// - Mixed: "ax-z" -> {a, x, y, z}
+///
+/// # Errors
+/// - Returns `ParseError::InvalidCharsetRange` if a range start is greater than its end (e.g., "z-a").
+/// - Returns `ParseError::DanglingCharsetDash` if a dash appears at the end of the string without an end character.
 fn expand_charset(body: &str) -> Result<HashSet<char>, Box<ParseError>> {
     let mut chars = HashSet::new();
     let mut iter = body.chars().peekable();
@@ -233,11 +241,13 @@ fn expand_charset(body: &str) -> Result<HashSet<char>, Box<ParseError>> {
         if iter.peek() == Some(&'-') {
             iter.next(); // consume '-'
             match iter.next() {
+                // Found a range like 'a-e'
                 Some(end) if start <= end => chars.extend(start..=end),
                 Some(end) => return Err(Box::new(ParseError::InvalidCharsetRange(start, end))),
                 None => return Err(Box::new(ParseError::DanglingCharsetDash)),
             }
         } else {
+            // Found a single character
             chars.insert(start);
         }
     }
@@ -245,15 +255,36 @@ fn expand_charset(body: &str) -> Result<HashSet<char>, Box<ParseError>> {
     Ok(chars)
 }
 
+/// Parses a character set token from the input, supporting both positive and negated sets.
+///
+/// Charsets are enclosed in square brackets `[...]`. Supported syntax:
+/// - **Positive set**: `[abc]` matches 'a', 'b', or 'c'.
+/// - **Negated set**: `[^abc]` or `[!abc]` matches any lowercase letter *except* 'a', 'b', or 'c'.
+/// - **Ranges**: `[a-e]` or `[^a-e]` uses inclusive ranges.
+///
+/// Negation is always calculated relative to the full 'a' through 'z' lowercase alphabet.
+/// Empty charsets `[]` are not allowed.
 fn charset(input: &'_ str) -> PResult<'_, FormPart> {
+    // 1. Consume opening bracket '['
     let (input, _) = tag("[")(input)?;
-    let (input, negated) = opt(tag("^")).parse(input)?;
+
+    // 2. Check for optional negation prefix '^' or '!'
+    let (input, negated) = opt(alt((tag("^"), tag("!")))).parse(input)?;
+
+    // 3. Consume characters and ranges within the charset
     let (input, body) = is_a("-abcdefghijklmnopqrstuvwxyz").parse(input)?;
+
+    // 4. Consume closing bracket ']'
     let (input, _) = tag("]")(input)?;
+
+    // 5. Expand ranges (e.g., "a-e" into 'a', 'b', 'c', 'd', 'e')
     let mut chars = expand_charset(body).map_err(nom::Err::Failure)?;
+
+    // 6. If negated, invert the set against the full 'a'-'z' alphabet
     if negated.is_some() {
         chars = ('a'..='z').filter(|c| !chars.contains(c)).collect();
     }
+
     Ok((input, FormPart::Charset(chars)))
 }
 
@@ -591,6 +622,22 @@ mod tests {
                 for c in ['a', 'n', 'o', 'q', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'] {
                     assert!(chars.contains(&c), "{c} should be included");
                 }
+            } else {
+                panic!("expected Charset");
+            }
+        }
+
+        #[test]
+        fn test_negated_charset_bang() {
+            let result = "[!abc]".parse::<ParsedForm>();
+            assert!(result.is_ok());
+            let parsed = result.unwrap();
+            if let FormPart::Charset(chars) = &parsed.parts[0] {
+                assert_eq!(chars.len(), 23);
+                assert!(!chars.contains(&'a'));
+                assert!(!chars.contains(&'b'));
+                assert!(!chars.contains(&'c'));
+                assert!(chars.contains(&'d'));
             } else {
                 panic!("expected Charset");
             }
