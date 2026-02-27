@@ -581,13 +581,14 @@ mod tests {
             let parsed = result.unwrap();
             if let FormPart::Charset(chars) = &parsed.parts[0] {
                 assert_eq!(chars.len(), 23);
-                assert!(!chars.contains(&'a'));
-                assert!(!chars.contains(&'b'));
-                assert!(!chars.contains(&'c'));
-                assert!(chars.contains(&'d'));
-                assert!(chars.contains(&'z'));
+                for c in 'a'..='c' {
+                    assert!(!chars.contains(&c));
+                }
+                for c in 'd'..='z' {
+                    assert!(chars.contains(&c));
+                }
             } else {
-                panic!("expected Charset");
+                panic!("expected charset");
             }
         }
 
@@ -598,13 +599,14 @@ mod tests {
             let parsed = result.unwrap();
             if let FormPart::Charset(chars) = &parsed.parts[0] {
                 assert_eq!(chars.len(), 23);
-                assert!(!chars.contains(&'a'));
-                assert!(!chars.contains(&'b'));
-                assert!(!chars.contains(&'c'));
-                assert!(chars.contains(&'d'));
-                assert!(chars.contains(&'z'));
+                for c in 'a'..='c' {
+                    assert!(!chars.contains(&c));
+                }
+                for c in 'd'..='z' {
+                    assert!(chars.contains(&c));
+                }
             } else {
-                panic!("expected Charset");
+                panic!("expected charset");
             }
         }
 
@@ -623,7 +625,7 @@ mod tests {
                     assert!(chars.contains(&c), "{c} should be included");
                 }
             } else {
-                panic!("expected Charset");
+                panic!("expected charset");
             }
         }
 
@@ -634,12 +636,14 @@ mod tests {
             let parsed = result.unwrap();
             if let FormPart::Charset(chars) = &parsed.parts[0] {
                 assert_eq!(chars.len(), 23);
-                assert!(!chars.contains(&'a'));
-                assert!(!chars.contains(&'b'));
-                assert!(!chars.contains(&'c'));
-                assert!(chars.contains(&'d'));
+                for c in 'a'..='c' {
+                    assert!(!chars.contains(&c));
+                }
+                for c in 'd'..='z' {
+                    assert!(chars.contains(&c));
+                }
             } else {
-                panic!("expected Charset");
+                panic!("expected charset");
             }
         }
 
