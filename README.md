@@ -26,6 +26,7 @@ Umiaq is designed for crossword constructors, wordplay enthusiasts, and puzzle m
   - `[a-e]`: any letter in the range from `a` to `e` (`a`, `b`, `c`, `d`, `e`)
     - Ranges and lists can be combined: `[abcw-z]`
   - `[^abc]` or `[!abc]`: any letter *except* those listed (here: any letter except `a`, `b`, or `c`)
+    - Negated sets can also combine ranges and lists: `[^a-cx-z]`
   - `/abc`: any anagram of the listed letters (here: `a`, `b`, or `c`)
 
 - **Constraints**  
