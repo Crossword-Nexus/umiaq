@@ -1,8 +1,11 @@
 use std::collections::HashSet;
+use std::ops::RangeInclusive;
 use std::sync::LazyLock;
 
 // Character-set constants
 pub(crate) const ALPHABET_SIZE: usize = 26;
+pub(crate) const LOWERCASE_ALPHABET: RangeInclusive<char> = 'a'..='z';
+pub(crate) const UPPERCASE_ALPHABET: RangeInclusive<char> = 'A'..='Z';
 
 pub(crate) const VOWELS: &str = "aeiouy";
 pub(crate) const CONSONANTS: &str = "bcdfghjklmnpqrstvwxz";
@@ -77,7 +80,7 @@ mod tests {
 
     #[test]
     fn test_vowel_consonant_mutual_exclusivity() {
-        for c in 'a'..='z' {
+        for c in LOWERCASE_ALPHABET {
             let is_v = c.is_vowel();
             let is_c = c.is_consonant();
             assert_ne!(is_v, is_c, "char '{}' should be either vowel or consonant, not both or neither", c);
@@ -114,11 +117,11 @@ mod tests {
 
     #[test]
     fn test_variable_literal_mutual_exclusivity() {
-        for c in 'A'..='Z' {
+        for c in UPPERCASE_ALPHABET {
             assert!(c.is_variable());
             assert!(!c.is_literal());
         }
-        for c in 'a'..='z' {
+        for c in LOWERCASE_ALPHABET {
             assert!(!c.is_variable());
             assert!(c.is_literal());
         }
