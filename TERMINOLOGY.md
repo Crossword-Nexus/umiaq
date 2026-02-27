@@ -16,13 +16,14 @@
 * **anagram expression**: a `/` followed by lowercase letters
 * **inequality operator**: one of `!=`, `<=`, `>=`, `<`, `>`
 * **complex-constraint core**: one of a **length-regex constraint pair**, a **length constraint**, a **regex constraint**
-* **character class**: concatenation of a left bracket (`[`), a **character-class core**, and a right bracket (`]`)
+* **character class**: concatenation of a left bracket (`[`), an optional **negation prefix**, a **character-class core**, and a right bracket (`]`)
 * **length-regex constraint pair**: concatenation of a **length constraint**, a colon (`:`), a **regex constraint**
 * **length constraint**: concatenation of any number of digits (including an empty string; not beginning with 0), a hyphen (`-`), any number of digits (including an empty string; not beginning with 0)
 * **regex constraint**†: concatenation of any number of **regex character**s
 * **character-class core**: a concatenation of **simple character-class core**s
 * **regex character**†: one of a lowercase letter, a **wildcard**
 * **simple character-class core**: a lowercase letter or a **character-class range**
-* **character-class range**: concatelation of a lowercase letter, a hyphen (`–`), and a lowercase letter
+* **character-class range**: concatenation of a lowercase letter, a hyphen (`-`), and a lowercase letter
+* **negation prefix**: one of `^`, `!`
 
 †only the regular expressions described here are supported
