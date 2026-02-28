@@ -5,6 +5,7 @@ use std::sync::LazyLock;
 // Character-set constants
 pub(crate) const ALPHABET_SIZE: usize = 26;
 pub(crate) const LOWERCASE_ALPHABET: RangeInclusive<char> = 'a'..='z';
+#[cfg(test)]
 pub(crate) const UPPERCASE_ALPHABET: RangeInclusive<char> = 'A'..='Z';
 
 pub(crate) const VOWELS: &str = "aeiouy";

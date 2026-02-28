@@ -2,8 +2,6 @@ use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::rc::Rc;
 
-use crate::umiaq_char::UPPERCASE_ALPHABET;
-
 pub(crate) const ENTRY_SENTINEL: char = '*';
 const ENTRY_SENTINEL_INDEX: usize = 26;
 const NUM_SLOTS: usize = 27; // 26 letters + 1 sentinel
@@ -112,6 +110,7 @@ impl Bindings {
 
 #[cfg(test)]
 mod tests {
+    use crate::umiaq_char::UPPERCASE_ALPHABET;
     use super::*;
 
     #[test]
