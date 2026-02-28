@@ -1,7 +1,7 @@
 use super::prefilter::{form_to_regex_str, get_regex};
 use crate::errors::ParseError;
 use crate::parser::utils::letter_to_num;
-use crate::umiaq_char::{ALPHABET_SIZE, LITERAL_CHARS, VARIABLE_CHARS};
+use crate::umiaq_char::{ALPHABET_SIZE, LITERAL_CHARS, LOWERCASE_ALPHABET, VARIABLE_CHARS};
 use fancy_regex::Regex;
 use nom::bytes::complete::is_a;
 use nom::{
@@ -282,7 +282,7 @@ fn charset(input: &'_ str) -> PResult<'_, FormPart> {
 
     // 6. If negated, invert the set against the full 'a'-'z' alphabet
     if negated.is_some() {
-        chars = ('a'..='z').filter(|c| !chars.contains(c)).collect();
+        chars = LOWERCASE_ALPHABET.filter(|c| !chars.contains(c)).collect();
     }
 
     Ok((input, FormPart::Charset(chars)))

@@ -2,6 +2,8 @@ use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::rc::Rc;
 
+use crate::umiaq_char::UPPERCASE_ALPHABET;
+
 pub(crate) const ENTRY_SENTINEL: char = '*';
 const ENTRY_SENTINEL_INDEX: usize = 26;
 const NUM_SLOTS: usize = 27; // 26 letters + 1 sentinel
@@ -194,11 +196,11 @@ mod tests {
     fn test_bindings_all_26_variables() {
         let mut b = Bindings::default();
 
-        for c in 'A'..='Z' {
+        for c in UPPERCASE_ALPHABET {
             b.set_rc(c, Rc::from(c.to_string().to_lowercase()));
         }
 
-        for c in 'A'..='Z' {
+        for c in UPPERCASE_ALPHABET {
             assert_eq!(Some(Rc::from(c.to_string().to_lowercase())), b.get(c).cloned());
         }
 
@@ -246,7 +248,7 @@ mod tests {
     #[test]
     fn test_char_to_index_bounds() {
         // test that all valid chars map to valid indices
-        for c in 'A'..='Z' {
+        for c in UPPERCASE_ALPHABET {
             let i = char_to_index(c);
             assert!(i < 26, "Index {} for '{}' should be < 26", i, c);
         }
