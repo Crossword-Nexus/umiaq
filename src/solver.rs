@@ -478,9 +478,7 @@ where
 
     let mut pairs: Vec<(char, Rc<str>)> = Vec::with_capacity(keys.len());
     for &var_char in keys {
-        let Some(var_val) = fetch(var_char) else {
-            return None;
-        };
+        let var_val = fetch(var_char)?;
         check_invariant!(!var_val.is_empty(), "Variable bindings must be non-empty strings");
         pairs.push((var_char, var_val));
     }
