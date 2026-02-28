@@ -460,39 +460,6 @@ macro_rules! timed_stop {
     };
 }
 
-/// Build a lookup key from a variable set by invoking `fetch` for each variable.
-///
-/// The caller provides a closure that returns the binding value for a given variable
-/// (cloned as `Rc<str>`). Returns `None` if any required key is missing.
-fn build_lookup_key<F>(
-    keys: &HashSet<char>,
-    mut fetch: F,
-) -> Option<LookupKey>
-where
-    F: FnMut(char) -> Option<Rc<str>>,
-{
-    check_invariant!(
-        keys.iter().all(char::is_ascii_uppercase),
-        "All key variables must be one of uppercase A-Z"
-    );
-
-    let mut pairs: Vec<(char, Rc<str>)> = Vec::with_capacity(keys.len());
-    for &var_char in keys {
-        let Some(var_val) = fetch(var_char) else {
-            return None;
-        };
-        check_invariant!(!var_val.is_empty(), "Variable bindings must be non-empty strings");
-        pairs.push((var_char, var_val));
-    }
-
-    pairs.sort_unstable_by_key(|(c, _)| *c);
-    check_invariant!(
-        pairs.windows(2).all(|w| w[0].0 < w[1].0),
-        "Sorted pairs must be strictly increasing"
-    );
-    Some(pairs)
-}
-
 /// Build a lookup key from an environment (`HashMap`) given a set of key variables.
 ///
 /// Returns `None` if any required key variable is missing in `env`.
@@ -501,7 +468,28 @@ fn lookup_key_from_env(
     env: &HashMap<char, Rc<str>>,
     keys: &HashSet<char>,
 ) -> Option<LookupKey> {
-    build_lookup_key(keys, |var_char| env.get(&var_char).map(Rc::clone))
+    check_invariant!(
+        keys.iter().all(char::is_ascii_uppercase),
+        "All key variables must be one of uppercase A-Z"
+    );
+
+    let mut pairs: Vec<(char, Rc<str>)> = Vec::with_capacity(keys.len());
+    for &var_char in keys {
+        match env.get(&var_char) {
+            Some(var_val) => {
+                check_invariant!(!var_val.is_empty(), "Variable bindings must be non-empty strings");
+                pairs.push((var_char, Rc::clone(var_val)));
+            }
+            None => return None, // required key missing
+        }
+    }
+
+    pairs.sort_unstable_by_key(|(c, _)| *c);
+    check_invariant!(
+        pairs.windows(2).all(|w| w[0].0 < w[1].0),
+        "Sorted pairs must be strictly increasing"
+    );
+    Some(pairs)
 }
 
 /// Build the deterministic lookup key for a binding given the pattern's lookup vars.
@@ -516,10 +504,28 @@ fn lookup_key_for_binding(
     binding: &Bindings,
     keys: &HashSet<char>,
 ) -> LookupKeyResult {
-    match build_lookup_key(keys, |var_char| binding.get(var_char).map(Rc::clone)) {
-        Some(pairs) => LookupKeyResult::Complete(pairs),
-        None => LookupKeyResult::MissingKey,
+    check_invariant!(
+        keys.iter().all(char::is_ascii_uppercase),
+        "All key variables must be one of uppercase A-Z"
+    );
+
+    let mut pairs: Vec<(char, Rc<str>)> = Vec::with_capacity(keys.len());
+    for &var_char in keys {
+        match binding.get(var_char) {
+            Some(var_val) => {
+                check_invariant!(!var_val.is_empty(), "Variable bindings must be non-empty strings");
+                pairs.push((var_char, Rc::clone(var_val)));
+            }
+            None => return LookupKeyResult::MissingKey,
+        }
     }
+
+    pairs.sort_unstable_by_key(|(c, _)| *c);
+    check_invariant!(
+        pairs.windows(2).all(|w| w[0].0 < w[1].0),
+        "Sorted pairs must be strictly increasing"
+    );
+    LookupKeyResult::Complete(pairs)
 }
 
 /// Push a binding into the appropriate bucket and bump the count.
