@@ -54,6 +54,30 @@ impl VarConstraints {
         self.inner.len()
     }
 
+    /// Check if all "not equal" constraints are satisfied across a set of bindings.
+    ///
+    /// This is used during the join phase of the solver to ensure that variables
+    /// marked as `!=` (e.g., `!=AB`) do not have the same value in the final solution.
+    ///
+    /// Mid-search semantics: if any variable in a `not_equal` pair is unbound,
+    /// we return `true` (satisfied so far).
+    pub(crate) fn check_not_equal(&self, parts: &[crate::bindings::Bindings]) -> bool {
+        for (var_a, constraint) in &self.inner {
+            for &var_b in &constraint.not_equal {
+                // Find values for both variables across all parts
+                let val_a = parts.iter().find_map(|b| b.get(*var_a));
+                let val_b = parts.iter().find_map(|b| b.get(var_b));
+
+                if let (Some(a), Some(b)) = (val_a, val_b) {
+                    if a == b {
+                        return false;
+                    }
+                }
+            }
+        }
+        true
+    }
+
     // Convenience: true if no constraints are stored.
     // fn is_empty(&self) -> bool { self.inner.is_empty() }
 }
