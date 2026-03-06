@@ -156,6 +156,7 @@
 //! Typical usage: 10-100 MB with a 100k entry list.
 
 use crate::bindings::{Bindings, ENTRY_SENTINEL};
+use crate::constraints::VarConstraints;
 use crate::errors::ParseError;
 use crate::joint_constraints::JointConstraints;
 use crate::parser::{match_equation_all, ParsedForm};
@@ -343,6 +344,7 @@ struct JoinCtx<'a> {
     num_results_requested: usize,
     entry_set: &'a HashSet<&'a str>,
     joint_constraints: &'a JointConstraints,
+    var_constraints: &'a VarConstraints,
     budget: &'a TimeBudget,
 }
 
@@ -895,6 +897,7 @@ fn recursive_join_inner(
     } else {
         // Base case: if we've placed all patterns, `selected` is a full solution.
         if ctx.joint_constraints.all_strictly_satisfied_for_parts(selected)
+            && ctx.var_constraints.check_not_equal(selected)
             && seen.insert(solution_key(selected)?) {
             debug!("Found solution #{}: {} patterns matched", results.len() + 1, selected.len());
             results.push(selected.clone());
@@ -1092,6 +1095,7 @@ fn solve_equation_with_budget(
             num_results_requested,
             entry_set: &entry_list_as_set,
             joint_constraints,
+            var_constraints: &equation_context.var_constraints,
             budget: &budget,
         };
 
