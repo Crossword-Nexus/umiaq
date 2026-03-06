@@ -459,7 +459,7 @@ impl EquationContext {
                     for &var_char in &var_chars {
                         let vc = self.var_constraints.ensure(var_char);
                         // For each variable, store the set of other variables it must differ from.
-                        vc.not_equal = var_chars.iter().copied().filter(|&x| x != var_char).collect();
+                        vc.not_equal.extend(var_chars.iter().copied().filter(|&x| x != var_char));
                     }
                 }
 

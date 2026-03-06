@@ -64,11 +64,6 @@ impl VarConstraints {
     pub(crate) fn check_not_equal(&self, parts: &[crate::bindings::Bindings]) -> bool {
         for (var_a, constraint) in &self.inner {
             for &var_b in &constraint.not_equal {
-                // Avoid double-checking (A!=B and B!=A)
-                if var_a >= &var_b {
-                    continue;
-                }
-
                 // Find values for both variables across all parts
                 let val_a = parts.iter().find_map(|b| b.get(*var_a));
                 let val_b = parts.iter().find_map(|b| b.get(var_b));
