@@ -63,14 +63,23 @@ impl VarConstraints {
     /// are both bound to the same value. If either variable is unbound, the
     /// constraint is considered satisfied "so far".
     pub(crate) fn check_not_equal(&self, parts: &[crate::bindings::Bindings]) -> bool {
-        for (var_a, constraint) in &self.inner {
-            for &var_b in &constraint.not_equal {
-                // Find values for both variables across all parts
-                let val_a = parts.iter().find_map(|b| b.get(*var_a));
-                let val_b = parts.iter().find_map(|b| b.get(var_b));
+        // precompute each constrained variable's bound value once (O(V*P)),
+        // then check pairs in O(1) each (O(V*P + E) vs. the naive O(E*P)).
+        let values: HashMap<_, _> = self.inner.keys()
+            .filter_map(|&var| {
+                let val = parts.iter().find_map(|b| b.get(var))?;
+                Some((var, val))
+            })
+            .collect();
 
-                if let (Some(a), Some(b)) = (val_a, val_b) {
-                    if a == b {
+        for (var_a, constraint) in &self.inner {
+            if let Some(val_a) = values.get(var_a) {
+                for &var_b in &constraint.not_equal {
+                    // only check each pair once (skip the mirrored (var_b, var_a) edge)
+                    if var_b > *var_a
+                        && let Some(val_b) = values.get(&var_b)
+                        && val_a == val_b
+                    {
                         return false;
                     }
                 }
