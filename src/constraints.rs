@@ -270,6 +270,120 @@ impl Display for VarConstraint {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bindings::Bindings;
+    use std::rc::Rc;
+
+    // --- check_not_equal helpers ---
+
+    fn bindings_from(pairs: &[(char, &str)]) -> Bindings {
+        let mut b = Bindings::default();
+        for &(var, val) in pairs {
+            b.set_rc(var, Rc::from(val));
+        }
+        b
+    }
+
+    /// build a `VarConstraints` where every variable in `vars` is mutually not equal
+    fn clique(vars: &[char]) -> VarConstraints {
+        let mut vcs = VarConstraints::default();
+        for &v in vars {
+            let mut vc = VarConstraint::default();
+            vc.not_equal.extend(vars.iter().copied().filter(|&x| x != v));
+            vcs.insert(v, vc);
+        }
+        vcs
+    }
+
+    // --- check_not_equal tests ---
+
+    #[test]
+    fn check_not_equal_no_constraints_always_true() {
+        // no not_equal constraints: any bindings are fine.
+        let vcs = VarConstraints::default();
+        let parts = [bindings_from(&[('A', "foo"), ('B', "foo")])];
+        assert!(vcs.check_not_equal(&parts));
+    }
+
+    #[test]
+    fn check_not_equal_both_unbound_true() {
+        // constraint A!=B, but neither is bound
+        let vcs = clique(&['A', 'B']);
+        assert!(vcs.check_not_equal(&[Bindings::default()]));
+    }
+
+    #[test]
+    fn check_not_equal_one_unbound_true() {
+        // A is bound but B is not
+        let vcs = clique(&['A', 'B']);
+        let parts = [bindings_from(&[('A', "foo")])];
+        assert!(vcs.check_not_equal(&parts));
+    }
+
+    #[test]
+    fn check_not_equal_distinct_values_true() {
+        let vcs = clique(&['A', 'B']);
+        let parts = [bindings_from(&[('A', "foo"), ('B', "bar")])];
+        assert!(vcs.check_not_equal(&parts));
+    }
+
+    #[test]
+    fn check_not_equal_same_value_false() {
+        let vcs = clique(&['A', 'B']);
+        let parts = [bindings_from(&[('A', "foo"), ('B', "foo")])];
+        assert!(!vcs.check_not_equal(&parts));
+    }
+
+    #[test]
+    fn check_not_equal_three_var_clique_all_distinct() {
+        let vcs = clique(&['A', 'B', 'C']);
+        let parts = [bindings_from(&[('A', "x"), ('B', "y"), ('C', "z")])];
+        assert!(vcs.check_not_equal(&parts));
+    }
+
+    #[test]
+    fn check_not_equal_three_var_clique_two_same() {
+        // B and C are equal — should fail regardless of which pair is checked.
+        let vcs = clique(&['A', 'B', 'C']);
+        let parts = [bindings_from(&[('A', "x"), ('B', "y"), ('C', "y")])];
+        assert!(!vcs.check_not_equal(&parts));
+    }
+
+    #[test]
+    fn check_not_equal_separate_groups_cross_equal_ok() {
+        // Two disjoint groups: A!=B and C!=D, but A and C have no constraint between them.
+        // A==C must NOT be treated as a violation — this is the key correctness case
+        // that rules out a naive "collect all values into one set" implementation.
+        let mut vcs = VarConstraints::default();
+        let mut vc_a = VarConstraint::default(); vc_a.not_equal.insert('B');
+        let mut vc_b = VarConstraint::default(); vc_b.not_equal.insert('A');
+        let mut vc_c = VarConstraint::default(); vc_c.not_equal.insert('D');
+        let mut vc_d = VarConstraint::default(); vc_d.not_equal.insert('C');
+        vcs.insert('A', vc_a);
+        vcs.insert('B', vc_b);
+        vcs.insert('C', vc_c);
+        vcs.insert('D', vc_d);
+        // A==C and A!=B and C!=D: both constraints satisfied.
+        let parts = [bindings_from(&[('A', "foo"), ('B', "bar"), ('C', "foo"), ('D', "baz")])];
+        assert!(vcs.check_not_equal(&parts));
+    }
+
+    #[test]
+    fn check_not_equal_variables_bound_in_different_patterns_same_value() {
+        // A is bound by one matched pattern and B by another, but both to "foo".
+        let vcs = clique(&['A', 'B']);
+        let pat1 = bindings_from(&[('A', "foo")]);
+        let pat2 = bindings_from(&[('B', "foo")]);
+        assert!(!vcs.check_not_equal(&[pat1, pat2]));
+    }
+
+    #[test]
+    fn check_not_equal_variables_bound_in_different_patterns_distinct_values() {
+        // A and B come from different patterns but have different values: ok.
+        let vcs = clique(&['A', 'B']);
+        let pat1 = bindings_from(&[('A', "foo")]);
+        let pat2 = bindings_from(&[('B', "bar")]);
+        assert!(vcs.check_not_equal(&[pat1, pat2]));
+    }
 
     #[test]
     fn ensure_creates_default() {
