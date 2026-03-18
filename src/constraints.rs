@@ -59,8 +59,9 @@ impl VarConstraints {
     /// This is used during the join phase of the solver to ensure that variables
     /// marked as `!=` (e.g., `!=AB`) do not have the same value in the final solution.
     ///
-    /// Mid-search semantics: if any variable in a `not_equal` pair is unbound,
-    /// we return `true` (satisfied so far).
+    /// Mid-search semantics: an inequality is only violated if two variables
+    /// are both bound to the same value. If either variable is unbound, the
+    /// constraint is considered satisfied "so far".
     pub(crate) fn check_not_equal(&self, parts: &[crate::bindings::Bindings]) -> bool {
         for (var_a, constraint) in &self.inner {
             for &var_b in &constraint.not_equal {
