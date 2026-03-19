@@ -1,7 +1,7 @@
 name: Pages   # Name of this workflow (shows up in Actions tab)
 
 on:
-  # Deploy when a version tag is pushed (e.g., v0.1.0, v1.2.3)
+  # Deploy to staging when a version tag is pushed (e.g., v0.1.0, v1.2.3)
   # Also run on PRs to main for testing (build only, no deploy)
   push:
     tags:
@@ -10,9 +10,7 @@ on:
     branches: [ "main" ]
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write  # needed to push to gh-pages branch
 
 concurrency:
   # Prevent overlapping runs: if you push twice quickly, the older one cancels.
@@ -99,22 +97,13 @@ jobs:
           mkdir -p web/docs
           cp -r target/doc/* web/docs/
 
-      - name: Upload site artifact
-        # Package everything in web/ (index.html, pkg/, css, data, etc.)
-        # as an artifact for the deploy job
-        uses: actions/upload-pages-artifact@v3
+      - name: Deploy to staging
+        # Only deploy on tag pushes, not PRs
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: web
-
-  deploy:
-    # Second job: only runs on version tag pushes (not on PRs)
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-    needs: build   # Wait until the build job finishes
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - id: deploy
-        # Deploy the artifact (our web/ folder) to the GitHub Pages service
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./web
+          destination_dir: staging
+          # Preserve the production root (don't wipe it when updating staging)
+          keep_files: true
