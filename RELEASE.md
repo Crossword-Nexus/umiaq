@@ -17,13 +17,27 @@ Umiaq uses **tag-based deployment**. When you push a version tag (e.g., `v0.2.0`
 
 ## Release Steps
 
-### 1. Update the Version
+### 1. Update the Changelog
+
+Edit `CHANGELOG.md`:
+1. Rename the `[Unreleased]` section heading to the new version and today's date, e.g., `[0.3.0] - 2026-03-18`
+2. Add a fresh `## [Unreleased]` section above it (leave it empty)
+3. Update the comparison links at the bottom of the file
+
+```markdown
+## [Unreleased]
+
+## [0.3.0] - 2026-03-18
+...previous unreleased entries...
+```
+
+### 2. Update the Version
 
 Edit `Cargo.toml` and increment the version following [Semantic Versioning](https://semver.org/):
 
 ```toml
 [package]
-version = "0.2.0"  # change this
+version = "0.3.0"  # change this
 ```
 
 **Version Guidelines:**
@@ -31,14 +45,14 @@ version = "0.2.0"  # change this
 - **MINOR** (0.2.0): new features, backward-compatible
 - **PATCH** (0.1.1): bug fixes, backward-compatible
 
-### 2. Commit the Version Bump
+### 3. Commit the Version Bump and Changelog
 
 ```bash
-git add Cargo.toml
-git commit -m "Bump version to 0.2.0"
+git add Cargo.toml CHANGELOG.md
+git commit -m "Bump version to 0.3.0"
 ```
 
-### 3. Create and Push the Tag
+### 4. Create and Push the Tag
 
 ```bash
 # Create the tag (must match Cargo.toml version with 'v' prefix)
@@ -54,7 +68,7 @@ git push origin v0.2.0
 
 If they don't match, the deployment will fail with a validation error.
 
-### 4. Monitor the Deployment
+### 5. Monitor the Deployment
 
 1. Go to the [Actions tab](https://github.com/Crossword-Nexus/umiaq/actions)
 2. Find the "Pages" workflow run for your tag
@@ -101,19 +115,22 @@ $ git status
 On branch main
 nothing to commit, working tree clean
 
-# Update version in Cargo.toml (0.1.0 → 0.2.0)
+# Update CHANGELOG.md: rename [Unreleased] to [0.3.0] - YYYY-MM-DD, add new empty [Unreleased]
+$ vim CHANGELOG.md
+
+# Update version in Cargo.toml (0.2.3 → 0.3.0)
 $ vim Cargo.toml
 
-# Commit the version bump
-$ git add Cargo.toml
-$ git commit -m "Bump version to 0.2.0"
+# Commit both files
+$ git add Cargo.toml CHANGELOG.md
+$ git commit -m "Bump version to 0.3.0"
 
 # Push to main first (optional, but recommended)
 $ git push origin main
 
 # Create and push the tag
-$ git tag v0.2.0
-$ git push origin v0.2.0
+$ git tag v0.3.0
+$ git push origin v0.3.0
 
 # Monitor deployment
 $ open https://github.com/Crossword-Nexus/umiaq/actions
@@ -128,9 +145,10 @@ Before creating a release tag, you can test the build by:
 
 ## Release Checklist
 
+- [ ] `CHANGELOG.md` updated: `[Unreleased]` renamed to new version + date, fresh `[Unreleased]` section added, comparison links updated
 - [ ] Version updated in `Cargo.toml`
 - [ ] Version follows SemVer (MAJOR.MINOR.PATCH)
-- [ ] Changes committed to `main`
+- [ ] `Cargo.toml` and `CHANGELOG.md` committed to `main`
 - [ ] Tag created with `v` prefix matching Cargo.toml version
 - [ ] Tag pushed to GitHub
 - [ ] GitHub Actions workflow completed successfully
