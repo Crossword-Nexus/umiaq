@@ -13,13 +13,21 @@ Umiaq is an open-source solver and entry-pattern matching tool designed for cros
 - **CLI**: [clap](https://github.com/clap-rs/clap) for command-line argument parsing.
 
 ## Key Architectural Components
-- **`src/solver.rs`**: The core engine that coordinates pattern matching and constraint satisfaction.
-- **`src/parser/`**: Contains the logic for parsing the domain-specific language (DSL) into internal representations.
-- **`src/patterns.rs` & `src/constraints.rs`**: Define the matching logic for variables, literals, wildcards, and various constraint types.
-- **`src/wasm.rs`**: The WebAssembly interface, providing bindings for the JavaScript frontend.
-- **`src/entry_list.rs`**: Handles loading and scoring of word lists (typically `.dict` files).
-- **`src/scan_hints.rs`**: Computes length bounds and pre-filters for patterns to optimize search performance.
-- **`src/errors.rs`**: Comprehensive error system with unique error codes (E001-E022, S001-S003).
+- **`src/solver.rs`**: Core engine. Uses adaptive batching (`scan_batch`) and backtracking (`recursive_join`) with variable bucketing to join patterns. Features a 30s `TIME_BUDGET`.
+- **`src/parser/`**:
+    - `form.rs`: Defines `FormPart` (Lit, Var, RevVar, Dot, Star, Vowel `@`, Consonant `#`, Charset `[]`, Anagram `/`).
+    - `matcher.rs`: Backtracking matcher for single entries.
+    - `prefilter.rs`: Generates optimized regexes with lookaheads for variable constraints.
+- **`src/patterns.rs` & `src/constraints.rs`**: `get_ordered_patterns` uses a greedy heuristic (`constraint_score`) to minimize search space (Literals=3, Classes=1).
+- **`src/scan_hints.rs`**: Analyzes pattern structure to compute length bounds used in `scan_batch`.
+- **`src/umiaq_char.rs`**: Character definitions. Note: 'y' is considered a vowel.
+
+## Search Primitives & Optimizations
+- **Variable Bucketing**: Candidates for pattern `i` are grouped by variables shared with patterns `0..i-1`.
+- **Regex Prefiltering**: Each pattern has a regex prefilter; if a variable has a form constraint (e.g., `A;A=cat*`), it is inlined as a lookahead.
+- **Deterministic Fast Path**: If a pattern's variables are fully bound, it materializes and checks the dictionary directly.
+- **Wildcards**: `@` (vowels), `#` (consonants), `.` (any), `*` (zero-or-more).
+- **Operators**: `/` (anagram), `~` (reverse variable).
 
 ## Common Commands
 - **Run Tests**: `cargo test`
