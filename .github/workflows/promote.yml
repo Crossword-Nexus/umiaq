@@ -1,0 +1,80 @@
+name: Promote to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to promote to production (e.g. 0.3.0)'
+        required: true
+
+permissions:
+  contents: write  # needed to push to gh-pages branch
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://crossword-nexus.github.io/umiaq/
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          ref: v${{ github.event.inputs.version }}
+
+      - name: Validate tag exists and matches Cargo.toml
+        run: |
+          VERSION="${{ github.event.inputs.version }}"
+          CARGO_VERSION=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+
+          if [ "$VERSION" != "$CARGO_VERSION" ]; then
+            echo "❌ Error: Input version ($VERSION) does not match Cargo.toml version ($CARGO_VERSION) at tag v${VERSION}"
+            exit 1
+          fi
+
+          echo "✅ Version check passed: $VERSION"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install wasm-pack
+        run: |
+          curl -sSfL https://rustwasm.github.io/wasm-pack/installer/init.sh | sh
+
+      - name: Build WASM into web/pkg
+        run: |
+          wasm-pack build --release --target web --out-dir web/pkg
+
+      - name: Stage data assets
+        run: |
+          mkdir -p web/data
+          cp -f data/spreadthewordlist.dict web/data/
+
+      - name: Copy README into web
+        run: |
+          cp README.md web/README.md
+
+      - name: Ensure .nojekyll
+        run: |
+          touch web/.nojekyll
+
+      - name: Build Rust docs
+        run: cargo doc --no-deps
+
+      - name: Copy docs into web/docs
+        run: |
+          mkdir -p web/docs
+          cp -r target/doc/* web/docs/
+
+      - name: Promote to production root
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./web
+          destination_dir: .
+          # Preserve the staging directory alongside the new production root
+          keep_files: true
