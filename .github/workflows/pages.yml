@@ -97,6 +97,9 @@ jobs:
           mkdir -p web/docs
           cp -r target/doc/* web/docs/
 
+      - name: Remove pkg .gitignore so WASM files are included in deploy
+        run: rm -f web/pkg/.gitignore
+
       - name: Deploy to staging
         # Only deploy on tag pushes, not PRs
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
