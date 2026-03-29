@@ -915,7 +915,7 @@ fn recursive_join_inner(
 /// the requested number of solutions is found or the [`TimeBudget`] expires.
 ///
 /// # Arguments
-/// - `input`: equation string to parse (e.g. `"AB;BC;CA"`).
+/// - `input`: equation string to parse (e.g., `"AB;BC;CA"`).
 /// - `entry_list`: slice of candidate entries to match against.
 /// - `num_results_requested`: optional cap on how many solutions to return
 ///   (use `None` to search exhaustively).
