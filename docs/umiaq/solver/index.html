@@ -1,0 +1,119 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="The main solver for pattern-matching equations against entry lists."><title>umiaq::solver - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-77263533.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="umiaq" data-themes="" data-resource-suffix="" data-rustdoc-version="1.94.1 (e408947bf 2026-03-25)" data-channel="1.94.1" data-search-js="search-9e2438ea.js" data-stringdex-js="stringdex-b897f86f.js" data-settings-js="settings-c38705f0.js" ><script src="../../static.files/storage-e2aeef58.js"></script><script defer src="../sidebar-items.js"></script><script defer src="../../static.files/main-7bab91a1.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-ffcac47a.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc mod"><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Module solver</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../umiaq/index.html">umiaq</a><span class="version">0.3.0</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Module solver</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#error-handling" title="Error Handling">Error Handling</a></li><li><a href="#examples" title="Examples">Examples</a><ul><li><a href="#basic-usage" title="Basic Usage">Basic Usage</a></li><li><a href="#handling-errors-with-detailed-messages" title="Handling Errors with Detailed Messages">Handling Errors with Detailed Messages</a></li><li><a href="#checking-solve-status" title="Checking Solve Status">Checking Solve Status</a></li></ul></li><li><a href="#performance-characteristics" title="Performance Characteristics">Performance Characteristics</a><ul><li><a href="#time-complexity" title="Time Complexity">Time Complexity</a></li><li><a href="#key-performance-factors" title="Key Performance Factors">Key Performance Factors</a></li><li><a href="#expensive-equations" title="Expensive Equations">Expensive Equations</a></li><li><a href="#optimization-strategies" title="Optimization Strategies">Optimization Strategies</a></li><li><a href="#memory-usage" title="Memory Usage">Memory Usage</a></li></ul></li></ul><h3><a href="#structs">Module Items</a></h3><ul class="block"><li><a href="#structs" title="Structs">Structs</a></li><li><a href="#enums" title="Enums">Enums</a></li><li><a href="#functions" title="Functions">Functions</a></li><li><a href="#types" title="Type Aliases">Type Aliases</a></li></ul></section><div id="rustdoc-modnav"><h2 class="in-crate"><a href="../index.html">In crate umiaq</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">umiaq</a></div><h1>Module <span>solver</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/umiaq/solver.rs.html#1-2188">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>The main solver for pattern-matching equations against entry lists.</p>
+<h2 id="error-handling"><a class="doc-anchor" href="#error-handling">§</a>Error Handling</h2>
+<p>The solver uses <a href="enum.SolverError.html" title="enum umiaq::solver::SolverError"><code>SolverError</code></a> with three variants:</p>
+<ul>
+<li>S001: <code>ParseFailure</code> (Pattern parsing failed (wraps <a href="../errors/enum.ParseError.html" title="enum umiaq::errors::ParseError"><code>ParseError</code></a>))</li>
+<li>S002: <code>NoPatterns</code> (Equation has only constraints, no patterns to solve)</li>
+<li>S003: <code>MaterializationError</code> (Internal error during solution construction)</li>
+</ul>
+<p>Each error has a <code>code()</code>, optional <code>help()</code>, and <code>display_detailed()</code> method.</p>
+<h2 id="examples"><a class="doc-anchor" href="#examples">§</a>Examples</h2><h3 id="basic-usage"><a class="doc-anchor" href="#basic-usage">§</a>Basic Usage</h3>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>umiaq::solver;
+
+<span class="kw">let </span>entries = <span class="macro">vec!</span>[<span class="string">"cat"</span>, <span class="string">"dog"</span>, <span class="string">"catalog"</span>, <span class="string">"dogma"</span>];
+<span class="kw">let </span>result = solver::solve_equation(<span class="string">"A*B"</span>, <span class="kw-2">&amp;</span>entries, <span class="number">10</span>)<span class="question-mark">?</span>;
+
+<span class="macro">println!</span>(<span class="string">"Found {} solutions"</span>, result.solutions.len());
+<span class="kw">for </span>solution <span class="kw">in </span>result.solutions {
+    <span class="macro">println!</span>(<span class="string">"{}"</span>, solver::solution_to_string(<span class="kw-2">&amp;</span>solution)<span class="question-mark">?</span>);
+}</code></pre></div><h3 id="handling-errors-with-detailed-messages"><a class="doc-anchor" href="#handling-errors-with-detailed-messages">§</a>Handling Errors with Detailed Messages</h3>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>umiaq::solver::{<span class="self">self</span>, SolverError};
+
+<span class="kw">let </span>entries = <span class="macro">vec!</span>[<span class="string">"test"</span>];
+<span class="kw">match </span>solver::solve_equation(<span class="string">""</span>, <span class="kw-2">&amp;</span>entries, <span class="number">10</span>) {
+    <span class="prelude-val">Ok</span>(result) =&gt; <span class="macro">println!</span>(<span class="string">"Success: {} solutions"</span>, result.solutions.len()),
+    <span class="prelude-val">Err</span>(e) =&gt; {
+        <span class="comment">// Show detailed error with code and help
+        </span><span class="macro">eprintln!</span>(<span class="string">"{}"</span>, e.display_detailed());
+        <span class="comment">// Error code: S001
+        // Help text: Example: Use 'A*B' or '*cat*' instead of empty string
+    </span>}
+}</code></pre></div><h3 id="checking-solve-status"><a class="doc-anchor" href="#checking-solve-status">§</a>Checking Solve Status</h3>
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>umiaq::solver::{<span class="self">self</span>, SolveStatus};
+
+<span class="kw">let </span>entries = <span class="macro">vec!</span>[<span class="string">"cat"</span>, <span class="string">"dog"</span>];
+<span class="kw">let </span>result = solver::solve_equation(<span class="string">"A*"</span>, <span class="kw-2">&amp;</span>entries, <span class="number">100</span>)<span class="question-mark">?</span>;
+
+<span class="kw">match </span>result.status {
+    SolveStatus::FoundEnough =&gt; <span class="macro">println!</span>(<span class="string">"Found all requested results"</span>),
+    SolveStatus::EntryListExhausted =&gt; <span class="macro">println!</span>(<span class="string">"Searched entire entry list"</span>),
+    SolveStatus::TimedOut { elapsed } =&gt; {
+        <span class="macro">println!</span>(<span class="string">"Timed out after {:?}"</span>, elapsed);
+    }
+}</code></pre></div><h2 id="performance-characteristics"><a class="doc-anchor" href="#performance-characteristics">§</a>Performance Characteristics</h2><h3 id="time-complexity"><a class="doc-anchor" href="#time-complexity">§</a>Time Complexity</h3>
+<p>The solver’s performance depends heavily on pattern structure and entry-list size:</p>
+<ul>
+<li>
+<p><strong>Best case</strong>: O(n × k) where n = entry-list size, k = max bucket size</p>
+<ul>
+<li>achieved when patterns share many variables (good bucketing)</li>
+<li>example: <code>AB;BA;BC</code> with 10,000 entries → ~10,000 iterations</li>
+</ul>
+</li>
+<li>
+<p><strong>Worst case</strong>: O(n^p) where n = entry-list size, p = number of patterns</p>
+<ul>
+<li>occurs when patterns share no variables (no bucketing)</li>
+<li>example: <code>A;B;C</code> with 10,000 entries → 10,000³ = 1 trillion iterations</li>
+</ul>
+</li>
+<li>
+<p><strong>Middle-ground case</strong>: O(n × k^p) where k ≪ n</p>
+<ul>
+<li>Moderate variable sharing provides some bucketing benefit</li>
+</ul>
+</li>
+</ul>
+<h3 id="key-performance-factors"><a class="doc-anchor" href="#key-performance-factors">§</a>Key Performance Factors</h3><h4 id="1-pattern-ordering"><a class="doc-anchor" href="#1-pattern-ordering">§</a>1. Pattern Ordering</h4>
+<p>Pattern ordering potentially has an exponential impact. The <code>get_ordered_patterns</code> heuristic
+(see patterns.rs) maximizes shared variables between consecutive patterns:</p>
+<div class="example-wrap"><pre class="language-text"><code>Good:  ABC → AB → A  (2 shared, then 1 shared)
+Bad:   A → B → C     (0 shared, 0 shared)</code></pre></div>
+<p>See <code>patterns::get_ordered_patterns</code> for details on the ordering algorithm.</p>
+<h4 id="2-constraint-propagation"><a class="doc-anchor" href="#2-constraint-propagation">§</a>2. Constraint Propagation</h4>
+<p>Joint constraints like <code>|ABC| = 10</code> tighten variable bounds before search:</p>
+<div class="example-wrap"><pre class="language-text"><code>Before: A,B,C ∈ [1,∞) → search space = &quot;∞&quot;³
+After:  A,B,C ∈ [1,8]  → search space = 8³ = 512</code></pre></div>
+<p>See <code>joint_constraints::propagate_joint_to_var_bounds</code> for implementation.</p>
+<h4 id="3-adaptive-batch-sizing-timememory-trade-off"><a class="doc-anchor" href="#3-adaptive-batch-sizing-timememory-trade-off">§</a>3. Adaptive Batch Sizing (Time/Memory Trade-off)</h4>
+<p>The solver scans the entry list in adaptive batches (10k → 20k → 40k…):</p>
+<ul>
+<li><strong>Small batches</strong>: lower memory, more join iterations</li>
+<li><strong>Large batches</strong>: higher memory, fewer join iterations</li>
+<li><strong>Adaptive</strong>: balances memory usage with search efficiency</li>
+</ul>
+<h4 id="4-time-budget-robustness"><a class="doc-anchor" href="#4-time-budget-robustness">§</a>4. Time Budget (Robustness)</h4>
+<p>Timeout (currently 30s) prevents queries from running indefinitely:</p>
+<ul>
+<li>checks budget between candidates in recursive join</li>
+<li>returns partial results or error when budget expires</li>
+<li>prevents exponential blowup from consuming unlimited resources</li>
+</ul>
+<h3 id="expensive-equations"><a class="doc-anchor" href="#expensive-equations">§</a>Expensive Equations</h3>
+<p>Equations potentially become computationally expensive when:</p>
+<ol>
+<li><strong>Many patterns</strong> (e.g., 5+): potentially exponential with number of patterns</li>
+<li><strong>No shared variables</strong>: each pattern multiplies search space</li>
+<li><strong>Unconstrained variables</strong>: variables with bounds [1,∞) are costly</li>
+<li><strong>Large entry lists</strong>: linear factor, but multiplied by pattern count</li>
+</ol>
+<p>Example expensive queries:</p>
+<div class="example-wrap"><pre class="language-text"><code>A;B;C;D;E    → 5 patterns, no sharing (exponential)
+ABCDEFGH     → 8 vars, no joint constraints (huge search space)</code></pre></div><h3 id="optimization-strategies"><a class="doc-anchor" href="#optimization-strategies">§</a>Optimization Strategies</h3>
+<p>The solver uses several optimizations to handle complex queries:</p>
+<ol>
+<li><strong>Prefilter regex</strong>: rejects nonmatching entries before detailed matching</li>
+<li><strong>Deterministic fast path</strong>: materializes fully determined patterns directly</li>
+<li><strong>Early termination</strong>: stops when quota met or budget expires</li>
+<li><strong>Deduplication</strong>: hash-based set prevents duplicate solutions</li>
+<li><strong>String interning</strong>: reduces allocation overhead via Rust’s Rc<str></li>
+</ol>
+<h3 id="memory-usage"><a class="doc-anchor" href="#memory-usage">§</a>Memory Usage</h3>
+<p>Peak memory usage is dominated by:</p>
+<ul>
+<li><strong>Candidate buckets</strong>: O(n × patterns) (where n = entry-list size)</li>
+<li><strong>Solutions</strong>: O(#results × patterns)</li>
+<li><strong>Dedup set</strong>: O(s), where s = # of unique solutions</li>
+</ul>
+<p>Typical usage: 10-100 MB with a 100k entry list.</p>
+</div></details><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><dl class="item-table"><dt><a class="struct" href="struct.CandidateBuckets.html" title="struct umiaq::solver::CandidateBuckets">Candidate<wbr>Buckets</a></dt><dd>All candidates for one pattern (“bucketed” by <code>LookupKey</code>).</dd><dt><a class="struct" href="struct.SolveResult.html" title="struct umiaq::solver::SolveResult">Solve<wbr>Result</a></dt><dd>Successful solver run (even if it stopped early).</dd></dl><h2 id="enums" class="section-header">Enums<a href="#enums" class="anchor">§</a></h2><dl class="item-table"><dt><a class="enum" href="enum.SolveStatus.html" title="enum umiaq::solver::SolveStatus">Solve<wbr>Status</a></dt><dd>Status of the solver run.</dd><dt><a class="enum" href="enum.SolverError.html" title="enum umiaq::solver::SolverError">Solver<wbr>Error</a></dt><dd>Unified error type for the solver pipeline.</dd></dl><h2 id="functions" class="section-header">Functions<a href="#functions" class="anchor">§</a></h2><dl class="item-table"><dt><a class="fn" href="fn.solution_to_string.html" title="fn umiaq::solver::solution_to_string">solution_<wbr>to_<wbr>string</a></dt><dd>Put the results in uppercase and separated with a bullet</dd><dt><a class="fn" href="fn.solve_equation.html" title="fn umiaq::solver::solve_equation">solve_<wbr>equation</a></dt><dd>Read in an equation string and return results from the entry list</dd></dl><h2 id="types" class="section-header">Type Aliases<a href="#types" class="anchor">§</a></h2><dl class="item-table"><dt><a class="type" href="type.LookupKey.html" title="type umiaq::solver::LookupKey">Lookup<wbr>Key</a></dt><dd>Bucket key for indexing candidates by the subset of variables that must agree.</dd></dl></section></div></main></body></html>

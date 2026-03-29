@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["all_parse_error_variants","all_solver_error_variants","main"],"macro":["generate_error_docs"]};

@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["FORM_SEPARATOR"],"struct":["EquationContext","Pattern"]};
