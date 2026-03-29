@@ -172,7 +172,7 @@ pub fn solve_equation_wasm(
 /// suitable for consumption in JavaScript.
 ///
 /// # Errors
-/// Returns a `JsValue` error if parsing fails (e.g. malformed input).
+/// Returns a `JsValue` error if parsing fails (e.g., malformed input).
 #[wasm_bindgen]
 pub fn parse_entry_list(text: &str, min_score: i32) -> Result<JsValue, JsValue> {
     let entry_list = EntryList::parse_from_str(text, min_score);

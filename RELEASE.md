@@ -92,7 +92,7 @@ Once staging is verified:
 1. Go to the [Actions tab](https://github.com/Crossword-Nexus/umiaq/actions)
 2. Select the **"Promote to Production"** workflow from the left sidebar
 3. Click **"Run workflow"**
-4. Enter the version number (e.g. `0.3.0`) and click **"Run workflow"**
+4. Enter the version number (e.g., `0.3.0`) and click **"Run workflow"**
 5. Wait for it to complete (~2-3 minutes)
 6. Verify the deployment at https://crossword-nexus.github.io/umiaq/
 
