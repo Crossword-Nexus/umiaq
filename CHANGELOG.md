@@ -6,6 +6,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.3.0] – 2026-03-28
+
+### Added
+- Negated character–set syntax: e.g., `[^AEIOU]` and `[!AEIOU]` match a letter that is NOT a vowel
+- Version is now displayed in the web UI
+
+### Fixed
+- Fixed handling of `!=AB` constraints
+
+### Changed
+- Performance improvements to `check_not_equal` constraint evaluation
+
 ## [0.2.3] - 2026-03-18
 
 ### Changed
@@ -24,7 +36,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Added
 - Initial public release
 
-[Unreleased]: https://github.com/Crossword-Nexus/umiaq/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/Crossword-Nexus/umiaq/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Crossword-Nexus/umiaq/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/Crossword-Nexus/umiaq/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/Crossword-Nexus/umiaq/compare/v0.2.0...v0.2.2
 [0.2.0]: https://github.com/Crossword-Nexus/umiaq/releases/tag/v0.2.0
