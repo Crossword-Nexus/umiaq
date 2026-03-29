@@ -70,6 +70,9 @@ jobs:
           mkdir -p web/docs
           cp -r target/doc/* web/docs/
 
+      - name: Remove pkg .gitignore so WASM files are included in deploy
+        run: rm -f web/pkg/.gitignore
+
       - name: Promote to production root
         uses: peaceiris/actions-gh-pages@v4
         with:
