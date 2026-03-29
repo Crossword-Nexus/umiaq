@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["FormPart"],"struct":["Alphagram","ParsedForm"],"type":["PResult"]};

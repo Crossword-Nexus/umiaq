@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["SolveStatus","SolverError"],"fn":["solution_to_string","solve_equation"],"struct":["CandidateBuckets","SolveResult"],"type":["LookupKey"]};

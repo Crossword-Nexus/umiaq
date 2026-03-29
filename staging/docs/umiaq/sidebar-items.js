@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"mod":["bindings","complex_constraints","constraints","entry_list","errors","log","parser","patterns","solver","umiaq_char"]};

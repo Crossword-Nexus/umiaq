@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"constant":["MAX_PATTERN_LEN","NUM_RESULTS"],"fn":["get_cases","main","median","pluralizer"],"struct":["Case","Cli"]};
