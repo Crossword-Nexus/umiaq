@@ -161,7 +161,7 @@ use crate::errors::ParseError;
 use crate::joint_constraints::JointConstraints;
 use crate::parser::{match_equation_all, ParsedForm};
 use crate::patterns::{Pattern, EquationContext};
-use instant::Instant;
+use web_time::Instant;
 use log::{debug, error, info, warn};
 use std::collections::hash_map::{DefaultHasher, Entry};
 use std::collections::{HashMap, HashSet};
