@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-04-07
+
+### Changed
+- Wrap footer links in a `<footer>` element with top margin for consistent spacing
+
 ## [0.4.1] - 2026-04-07
 
 ### Fixed
@@ -49,7 +54,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Added
 - Initial public release
 
-[Unreleased]: https://github.com/Crossword-Nexus/umiaq/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/Crossword-Nexus/umiaq/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/Crossword-Nexus/umiaq/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/Crossword-Nexus/umiaq/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Crossword-Nexus/umiaq/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Crossword-Nexus/umiaq/compare/v0.2.3...v0.3.0
