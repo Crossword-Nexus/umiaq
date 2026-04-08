@@ -43,7 +43,7 @@ export function initialize(debug_enabled: boolean): void;
  * suitable for consumption in JavaScript.
  *
  * # Errors
- * Returns a `JsValue` error if parsing fails (e.g. malformed input).
+ * Returns a `JsValue` error if parsing fails (e.g., malformed input).
  */
 export function parse_entry_list(text: string, min_score: number): any;
 
