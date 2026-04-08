@@ -6,6 +6,11 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-04-07
+
+### Fixed
+- Add missing separator between issues link and version display in web UI
+
 ## [0.4.0] - 2026-04-07
 
 ### Added
@@ -44,7 +49,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Added
 - Initial public release
 
-[Unreleased]: https://github.com/Crossword-Nexus/umiaq/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/Crossword-Nexus/umiaq/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/Crossword-Nexus/umiaq/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Crossword-Nexus/umiaq/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Crossword-Nexus/umiaq/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/Crossword-Nexus/umiaq/compare/v0.2.2...v0.2.3
