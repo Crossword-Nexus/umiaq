@@ -6,6 +6,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-04-07
+
+### Added
+- Discord and GitHub-issues links in README and web UI
+
+### Changed
+- Replaced unmaintained `instant` crate with `web-time`
+
 ## [0.3.0] – 2026-03-28
 
 ### Added
@@ -36,7 +44,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Added
 - Initial public release
 
-[Unreleased]: https://github.com/Crossword-Nexus/umiaq/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Crossword-Nexus/umiaq/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/Crossword-Nexus/umiaq/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/Crossword-Nexus/umiaq/compare/v0.2.3...v0.3.0
 [0.2.3]: https://github.com/Crossword-Nexus/umiaq/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/Crossword-Nexus/umiaq/compare/v0.2.0...v0.2.2
