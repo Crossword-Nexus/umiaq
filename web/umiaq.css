@@ -357,6 +357,9 @@ hr {
     box-sizing: border-box; /* includes padding in the width */
 }
 
+/* Footer */
+footer { margin-top: 2em; }
+
 /* Results */
 #results {
   font-family: 'Space Mono', monospace;
