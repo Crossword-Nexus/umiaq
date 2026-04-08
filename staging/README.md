@@ -5,6 +5,10 @@ Umiaq is designed for crossword constructors, wordplay enthusiasts, and puzzle m
 
 👉 [Try the web interface](https://crossword-nexus.github.io/umiaq/)
 
+💬 [Join the discussion on Discord](https://discord.gg/46tz4XnTtV)
+
+🐞 [Report issues on GitHub](https://github.com/Crossword-Nexus/umiaq/issues)
+
 📝 [Technical documentation](https://crossword-nexus.github.io/umiaq/docs/umiaq/)
 
 ---
