@@ -35,10 +35,10 @@ Umiaq is designed for crossword constructors, wordplay enthusiasts, and puzzle m
 
 - **Constraints**  
   Add conditions on variables or groups of variables:
-  - length: `|A|=3`
+  - length: `|A|=3` or `|A|=3-5`
   - inequality: `!=ABC` (`A`, `B`, and `C` must all be distinct)
   - complex: `A=(3-5:a*)` (length 3–5, must match pattern `a*`)
-  - joint: `|ABC|=10` (the lengths of `A`, `B`, and `C` sum to 10)
+  - joint: `|ABC|=10-12` (the lengths of `A`, `B`, and `C` sum to 10, 11, or 12)
 
 - **Reversed variables**  
   `~A` matches the reverse of variable `A`.
