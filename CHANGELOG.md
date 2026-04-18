@@ -6,6 +6,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-04-18
+
+### Added
+- Support for range syntax in multiple-variable length restrictions (joint constraints), e.g., `|AB|=5-8` or `|CD|=5-`.
+- Range propagation for joint constraints to improve search space pruning.
+
 ## [0.4.2] - 2026-04-07
 
 ### Changed
@@ -54,7 +60,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Added
 - Initial public release
 
-[Unreleased]: https://github.com/Crossword-Nexus/umiaq/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/Crossword-Nexus/umiaq/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Crossword-Nexus/umiaq/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/Crossword-Nexus/umiaq/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/Crossword-Nexus/umiaq/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Crossword-Nexus/umiaq/compare/v0.3.0...v0.4.0
