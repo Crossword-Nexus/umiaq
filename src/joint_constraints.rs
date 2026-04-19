@@ -133,8 +133,15 @@ impl JointConstraint {
 
             if self.rel == RelMask::NE {
                 !self.bounds.contains(total)
-            } else {
+            } else if self.rel == RelMask::EQ
+                || self.rel == RelMask::LE
+                || self.rel == RelMask::GE
+                || self.rel == RelMask::LT
+                || self.rel == RelMask::GT
+            {
                 self.bounds.contains(total)
+            } else {
+                unreachable!("Unknown RelMask in JointConstraint: {:?}", self.rel)
             }
         } else {
             true
@@ -167,8 +174,15 @@ impl JointConstraint {
             let total: usize = self.vars.iter().map(|var_char| map.get(var_char).unwrap().len()).sum();
             if self.rel == RelMask::NE {
                 !self.bounds.contains(total)
-            } else {
+            } else if self.rel == RelMask::EQ
+                || self.rel == RelMask::LE
+                || self.rel == RelMask::GE
+                || self.rel == RelMask::LT
+                || self.rel == RelMask::GT
+            {
                 self.bounds.contains(total)
+            } else {
+                unreachable!("Unknown RelMask in JointConstraint: {:?}", self.rel)
             }
         }
     }
