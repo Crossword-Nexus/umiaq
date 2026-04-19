@@ -111,7 +111,7 @@ impl Display for VarConstraints {
 ///
 /// - `min_len`: minimum length (always finite)
 /// - `max_len_opt`: optional maximum length (`None` means unbounded)
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Bounds {
     pub(crate) min_len: usize, // TODO? minimize direct assignment of min_len and/or max_len_opt (instead using Bounds::of(_no_max) whenever possible/sensible)
     pub(crate) max_len_opt: Option<usize>
@@ -140,6 +140,11 @@ impl Bounds {
 
     pub(crate) fn of_unbounded(min_len: usize) -> Self {
         Bounds { min_len, max_len_opt: None }
+    }
+
+    /// Returns true if the given length is within these bounds (inclusive).
+    pub(crate) fn contains(&self, len: usize) -> bool {
+        len >= self.min_len && self.max_len_opt.map_or(true, |max| len <= max)
     }
 
     // only set what the constraint explicitly provides
