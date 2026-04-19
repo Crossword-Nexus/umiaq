@@ -1,10 +1,10 @@
 use crate::bindings::Bindings;
 use crate::comparison_operator::ComparisonOperator;
+use crate::complex_constraints::parse_length_range;
 use crate::constraints::{Bounds, VarConstraint, VarConstraints};
 use crate::errors::ParseError;
 use fancy_regex::{escape, Regex};
 use log::debug;
-use std::cmp::Ordering;
 use std::fmt;
 use std::str::FromStr;
 use std::sync::LazyLock;
@@ -36,17 +36,6 @@ impl RelMask {
     pub const LE: Self = Self { mask: Self::LT.mask | Self::EQ.mask }; // <=
     pub const GE: Self = Self { mask: Self::GT.mask | Self::EQ.mask }; // >=
     pub const NE: Self = Self { mask: Self::LT.mask | Self::GT.mask }; // !=
-
-    /// Return true if this mask allows the given ordering outcome.
-    #[inline]
-    pub(crate) fn allows(self, ord: Ordering) -> bool {
-        let bit = match ord {
-            Ordering::Less    => 0b001,
-            Ordering::Equal   => 0b010,
-            Ordering::Greater => 0b100,
-        };
-        (self.mask & bit) != 0
-    }
 }
 
 impl fmt::Display for RelMask {
@@ -86,12 +75,13 @@ impl FromStr for RelMask {
 /// Joint length constraint like `|ABC| <= 7`.
 ///
 /// - `vars`  : the participating variable names (A–Z). Duplicates **do** count toward the sum.
-/// - `target`: RHS integer to compare against.
-/// - `rel`   : operator, stored as a relation mask (see `RelMask`).
+/// - `bounds`: allowed length range for the sum.
+/// - `rel`   : original operator, stored as a relation mask (see `RelMask`).
+///             Mainly kept for `NE` (!=) support and display.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JointConstraint {
     pub vars: Vec<char>,   // e.g., ['A','B','C']
-    pub target: usize,     // e.g., 7
+    pub bounds: Bounds,    // e.g., [5, 8]
     pub rel: RelMask,      // operator as data
 }
 
@@ -141,8 +131,11 @@ impl JointConstraint {
                 })
                 .sum();
 
-            // Compare once via Ordering -> mask test.
-            self.rel.allows(total.cmp(&self.target))
+            if self.rel == RelMask::NE {
+                !self.bounds.contains(total)
+            } else {
+                self.bounds.contains(total)
+            }
         } else {
             true
         }
@@ -157,7 +150,11 @@ impl JointConstraint {
             let Some(len) = var_len else { return false };
             total += len;
         }
-        self.rel.allows(total.cmp(&self.target))
+        if self.rel == RelMask::NE {
+            !self.bounds.contains(total)
+        } else {
+            self.bounds.contains(total)
+        }
     }
 
     // --- Test-only convenience for asserting behavior without needing real `Bindings`.
@@ -168,7 +165,11 @@ impl JointConstraint {
             true
         } else {
             let total: usize = self.vars.iter().map(|var_char| map.get(var_char).unwrap().len()).sum();
-            self.rel.allows(total.cmp(&self.target))
+            if self.rel == RelMask::NE {
+                !self.bounds.contains(total)
+            } else {
+                self.bounds.contains(total)
+            }
         }
     }
 }
@@ -176,7 +177,11 @@ impl JointConstraint {
 impl fmt::Display for JointConstraint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let vars: String = self.vars.iter().collect();
-        write!(f, "|{}| {} {}", vars, self.rel, self.target)
+        if self.rel == RelMask::EQ {
+            write!(f, "|{}|={}", vars, self.bounds)
+        } else {
+            write!(f, "|{}| {} {}", vars, self.rel, self.bounds)
+        }
     }
 }
 
@@ -196,7 +201,8 @@ static JOINT_LEN_PATTERN: LazyLock<String> = LazyLock::new(|| {
         .map(|s| escape(s))
         .collect::<Vec<_>>()
         .join("|");
-    format!(r"^\|(?<vars>[A-Z]{{2,}})\| *(?<op>{all_ops_string}) *(?<len>\d+)$")
+    // Supporting ranges like |AB|=5-8
+    format!(r"^\|(?<vars>[A-Z]{{2,}})\| *(?<op>{all_ops_string}) *(?<len>[0-9]+(?:-[0-9]*)?|-[0-9]+)$")
 });
 
 /// Matches joint length constraints like `|AB|=7`
@@ -215,7 +221,7 @@ pub(crate) static JOINT_LEN_RE: LazyLock<Regex> =
 /// Shape: `|VARS| OP NUMBER`
 ///  - `VARS`  : at least **two** ASCII uppercase letters (A–Z).
 ///  - `OP`    : one of `<=`, `>=`, `!=`, `<`, `>`, `=` (NB: two-char ops checked first).
-///  - `NUMBER`: one or more ASCII digits (base 10).
+///  - `NUMBER`: one or more ASCII digits (base 10), or a range shorthand like `5-8`.
 ///
 /// Returns `None` instead of propagating errors because this function is called speculatively
 /// during pattern parsing on clauses that may or may not be joint constraints. Invalid syntax
@@ -228,10 +234,35 @@ fn parse_joint_len(expr: &str) -> Option<JointConstraint> {
         let op_str_match = captures.name("op")?;
 
         let vars = vars_match.as_str().chars().collect();
-        let Ok(target) = target_match.as_str().parse() else { return None };
-        let Ok(rel) = RelMask::from_str(op_str_match.as_str()) else { return None };
+        let rel = RelMask::from_str(op_str_match.as_str()).ok()?;
+        let bound_str = target_match.as_str();
 
-        Some(JointConstraint { vars, target, rel })
+        let bounds = match rel {
+            RelMask::EQ => parse_length_range(bound_str).ok()?,
+            RelMask::NE => {
+                let val: usize = bound_str.parse().ok()?;
+                Bounds::of(val, val)
+            }
+            RelMask::LE => {
+                let val: usize = bound_str.parse().ok()?;
+                Bounds::of(VarConstraint::DEFAULT_MIN, val)
+            }
+            RelMask::GE => {
+                let val: usize = bound_str.parse().ok()?;
+                Bounds::of_unbounded(val)
+            }
+            RelMask::LT => {
+                let val: usize = bound_str.parse().ok()?;
+                Bounds::of(VarConstraint::DEFAULT_MIN, val.checked_sub(1)?)
+            }
+            RelMask::GT => {
+                let val: usize = bound_str.parse().ok()?;
+                Bounds::of_unbounded(val.checked_add(1)?)
+            }
+            _ => return None,
+        };
+
+        Some(JointConstraint { vars, bounds, rel })
     } else {
         None
     }
@@ -415,6 +446,9 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
     for jc in jcs.iter() {
         if jc.rel != RelMask::EQ { continue; }
 
+        let target_min = jc.bounds.min_len;
+        let target_max_opt = jc.bounds.max_len_opt;
+
         // Cache per-var (min,max) and aggregate sums
         let mut sum_min = 0;
         let mut sum_max_opt = Some(0);
@@ -436,41 +470,41 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
         }
 
         // Fail fast: if constraints are provably unsatisfiable, fail immediately
-        if sum_min > jc.target {
-            // sum of minimums exceeds target (impossible to satisfy)
+        if let Some(target_max) = target_max_opt && sum_min > target_max {
+            // sum of minimums exceeds target max (impossible to satisfy)
             let bounds_str: Vec<String> = mins.iter()
                 .map(|(v, min)| format!("|{v}|>={min}"))
                 .collect();
             return Err(Box::new(ParseError::JointConstraintContradiction {
-                constraint: format!("|{}|={}", jc.vars.iter().collect::<String>(), jc.target),
+                constraint: format!("{jc}"),
                 reason: format!(
-                    "sum of minimum lengths ({}) exceeds target ({}). Individual constraints: {}",
-                    sum_min, jc.target, bounds_str.join(", ")
+                    "sum of minimum lengths ({}) exceeds target maximum ({}). Individual constraints: {}",
+                    sum_min, target_max, bounds_str.join(", ")
                 ),
             }));
         }
-        if let Some(sum_max) = sum_max_opt && sum_max < jc.target {
-            // sum of maximums is less than target (impossible to satisfy)
+        if let Some(sum_max) = sum_max_opt && sum_max < target_min {
+            // sum of maximums is less than target minimum (impossible to satisfy)
             let bounds_str: Vec<String> = maxes.iter()
                 .map(|(v, max)| format!("|{v}|<={max}"))
                 .collect();
             return Err(Box::new(ParseError::JointConstraintContradiction {
-                constraint: format!("|{}|={}", jc.vars.iter().collect::<String>(), jc.target),
+                constraint: format!("{jc}"),
                 reason: format!(
-                    "sum of maximum lengths ({}) is less than target ({}). Individual constraints: {}",
-                    sum_max, jc.target, bounds_str.join(", ")
+                    "sum of maximum lengths ({}) is less than target minimum ({}). Individual constraints: {}",
+                    sum_max, target_min, bounds_str.join(", ")
                 ),
             }));
         }
 
-        if sum_min == jc.target {
-            // Case 1: exact by mins
-            debug!("Joint constraint propagation: sum of mins equals target {} for vars {:?}, setting exact bounds", jc.target, jc.vars);
+        if let Some(target_max) = target_max_opt && sum_min == target_max {
+            // Case 1: exact by mins meeting target_max
+            debug!("Joint constraint propagation: sum of mins equals target max {} for vars {:?}, setting exact bounds", target_max, jc.vars);
             for (var_char, min_len) in mins {
                 vcs.ensure_entry_mut(var_char).set_exact_len(min_len);
             }
-        } else if let Some(sum_max) = sum_max_opt && sum_max == jc.target {
-            // Case 2: exact by finite maxes
+        } else if let Some(sum_max) = sum_max_opt && sum_max == target_min {
+            // Case 2: exact by finite maxes meeting target_min
             for (var_char, u) in maxes {
                 vcs.ensure_entry_mut(var_char).set_exact_len(u);
             }
@@ -500,28 +534,24 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
                 }
 
                 // Calculate lower bound from joint constraint
-                // Note: Use saturating_sub because during iterative propagation, intermediate
-                // bounds might appear contradictory but resolve after further tightening.
-                // The final contradictioncheck happens below (new_min > new_max).
                 let lower_from_joint = sum_other_max_opt.map_or(VarConstraint::DEFAULT_MIN, |s| {
-                    if s > jc.target {
-                        debug!(
-                            "Joint constraint |{:?}|={}: sum of other maxes ({}) > target (will saturate to 0)",
-                            jc.vars, jc.target, s
-                        );
-                    }
-                    jc.target.saturating_sub(s)
+                    target_min.saturating_sub(s)
                 });
-                let upper_from_joint = jc.target.saturating_sub(sum_other_min);
+                
+                // Calculate upper bound from joint constraint
+                let upper_from_joint = target_max_opt.map(|t_max| t_max.saturating_sub(sum_other_min));
 
                 // Tighten and store
                 let new_min = bounds.min_len.max(lower_from_joint);
-                let new_max = bounds.max_len_opt.unwrap_or(upper_from_joint).min(upper_from_joint);
+                let mut new_max = bounds.max_len_opt.unwrap_or(usize::MAX);
+                if let Some(ufj) = upper_from_joint {
+                    new_max = new_max.min(ufj);
+                }
 
                 // fail fast: check for contradictory bounds
                 if new_min > new_max {
                     return Err(Box::new(ParseError::JointConstraintContradiction {
-                        constraint: format!("|{}|={}", jc.vars.iter().collect::<String>(), jc.target),
+                        constraint: format!("{jc}"),
                         reason: format!(
                             "variable '{var_char}' would need |{var_char}|>={new_min} and |{var_char}|<={new_max}, which is impossible. \
                              This occurs when the joint constraint forces contradictory bounds on a variable."
@@ -530,7 +560,11 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
                 }
 
                 let e = vcs.ensure_entry_mut(var_char);
-                e.bounds = Bounds::of(new_min, new_max);
+                e.bounds = if new_max == usize::MAX {
+                    Bounds::of_unbounded(new_min)
+                } else {
+                    Bounds::of(new_min, new_max)
+                };
             }
         }
     }
@@ -551,7 +585,7 @@ mod tests {
         vcs.ensure_entry_mut('A').bounds = Bounds::of_unbounded(2);
         vcs.ensure_entry_mut('B').bounds = Bounds::of_unbounded(3);
 
-        let jc = JointConstraint { vars: vec!['A','B'], target: 5, rel: RelMask::EQ };
+        let jc = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of(5, 5), rel: RelMask::EQ };
         let jcs = JointConstraints::of(vec![jc]);
 
         propagate_joint_to_var_bounds(&mut vcs, &jcs).unwrap();
@@ -568,7 +602,7 @@ mod tests {
         // B left unconstrained -> min_length=None
         vcs.ensure_entry_mut('C').bounds = Bounds::of_unbounded(3);
 
-        let jc = JointConstraint { vars: vec!['A','B','C'], target: 7, rel: RelMask::EQ };
+        let jc = JointConstraint { vars: vec!['A','B','C'], bounds: Bounds::of(7, 7), rel: RelMask::EQ };
         let jcs = JointConstraints::of(vec![jc]);
 
         propagate_joint_to_var_bounds(&mut vcs, &jcs).unwrap();
@@ -586,15 +620,33 @@ mod tests {
         vcs.ensure_entry_mut('A').bounds = Bounds::of_unbounded(3);
         vcs.ensure_entry_mut('C').bounds = Bounds::of_unbounded(3);
 
-        let jc = JointConstraint { vars: vec!['A','B','C'], target: 8, rel: RelMask::EQ };
+        let jc = JointConstraint { vars: vec!['A','B','C'], bounds: Bounds::of(8, 8), rel: RelMask::EQ };
         let jcs = JointConstraints::of(vec![jc]);
 
         propagate_joint_to_var_bounds(&mut vcs, &jcs).unwrap();
 
         // Nothing should be forced exact
         assert_eq!(vcs.bounds('A'), Bounds::of(3, 4));
-        assert_eq!(vcs.bounds('B'), Bounds::of(VarConstraint::DEFAULT_MIN, 2)); // TODO!!! VC::D_M or just "1"?
+        assert_eq!(vcs.bounds('B'), Bounds::of(VarConstraint::DEFAULT_MIN, 2));
         assert_eq!(vcs.bounds('C'), Bounds::of(3, 4));
+    }
+
+    #[test]
+    fn propagate_range_joint_constraint() {
+        // |AB| = 5-8, with A.min=2, B.min=2
+        let mut vcs = VarConstraints::default();
+        vcs.ensure_entry_mut('A').bounds = Bounds::of_unbounded(2);
+        vcs.ensure_entry_mut('B').bounds = Bounds::of_unbounded(2);
+
+        let jc = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of(5, 8), rel: RelMask::EQ };
+        let jcs = JointConstraints::of(vec![jc]);
+
+        propagate_joint_to_var_bounds(&mut vcs, &jcs).unwrap();
+
+        // A.min = max(2, 5 - inf) = 2
+        // A.max = min(inf, 8 - 2) = 6
+        assert_eq!(vcs.bounds('A'), Bounds::of(2, 6));
+        assert_eq!(vcs.bounds('B'), Bounds::of(2, 6));
     }
 
     #[test]
@@ -604,7 +656,7 @@ mod tests {
         vcs.ensure_entry_mut('A').bounds = Bounds::of(VarConstraint::DEFAULT_MIN, 4);
         vcs.ensure_entry_mut('B').bounds = Bounds::of(VarConstraint::DEFAULT_MIN, 3);
 
-        let jc = JointConstraint { vars: vec!['A','B'], target: 7, rel: RelMask::EQ };
+        let jc = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of(7, 7), rel: RelMask::EQ };
         let jcs = JointConstraints::of(vec![jc]);
 
         propagate_joint_to_var_bounds(&mut vcs, &jcs).unwrap();
@@ -614,43 +666,25 @@ mod tests {
     }
 
     #[test]
-    fn rel_mask_from_str_and_allows() {
-        assert_eq!(RelMask::EQ, RelMask::from_str("=").unwrap());
-        assert_eq!(RelMask::NE, RelMask::from_str("!=").unwrap());
-        assert_eq!(RelMask::LE, RelMask::from_str("<=").unwrap());
-        assert_eq!(RelMask::GE, RelMask::from_str(">=").unwrap());
-        assert_eq!(RelMask::LT, RelMask::from_str("<").unwrap());
-        assert_eq!(RelMask::GT, RelMask::from_str(">").unwrap());
-        assert!(RelMask::from_str("INVALID123").is_err_and(|pe| {
-            pe.to_string() == "Form parsing failed: \"Invalid comparison operator 'INVALID123' (expected: =, !=, <=, >=, <, >)\""
-        }));
-        assert!(!RelMask::EQ.allows(Ordering::Less));
-        assert!(RelMask::EQ.allows(Ordering::Equal));
-        assert!(!RelMask::EQ.allows(Ordering::Greater));
-        assert!(RelMask::NE.allows(Ordering::Less));
-        assert!(!RelMask::NE.allows(Ordering::Equal));
-        assert!(RelMask::NE.allows(Ordering::Greater));
-        assert!(RelMask::LE.allows(Ordering::Less));
-        assert!(RelMask::LE.allows(Ordering::Equal));
-        assert!(!RelMask::LE.allows(Ordering::Greater));
-        assert!(!RelMask::GE.allows(Ordering::Less));
-        assert!(RelMask::GE.allows(Ordering::Equal));
-        assert!(RelMask::GE.allows(Ordering::Greater));
-        assert!(RelMask::LT.allows(Ordering::Less));
-        assert!(!RelMask::LT.allows(Ordering::Equal));
-        assert!(!RelMask::LT.allows(Ordering::Greater));
-        assert!(!RelMask::GT.allows(Ordering::Less));
-        assert!(!RelMask::GT.allows(Ordering::Equal));
-        assert!(RelMask::GT.allows(Ordering::Greater));
-    }
-
-    #[test]
     fn parse_joint_len_basic() {
         // Basic equality
         let jc = parse_joint_len("|AB|=7").expect("should parse");
         assert_eq!(jc.vars, vec!['A','B']);
-        assert_eq!(jc.target, 7);
+        assert_eq!(jc.bounds, Bounds::of(7, 7));
         assert_eq!(jc.rel, RelMask::EQ);
+    }
+
+    #[test]
+    fn parse_joint_len_range() {
+        // Range equality
+        let jc = parse_joint_len("|AB|=5-8").expect("should parse");
+        assert_eq!(jc.vars, vec!['A','B']);
+        assert_eq!(jc.bounds, Bounds::of(5, 8));
+        assert_eq!(jc.rel, RelMask::EQ);
+
+        let jc2 = parse_joint_len("|ABC|=10-").expect("should parse");
+        assert_eq!(jc2.vars, vec!['A','B','C']);
+        assert_eq!(jc2.bounds, Bounds::of_unbounded(10));
     }
 
     #[test]
@@ -658,7 +692,7 @@ mod tests {
         // Whitespace tolerated; two-char op
         let jc2 = parse_joint_len("|ABC|  <=   10").expect("should parse");
         assert_eq!(jc2.vars, vec!['A','B','C']);
-        assert_eq!(jc2.target, 10);
+        assert_eq!(jc2.bounds, Bounds::of(1, 10));
         assert_eq!(jc2.rel, RelMask::LE);
     }
 
@@ -695,18 +729,18 @@ mod tests {
         assert_eq!(jc_vec.len(), 2);
 
         assert_eq!(jc_vec[0].vars, vec!['A', 'B']);
-        assert_eq!(jc_vec[0].target, 3);
+        assert_eq!(jc_vec[0].bounds, Bounds::of(3, 3));
         assert_eq!(jc_vec[0].rel, RelMask::EQ);
 
         assert_eq!(jc_vec[1].vars, vec!['B', 'C']);
-        assert_eq!(jc_vec[1].target, 5);
+        assert_eq!(jc_vec[1].bounds, Bounds::of(1, 5));
         assert_eq!(jc_vec[1].rel, RelMask::LE);
     }
 
     #[test]
     fn is_satisfied_mid_search_semantics() {
         // |AB| = 5
-        let jc = JointConstraint { vars: vec!['A','B'], target: 5, rel: RelMask::EQ };
+        let jc = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of(5, 5), rel: RelMask::EQ };
 
         let mut map = HashMap::from([('A', "HI".to_string())]); // len 2
         // 'B' unbound -> should return true (skip mid-search)
@@ -725,8 +759,8 @@ mod tests {
     fn joint_constraints_all_satisfied_map_variant() {
         let jcs = JointConstraints::of(
             vec![
-                JointConstraint { vars: vec!['A', 'B'], target: 6, rel: RelMask::LE }, // len(A)+len(B) <= 6
-                JointConstraint { vars: vec!['B', 'C'], target: 3, rel: RelMask::GE }, // len(B)+len(C) >= 3
+                JointConstraint { vars: vec!['A', 'B'], bounds: Bounds::of(1, 6), rel: RelMask::LE }, // len(A)+len(B) <= 6
+                JointConstraint { vars: vec!['B', 'C'], bounds: Bounds::of_unbounded(3), rel: RelMask::GE }, // len(B)+len(C) >= 3
             ]
         );
 
@@ -750,8 +784,8 @@ mod tests {
         // Constraints: |AB| = 3  and  |BC| = 6
         let mut vcs = VarConstraints::default();
 
-        let jc1 = JointConstraint { vars: vec!['A','B'], target: 3, rel: RelMask::EQ };
-        let jc2 = JointConstraint { vars: vec!['B','C'], target: 6, rel: RelMask::EQ };
+        let jc1 = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of(3, 3), rel: RelMask::EQ };
+        let jc2 = JointConstraint { vars: vec!['B','C'], bounds: Bounds::of(6, 6), rel: RelMask::EQ };
         let jcs = JointConstraints::of(vec![jc1, jc2]);
 
         // Create the variable constraints
@@ -790,7 +824,7 @@ mod tests {
         let jc = JointConstraint {
             vars: vec!['A', 'B'],
             rel: RelMask::EQ,
-            target: 5,
+            bounds: Bounds::of(5, 5),
         };
         let jcs = JointConstraints::of(vec![jc]);
 
@@ -799,8 +833,8 @@ mod tests {
 
         match result.unwrap_err().as_ref() {
             ParseError::JointConstraintContradiction { constraint, reason } => {
-                assert_eq!(constraint, "|AB|=5");
-                assert_eq!(reason, "sum of minimum lengths (6) exceeds target (5). Individual constraints: |A|>=3, |B|>=3");
+                assert_eq!(constraint, "|AB|=[5,5]");
+                assert_eq!(reason, "sum of minimum lengths (6) exceeds target maximum (5). Individual constraints: |A|>=3, |B|>=3");
             }
             other => panic!("Expected JointConstraintContradiction, got: {:?}", other),
         }
@@ -818,7 +852,7 @@ mod tests {
         let jc = JointConstraint {
             vars: vec!['A', 'B'],
             rel: RelMask::EQ,
-            target: 6,
+            bounds: Bounds::of(6, 6),
         };
         let jcs = JointConstraints::of(vec![jc]);
 
@@ -827,8 +861,8 @@ mod tests {
 
         match result.unwrap_err().as_ref() {
             ParseError::JointConstraintContradiction { constraint, reason } => {
-                assert_eq!(constraint, "|AB|=6");
-                assert_eq!(reason, "sum of maximum lengths (4) is less than target (6). Individual constraints: |A|<=2, |B|<=2");
+                assert_eq!(constraint, "|AB|=[6,6]");
+                assert_eq!(reason, "sum of maximum lengths (4) is less than target minimum (6). Individual constraints: |A|<=2, |B|<=2");
             }
             other => panic!("Expected JointConstraintContradiction, got: {:?}", other),
         }
@@ -846,7 +880,7 @@ mod tests {
             let jc = JointConstraint {
                 vars: vec!['A', 'B'],
                 rel: RelMask::EQ,
-                target: 1000,
+                bounds: Bounds::of(1000, 1000),
             };
             let jcs = JointConstraints::of(vec![jc]);
 
@@ -861,9 +895,9 @@ mod tests {
             let mut vcs = VarConstraints::default();
 
             let jcs = JointConstraints::of(vec![
-                JointConstraint { vars: vec!['A', 'B'], rel: RelMask::EQ, target: 5 },
-                JointConstraint { vars: vec!['B', 'C'], rel: RelMask::EQ, target: 6 },
-                JointConstraint { vars: vec!['A', 'C'], rel: RelMask::EQ, target: 7 },
+                JointConstraint { vars: vec!['A', 'B'], rel: RelMask::EQ, bounds: Bounds::of(5, 5) },
+                JointConstraint { vars: vec!['B', 'C'], rel: RelMask::EQ, bounds: Bounds::of(6, 6) },
+                JointConstraint { vars: vec!['A', 'C'], rel: RelMask::EQ, bounds: Bounds::of(7, 7) },
             ]);
 
             let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);
@@ -879,7 +913,7 @@ mod tests {
             let jc = JointConstraint {
                 vars: vec!['A', 'B'],
                 rel: RelMask::GT,
-                target: 5,
+                bounds: Bounds::of_unbounded(6),
             };
             let jcs = JointConstraints::of(vec![jc]);
 
@@ -896,7 +930,7 @@ mod tests {
             let jc = JointConstraint {
                 vars: vec!['A', 'B'],
                 rel: RelMask::LT,
-                target: 10,
+                bounds: Bounds::of(1, 9),
             };
             let jcs = JointConstraints::of(vec![jc]);
 
@@ -913,7 +947,7 @@ mod tests {
             let jc = JointConstraint {
                 vars: vars.clone(),
                 rel: RelMask::EQ,
-                target: 20,
+                bounds: Bounds::of(20, 20),
             };
             let jcs = JointConstraints::of(vec![jc]);
 
@@ -928,7 +962,7 @@ mod tests {
             let jc = JointConstraint {
                 vars: vec!['A'],
                 rel: RelMask::EQ,
-                target: 5,
+                bounds: Bounds::of(5, 5),
             };
             let jcs = JointConstraints::of(vec![jc]);
 
@@ -938,30 +972,13 @@ mod tests {
             assert_eq!(vcs.bounds('A'), Bounds::of(5, 5));
         }
 
-        // TODO? have propagate_joint_to_var_bounds catch contradictions like these?
-        // #[test]
-        // fn test_contradictory_constraints_on_same_vars() {
-        //     // |AB|=5 and |AB|=7 are contradictory
-        //     let mut vcs = VarConstraints::default();
-        //     vcs.ensure_entry_mut('A').bounds = Bounds::of(1, 10);
-        //     vcs.ensure_entry_mut('B').bounds = Bounds::of(1, 10);
-        //
-        //     let jcs = JointConstraints::of(vec![
-        //         JointConstraint { vars: vec!['A', 'B'], rel: RelMask::EQ, target: 5 },
-        //         JointConstraint { vars: vec!['A', 'B'], rel: RelMask::EQ, target: 7 },
-        //     ]);
-        //
-        //     let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);
-        //     assert!(result.is_err());
-        // }
-
         #[test]
         fn test_redundant_consistent_constraints() {
             let mut vcs = VarConstraints::default();
 
             let jcs = JointConstraints::of(vec![
-                JointConstraint { vars: vec!['A', 'B'], rel: RelMask::EQ, target: 5 },
-                JointConstraint { vars: vec!['A', 'B'], rel: RelMask::EQ, target: 5 },
+                JointConstraint { vars: vec!['A', 'B'], rel: RelMask::EQ, bounds: Bounds::of(5, 5) },
+                JointConstraint { vars: vec!['A', 'B'], rel: RelMask::EQ, bounds: Bounds::of(5, 5) },
             ]);
 
             let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);
@@ -976,7 +993,7 @@ mod tests {
             let jc = JointConstraint {
                 vars: vec!['A', 'B'],
                 rel: RelMask::EQ,
-                target: 0,
+                bounds: Bounds::of(0, 0),
             };
             let jcs = JointConstraints::of(vec![jc]);
 
@@ -991,7 +1008,7 @@ mod tests {
             let jc = JointConstraint {
                 vars: vec!['A', 'B'],
                 rel: RelMask::NE,
-                target: 5,
+                bounds: Bounds::of(5, 5),
             };
             let jcs = JointConstraints::of(vec![jc]);
 
