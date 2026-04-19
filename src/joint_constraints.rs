@@ -232,10 +232,12 @@ pub(crate) static JOINT_LEN_RE: LazyLock<Regex> =
 /// Parse a single joint-length expression that **starts at** a `'|'`. Returns `None` on invalid
 /// input.
 ///
-/// Shape: `|VARS| OP NUMBER`
+/// Shape: `|VARS| OP VALUE`
 ///  - `VARS`  : at least **two** ASCII uppercase letters (A–Z).
 ///  - `OP`    : one of `<=`, `>=`, `!=`, `<`, `>`, `=` (NB: two-char ops checked first).
-///  - `NUMBER`: one or more ASCII digits (base 10), or a range shorthand like `5-8`.
+///  - `VALUE` : one or more ASCII digits (base 10), or a range shorthand (e.g., `x-y` for 
+///              from `x` to `y` inclusive, `x-` for at least `x`, or `-y` for at most `y`),
+///              where `x` and `y` are positive integers and `x <= y`.
 ///
 /// Returns `None` instead of propagating errors because this function is called speculatively
 /// during pattern parsing on clauses that may or may not be joint constraints. Invalid syntax
