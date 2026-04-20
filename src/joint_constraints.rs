@@ -579,11 +579,7 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
                 }
 
                 let e = vcs.ensure_entry_mut(var_char);
-                e.bounds = if new_max == usize::MAX {
-                    Bounds::of_unbounded(new_min)
-                } else {
-                    Bounds::of(new_min, new_max)
-                };
+                e.bounds = Bounds::from_min_max_usize(new_min, new_max);
             }
         }
     }

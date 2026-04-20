@@ -142,6 +142,24 @@ impl Bounds {
         Bounds { min_len, max_len_opt: None }
     }
 
+    /// Create bounds from a min and an optional max.
+    pub(crate) fn of_optional_max(min_len: usize, max_len_opt: Option<usize>) -> Self {
+        if let Some(max) = max_len_opt {
+            assert!(min_len <= max,
+                "Invalid bounds: min ({min_len}) must be <= max ({max})");
+        }
+        Bounds { min_len, max_len_opt }
+    }
+
+    /// Create bounds where a maximum of `usize::MAX` is treated as unbounded.
+    pub(crate) fn from_min_max_usize(min: usize, max: usize) -> Self {
+        if max == usize::MAX {
+            Bounds::of_unbounded(min)
+        } else {
+            Bounds::of(min, max)
+        }
+    }
+
     /// Returns true if the given length is within these bounds (inclusive).
     pub(crate) fn contains(&self, len: usize) -> bool {
         len >= self.min_len && self.max_len_opt.map_or(true, |max| len <= max)
