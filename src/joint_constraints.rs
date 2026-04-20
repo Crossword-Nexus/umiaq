@@ -642,7 +642,7 @@ mod tests {
 
         // Nothing should be forced exact
         assert_eq!(vcs.bounds('A'), Bounds::of(3, 4));
-        assert_eq!(vcs.bounds('B'), Bounds::of(VarConstraint::DEFAULT_MIN, 2));
+        assert_eq!(vcs.bounds('B'), Bounds::of(VarConstraint::DEFAULT_MIN, 2)); // TODO!!! VC::D_M or just "1"?
         assert_eq!(vcs.bounds('C'), Bounds::of(3, 4));
     }
 
@@ -1030,5 +1030,23 @@ mod tests {
             let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);
             assert!(result.is_ok());
         }
+
+        // TODO? have propagate_joint_to_var_bounds catch contradictions like these?
+        // (requires running propagation until convergence)
+        // #[test]
+        // fn test_contradictory_constraints_on_same_vars() {
+        //     // |AB|=5 and |AB|=7 are contradictory
+        //     let mut vcs = VarConstraints::default();
+        //     vcs.ensure_entry_mut('A').bounds = Bounds::of(1, 10);
+        //     vcs.ensure_entry_mut('B').bounds = Bounds::of(1, 10);
+        //
+        //     let jcs = JointConstraints::of(vec![
+        //         JointConstraint { vars: vec!['A', 'B'], rel: RelMask::EQ, bounds: Bounds::of(5, 5) },
+        //         JointConstraint { vars: vec!['A', 'B'], rel: RelMask::EQ, bounds: Bounds::of(7, 7) },
+        //     ]);
+        //
+        //     let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);
+        //     assert!(result.is_err());
+        // }
     }
 }

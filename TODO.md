@@ -21,6 +21,8 @@ This list tracks potential features and optimizations inspired by comparative an
     - **Complexity: High**. Requires `get_ordered_patterns` to access `ScanHints` or the `EntryList`. This is a significant architectural change but could prevent exponential blowup in complex queries.
 - [ ] **Bitset-based Prefiltering**: Use bitmasks for vowels/consonants during `scan_batch`.
     - **Complexity: Moderate-High**. Touching the inner loop of the scanner. Requires pre-computing bitmasks for the entire dictionary to allow O(1) rejection of vowel/consonant patterns.
+- [ ] **Cross-Constraint Propagation**: Detect contradictions between multiple joint constraints (e.g., `|AB|=5` and `|AB|=7`).
+    - **Complexity: Low-Moderate**. Could be implemented by running `propagate_joint_to_var_bounds` until convergence or adding a post-propagation validation pass.
 
 ## UI/WASM
 - [ ] **Breakdown Display**: Show variable splits in the results (e.g., `C·A·T`).
