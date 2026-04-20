@@ -8,10 +8,10 @@
 * **pattern instantiation**: a concatenated list of lowercase letters
 * **(entry) pattern character**: one of a **variable**, a lowercase letter, a **wildcard**, a **reversed variable**, an **anagram expression**
 * **length constraint expression**: concatenation of a pipe (`|`), an **(entry) pattern**, a pipe (`|`), an **operator**, and a **length expression**
-* **operator**: one of `=`, `!=`, `<=`, `>=`, `<`, `>`
-* **length expression**: one of a **length range**, a nonzero number of digits (not beginning with 0)
+* **comparison operator**: one of `=`, `!=`, `<=`, `>=`, `<`, `>`
+- **length expression**: one of a **length range** (only supported with the `=` operator), a nonzero number of digits (not beginning with 0).
+
 * **length range**: concatenation of any number of digits (including an empty string; not beginning with 0), a hyphen (`-`), any number of digits (including an empty string; not beginning with 0)
-* **length inequality**: (deprecated) see **length constraint expression**
 * **complex constraint**: concatenation of a **variable**, an equal sign (`=`), a left parenthesis (`(`), a **complex-constraint core**, a right parenthesis (`)`)
 * **variable**: a capital English letter
 * **wildcard**: one of a `.`, `*`, `@`, `#`, **character class**
