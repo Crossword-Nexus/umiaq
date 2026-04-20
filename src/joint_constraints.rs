@@ -550,6 +550,9 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
                 }
 
                 // Calculate lower bound from joint constraint
+                // Note: Use saturating_sub because during iterative propagation, intermediate
+                // bounds might appear contradictory but resolve after further tightening.
+                // The final contradiction check happens below (new_min > new_max).
                 let lower_from_joint = sum_other_max_opt.map_or(VarConstraint::DEFAULT_MIN, |s| {
                     target_min.saturating_sub(s)
                 });
