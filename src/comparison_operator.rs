@@ -7,8 +7,8 @@ use std::sync::{LazyLock, OnceLock};
 
 // pub(crate) static COMPARISON_OPERATORS: [ComparisonOperator; 6] = [EQ,NE,LE,GE,LT,GT];
 
-#[derive(Clone, Copy)]
-pub(crate) enum ComparisonOperator {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ComparisonOperator {
     EQ,
     NE,
     LE,
@@ -19,7 +19,7 @@ pub(crate) enum ComparisonOperator {
 
 impl ComparisonOperator {
     /// All operator variants, used to build the reverse lookup map.
-    pub(crate) const ALL: [ComparisonOperator; 6] = [EQ, NE, LE, GE, LT, GT];
+    pub const ALL: [ComparisonOperator; 6] = [EQ, NE, LE, GE, LT, GT];
 
     /// All operator strings, lazily initialized.
     pub(crate) fn all_as_strings() -> &'static Vec<String> {
