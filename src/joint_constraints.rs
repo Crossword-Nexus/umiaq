@@ -52,6 +52,15 @@ impl FromStr for JointConstraint {
 }
 
 impl JointConstraint {
+    #[inline]
+    fn is_satisfied_by_value(&self, total: usize) -> bool {
+        match self.op {
+            ComparisonOperator::NE => !self.bounds.contains(total),
+            ComparisonOperator::EQ | ComparisonOperator::LE | ComparisonOperator::GE
+            | ComparisonOperator::LT | ComparisonOperator::GT => self.bounds.contains(total),
+        }
+    }
+
     /// Check satisfaction against current `bindings`.
     ///
     /// **Mid-search semantics** (by design): if **any** referenced var is unbound,
@@ -61,9 +70,7 @@ impl JointConstraint {
     /// or add a separate strict method that returns `false` when some vars are unbound.
     #[inline]
     pub(crate) fn is_satisfied_by(&self, bindings: &Bindings) -> bool {
-        // If not all vars are bound, skip this check for now.
         if bindings.contains_all_vars(&self.vars) {
-            // Sum the lengths of the bound strings for the referenced vars.
             // safe: unwrap is guaranteed to succeed because contains_all_vars returned true
             let total: usize = self.vars.iter()
                 .map(|var_char| {
@@ -72,12 +79,7 @@ impl JointConstraint {
                     binding.expect("var must be bound after contains_all_vars check").len()
                 })
                 .sum();
-
-            match self.op {
-                ComparisonOperator::NE => !self.bounds.contains(total),
-                ComparisonOperator::EQ | ComparisonOperator::LE | ComparisonOperator::GE
-                | ComparisonOperator::LT | ComparisonOperator::GT => self.bounds.contains(total),
-            }
+            self.is_satisfied_by_value(total)
         } else {
             true
         }
@@ -92,11 +94,7 @@ impl JointConstraint {
             let Some(len) = var_len else { return false };
             total += len;
         }
-        match self.op {
-            ComparisonOperator::NE => !self.bounds.contains(total),
-            ComparisonOperator::EQ | ComparisonOperator::LE | ComparisonOperator::GE
-            | ComparisonOperator::LT | ComparisonOperator::GT => self.bounds.contains(total),
-        }
+        self.is_satisfied_by_value(total)
     }
 
     // --- Test-only convenience for asserting behavior without needing real `Bindings`.
@@ -107,11 +105,7 @@ impl JointConstraint {
             true
         } else {
             let total: usize = self.vars.iter().map(|var_char| map.get(var_char).unwrap().len()).sum();
-            match self.op {
-                ComparisonOperator::NE => !self.bounds.contains(total),
-                ComparisonOperator::EQ | ComparisonOperator::LE | ComparisonOperator::GE
-                | ComparisonOperator::LT | ComparisonOperator::GT => self.bounds.contains(total),
-            }
+            self.is_satisfied_by_value(total)
         }
     }
 }
