@@ -9,7 +9,7 @@
 * **(entry) pattern character**: one of a **variable**, a lowercase letter, a **wildcard**, a **reversed variable**, an **anagram expression**
 * **length constraint expression**: concatenation of a pipe (`|`), an **(entry) pattern**, a pipe (`|`), an **operator**, and a **length expression**
 * **comparison operator**: one of `=`, `!=`, `<=`, `>=`, `<`, `>`
-- **length expression**: one of a **length range** (only supported with the `=` operator), a nonzero number of digits (not beginning with 0).
+- **length expression**: one of a **length range** (only supported with the `=` operator), a nonzero number of digits (not beginning with 0)
 
 * **length range**: concatenation of any number of digits (including an empty string; not beginning with 0), a hyphen (`-`), any number of digits (including an empty string; not beginning with 0)
 * **complex constraint**: concatenation of a **variable**, an equal sign (`=`), a left parenthesis (`(`), a **complex-constraint core**, a right parenthesis (`)`)

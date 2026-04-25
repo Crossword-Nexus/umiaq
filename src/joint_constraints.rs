@@ -178,7 +178,7 @@ pub(crate) static JOINT_LEN_RE: LazyLock<Regex> =
 /// Shape: `|VARS| OP VALUE`
 ///  - `VARS`  : at least **two** ASCII uppercase letters (A–Z).
 ///  - `OP`    : one of `<=`, `>=`, `!=`, `<`, `>`, `=` (NB: two-char ops checked first).
-///  - `VALUE` : one or more ASCII digits (base 10), or a range shorthand (e.g., `x-y` for 
+///  - `VALUE` : one or more ASCII digits (base 10), or a range shorthand (e.g., `x-y` for
 ///              from `x` to `y` inclusive, `x-` for at least `x`, or `-y` for at most `y`),
 ///              where `x` and `y` are positive integers and `x <= y`.
 ///
@@ -309,6 +309,16 @@ impl JointConstraints {
         JointConstraints { as_vec }
     }
 }
+
+/*
+do we want to display this as |AB|=[5,5] (instead of, e.g., |AB|=5)?
+
+also, do we want = (instead of, say, ∈)? so |AB|=[2,7] -> |AB|∈[2,7] (e.g.)
+
+separate notions of how users input it and how we display it (note that they're already distinct in
+many cases—e.g., input |AB|=3- would (I think?) be displayed (thanks to conversion to a Bound) as
+|AB|=[3,∞)(?))
+*/
 
 impl fmt::Display for JointConstraints {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -499,13 +509,13 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
                 let lower_from_joint = sum_other_max_opt.map_or(VarConstraint::DEFAULT_MIN, |s| {
                     target_min.saturating_sub(s)
                 });
-                
+
                 // Calculate upper bound from joint constraint
                 let upper_from_joint = target_max_opt.map(|t_max| t_max.saturating_sub(sum_other_min));
 
                 // Tighten and store
                 let new_min = bounds.min_len.max(lower_from_joint);
-                let mut new_max = bounds.max_len_opt.unwrap_or(usize::MAX);
+                let mut new_max = bounds.max_len_opt.unwrap_or(usize::MAX); // TODO? use diff. value for unbounded?
                 if let Some(ufj) = upper_from_joint {
                     new_max = new_max.min(ufj);
                 }
@@ -929,6 +939,23 @@ mod tests {
 
             assert_eq!(vcs.bounds('A'), Bounds::of(5, 5));
         }
+
+        // TODO? have propagate_joint_to_var_bounds catch contradictions like these?
+        // #[test]
+        // fn test_contradictory_constraints_on_same_vars() {
+        //     // |AB|=5 and |AB|=7 are contradictory
+        //     let mut vcs = VarConstraints::default();
+        //     vcs.ensure_entry_mut('A').bounds = Bounds::of(1, 10);
+        //     vcs.ensure_entry_mut('B').bounds = Bounds::of(1, 10);
+        //
+        //     let jcs = JointConstraints::of(vec![
+        //         JointConstraint { vars: vec!['A', 'B'], rel: RelMask::EQ, target: 5 },
+        //         JointConstraint { vars: vec!['A', 'B'], rel: RelMask::EQ, target: 7 },
+        //     ]);
+        //
+        //     let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);
+        //     assert!(result.is_err());
+        // }
 
         #[test]
         fn test_redundant_consistent_constraints() {

@@ -230,10 +230,8 @@ fn main() -> std::io::Result<()> {
         } else {
             pat.clone()
         };
-        let static_str = static_t.map(|x| format!("{x:.1}")).unwrap_or_else(|| "—".into());
-        let dp_str = delta_pct
-            .map(|x| format!("{x:+.1}"))
-            .unwrap_or_else(|| "—".into());
+        let static_str = static_t.map_or_else(|| "—".into(), |x| format!("{x:.1}"));
+        let dp_str = delta_pct.map_or_else(|| "—".into(), |x| format!("{x:+.1}"));
         eprintln!(
             "{display:<MAX_PATTERN_LEN$} | {med:>10.3} | {num_solutions:>11} | {static_str:>10} | {dp_str:>8}"
         );
