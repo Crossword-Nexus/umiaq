@@ -367,6 +367,16 @@ impl JointConstraints {
     }
 }
 
+/*
+do we want to display this as |AB|=[5,5] (instead of, e.g., |AB|=5)?
+
+also, do we want = (instead of, say, ∈)? so |AB|=[2,7] -> |AB|∈[2,7] (e.g.)
+
+separate notions of how users input it and how we display it (note that they're already distinct in
+many cases—e.g., input |AB|=3- would (I think?) be displayed (thanks to conversion to a Bound) as
+|AB|=[3,∞)(?))
+*/
+
 impl fmt::Display for JointConstraints {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.as_vec.is_empty() {
@@ -562,7 +572,7 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
 
                 // Tighten and store
                 let new_min = bounds.min_len.max(lower_from_joint);
-                let mut new_max = bounds.max_len_opt.unwrap_or(usize::MAX);
+                let mut new_max = bounds.max_len_opt.unwrap_or(usize::MAX); // TODO? use diff. value for unbounded?
                 if let Some(ufj) = upper_from_joint {
                     new_max = new_max.min(ufj);
                 }
