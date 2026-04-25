@@ -18,13 +18,13 @@ use std::collections::HashMap;
 ///
 /// - `vars`  : the participating variable names (A–Z). Duplicates **do** count toward the sum.
 /// - `bounds`: allowed length range for the sum.
-/// - `rel`   : comparison operator.
+/// - `op`   : comparison operator.
 ///             Mainly kept for `NE` (!=) support and display.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JointConstraint {
     pub vars: Vec<char>,   // e.g., ['A','B','C']
     pub bounds: Bounds,    // e.g., [5, 8]
-    pub rel: ComparisonOperator,
+    pub op: ComparisonOperator,
 }
 
 impl FromStr for JointConstraint {
@@ -73,17 +73,17 @@ impl JointConstraint {
                 })
                 .sum();
 
-            if self.rel == ComparisonOperator::NE {
+            if self.op == ComparisonOperator::NE {
                 !self.bounds.contains(total)
-            } else if self.rel == ComparisonOperator::EQ
-                || self.rel == ComparisonOperator::LE
-                || self.rel == ComparisonOperator::GE
-                || self.rel == ComparisonOperator::LT
-                || self.rel == ComparisonOperator::GT
+            } else if self.op == ComparisonOperator::EQ
+                || self.op == ComparisonOperator::LE
+                || self.op == ComparisonOperator::GE
+                || self.op == ComparisonOperator::LT
+                || self.op == ComparisonOperator::GT
             {
                 self.bounds.contains(total)
             } else {
-                unreachable!("Unknown ComparisonOperator in JointConstraint: {:?}", self.rel)
+                unreachable!("Unknown ComparisonOperator in JointConstraint: {:?}", self.op)
             }
         } else {
             true
@@ -99,7 +99,7 @@ impl JointConstraint {
             let Some(len) = var_len else { return false };
             total += len;
         }
-        if self.rel == ComparisonOperator::NE {
+        if self.op == ComparisonOperator::NE {
             !self.bounds.contains(total)
         } else {
             self.bounds.contains(total)
@@ -114,17 +114,17 @@ impl JointConstraint {
             true
         } else {
             let total: usize = self.vars.iter().map(|var_char| map.get(var_char).unwrap().len()).sum();
-            if self.rel == ComparisonOperator::NE {
+            if self.op == ComparisonOperator::NE {
                 !self.bounds.contains(total)
-            } else if self.rel == ComparisonOperator::EQ
-                || self.rel == ComparisonOperator::LE
-                || self.rel == ComparisonOperator::GE
-                || self.rel == ComparisonOperator::LT
-                || self.rel == ComparisonOperator::GT
+            } else if self.op == ComparisonOperator::EQ
+                || self.op == ComparisonOperator::LE
+                || self.op == ComparisonOperator::GE
+                || self.op == ComparisonOperator::LT
+                || self.op == ComparisonOperator::GT
             {
                 self.bounds.contains(total)
             } else {
-                unreachable!("Unknown ComparisonOperator in JointConstraint: {:?}", self.rel)
+                unreachable!("Unknown ComparisonOperator in JointConstraint: {:?}", self.op)
             }
         }
     }
@@ -133,10 +133,10 @@ impl JointConstraint {
 impl fmt::Display for JointConstraint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let vars: String = self.vars.iter().collect();
-        if self.rel == ComparisonOperator::EQ {
+        if self.op == ComparisonOperator::EQ {
             write!(f, "|{}|={}", vars, self.bounds)
         } else {
-            write!(f, "|{}| {} {}", vars, self.rel, self.bounds)
+            write!(f, "|{}| {} {}", vars, self.op, self.bounds)
         }
     }
 }
@@ -193,10 +193,10 @@ fn parse_joint_len(expr: &str) -> Option<JointConstraint> {
         let op_str_match = captures.name("op")?;
 
         let vars = vars_match.as_str().chars().collect();
-        let rel = ComparisonOperator::from_str(op_str_match.as_str()).ok()?;
+        let op = ComparisonOperator::from_str(op_str_match.as_str()).ok()?;
         let bound_str = target_match.as_str();
 
-        let bounds = match rel {
+        let bounds = match op {
             ComparisonOperator::EQ => parse_length_range(bound_str).ok()?,
             ComparisonOperator::NE => {
                 let val: usize = bound_str.parse().ok()?;
@@ -220,7 +220,7 @@ fn parse_joint_len(expr: &str) -> Option<JointConstraint> {
             }
         };
 
-        Some(JointConstraint { vars, bounds, rel })
+        Some(JointConstraint { vars, bounds, op })
     } else {
         None
     }
@@ -413,7 +413,7 @@ impl fmt::Display for JointConstraints {
 /// Returns `Err(ContradictoryBounds)` if the constraints are provably unsatisfiable.
 pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstraints) -> Result<(), Box<ParseError>> {
     for jc in jcs.iter() {
-        if jc.rel != ComparisonOperator::EQ { continue; }
+        if jc.op != ComparisonOperator::EQ { continue; }
 
         let target_min = jc.bounds.min_len;
         let target_max_opt = jc.bounds.max_len_opt;
@@ -553,7 +553,7 @@ mod tests {
         vcs.ensure_entry_mut('A').bounds = Bounds::of_unbounded(2);
         vcs.ensure_entry_mut('B').bounds = Bounds::of_unbounded(3);
 
-        let jc = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of(5, 5), rel: ComparisonOperator::EQ };
+        let jc = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of(5, 5), op: ComparisonOperator::EQ };
         let jcs = JointConstraints::of(vec![jc]);
 
         propagate_joint_to_var_bounds(&mut vcs, &jcs).unwrap();
@@ -570,7 +570,7 @@ mod tests {
         // B left unconstrained -> min_length=None
         vcs.ensure_entry_mut('C').bounds = Bounds::of_unbounded(3);
 
-        let jc = JointConstraint { vars: vec!['A','B','C'], bounds: Bounds::of(7, 7), rel: ComparisonOperator::EQ };
+        let jc = JointConstraint { vars: vec!['A','B','C'], bounds: Bounds::of(7, 7), op: ComparisonOperator::EQ };
         let jcs = JointConstraints::of(vec![jc]);
 
         propagate_joint_to_var_bounds(&mut vcs, &jcs).unwrap();
@@ -588,7 +588,7 @@ mod tests {
         vcs.ensure_entry_mut('A').bounds = Bounds::of_unbounded(3);
         vcs.ensure_entry_mut('C').bounds = Bounds::of_unbounded(3);
 
-        let jc = JointConstraint { vars: vec!['A','B','C'], bounds: Bounds::of(8, 8), rel: ComparisonOperator::EQ };
+        let jc = JointConstraint { vars: vec!['A','B','C'], bounds: Bounds::of(8, 8), op: ComparisonOperator::EQ };
         let jcs = JointConstraints::of(vec![jc]);
 
         propagate_joint_to_var_bounds(&mut vcs, &jcs).unwrap();
@@ -606,7 +606,7 @@ mod tests {
         vcs.ensure_entry_mut('A').bounds = Bounds::of_unbounded(2);
         vcs.ensure_entry_mut('B').bounds = Bounds::of_unbounded(2);
 
-        let jc = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of(5, 8), rel: ComparisonOperator::EQ };
+        let jc = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of(5, 8), op: ComparisonOperator::EQ };
         let jcs = JointConstraints::of(vec![jc]);
 
         propagate_joint_to_var_bounds(&mut vcs, &jcs).unwrap();
@@ -624,7 +624,7 @@ mod tests {
         vcs.ensure_entry_mut('A').bounds = Bounds::of(VarConstraint::DEFAULT_MIN, 4);
         vcs.ensure_entry_mut('B').bounds = Bounds::of(VarConstraint::DEFAULT_MIN, 3);
 
-        let jc = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of(7, 7), rel: ComparisonOperator::EQ };
+        let jc = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of(7, 7), op: ComparisonOperator::EQ };
         let jcs = JointConstraints::of(vec![jc]);
 
         propagate_joint_to_var_bounds(&mut vcs, &jcs).unwrap();
@@ -639,7 +639,7 @@ mod tests {
         let jc = parse_joint_len("|AB|=7").expect("should parse");
         assert_eq!(jc.vars, vec!['A','B']);
         assert_eq!(jc.bounds, Bounds::of(7, 7));
-        assert_eq!(jc.rel, ComparisonOperator::EQ);
+        assert_eq!(jc.op, ComparisonOperator::EQ);
     }
 
     #[test]
@@ -648,7 +648,7 @@ mod tests {
         let jc = parse_joint_len("|AB|=5-8").expect("should parse");
         assert_eq!(jc.vars, vec!['A','B']);
         assert_eq!(jc.bounds, Bounds::of(5, 8));
-        assert_eq!(jc.rel, ComparisonOperator::EQ);
+        assert_eq!(jc.op, ComparisonOperator::EQ);
 
         let jc2 = parse_joint_len("|ABC|=10-").expect("should parse");
         assert_eq!(jc2.vars, vec!['A','B','C']);
@@ -661,7 +661,7 @@ mod tests {
         let jc2 = parse_joint_len("|ABC|  <=   10").expect("should parse");
         assert_eq!(jc2.vars, vec!['A','B','C']);
         assert_eq!(jc2.bounds, Bounds::of(1, 10));
-        assert_eq!(jc2.rel, ComparisonOperator::LE);
+        assert_eq!(jc2.op, ComparisonOperator::LE);
     }
 
     #[test]
@@ -698,17 +698,17 @@ mod tests {
 
         assert_eq!(jc_vec[0].vars, vec!['A', 'B']);
         assert_eq!(jc_vec[0].bounds, Bounds::of(3, 3));
-        assert_eq!(jc_vec[0].rel, ComparisonOperator::EQ);
+        assert_eq!(jc_vec[0].op, ComparisonOperator::EQ);
 
         assert_eq!(jc_vec[1].vars, vec!['B', 'C']);
         assert_eq!(jc_vec[1].bounds, Bounds::of(1, 5));
-        assert_eq!(jc_vec[1].rel, ComparisonOperator::LE);
+        assert_eq!(jc_vec[1].op, ComparisonOperator::LE);
     }
 
     #[test]
     fn is_satisfied_mid_search_semantics() {
         // |AB| = 5
-        let jc = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of(5, 5), rel: ComparisonOperator::EQ };
+        let jc = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of(5, 5), op: ComparisonOperator::EQ };
 
         let mut map = HashMap::from([('A', "HI".to_string())]); // len 2
         // 'B' unbound -> should return true (skip mid-search)
@@ -727,8 +727,8 @@ mod tests {
     fn joint_constraints_all_satisfied_map_variant() {
         let jcs = JointConstraints::of(
             vec![
-                JointConstraint { vars: vec!['A', 'B'], bounds: Bounds::of(1, 6), rel: ComparisonOperator::LE }, // len(A)+len(B) <= 6
-                JointConstraint { vars: vec!['B', 'C'], bounds: Bounds::of_unbounded(3), rel: ComparisonOperator::GE }, // len(B)+len(C) >= 3
+                JointConstraint { vars: vec!['A', 'B'], bounds: Bounds::of(1, 6), op: ComparisonOperator::LE }, // len(A)+len(B) <= 6
+                JointConstraint { vars: vec!['B', 'C'], bounds: Bounds::of_unbounded(3), op: ComparisonOperator::GE }, // len(B)+len(C) >= 3
             ]
         );
 
@@ -752,8 +752,8 @@ mod tests {
         // Constraints: |AB| = 3  and  |BC| = 6
         let mut vcs = VarConstraints::default();
 
-        let jc1 = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of(3, 3), rel: ComparisonOperator::EQ };
-        let jc2 = JointConstraint { vars: vec!['B','C'], bounds: Bounds::of(6, 6), rel: ComparisonOperator::EQ };
+        let jc1 = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of(3, 3), op: ComparisonOperator::EQ };
+        let jc2 = JointConstraint { vars: vec!['B','C'], bounds: Bounds::of(6, 6), op: ComparisonOperator::EQ };
         let jcs = JointConstraints::of(vec![jc1, jc2]);
 
         // Create the variable constraints
@@ -791,7 +791,7 @@ mod tests {
 
         let jc = JointConstraint {
             vars: vec!['A', 'B'],
-            rel: ComparisonOperator::EQ,
+            op: ComparisonOperator::EQ,
             bounds: Bounds::of(5, 5),
         };
         let jcs = JointConstraints::of(vec![jc]);
@@ -819,7 +819,7 @@ mod tests {
 
         let jc = JointConstraint {
             vars: vec!['A', 'B'],
-            rel: ComparisonOperator::EQ,
+            op: ComparisonOperator::EQ,
             bounds: Bounds::of(6, 6),
         };
         let jcs = JointConstraints::of(vec![jc]);
@@ -847,7 +847,7 @@ mod tests {
 
             let jc = JointConstraint {
                 vars: vec!['A', 'B'],
-                rel: ComparisonOperator::EQ,
+                op: ComparisonOperator::EQ,
                 bounds: Bounds::of(1000, 1000),
             };
             let jcs = JointConstraints::of(vec![jc]);
@@ -863,9 +863,9 @@ mod tests {
             let mut vcs = VarConstraints::default();
 
             let jcs = JointConstraints::of(vec![
-                JointConstraint { vars: vec!['A', 'B'], rel: ComparisonOperator::EQ, bounds: Bounds::of(5, 5) },
-                JointConstraint { vars: vec!['B', 'C'], rel: ComparisonOperator::EQ, bounds: Bounds::of(6, 6) },
-                JointConstraint { vars: vec!['A', 'C'], rel: ComparisonOperator::EQ, bounds: Bounds::of(7, 7) },
+                JointConstraint { vars: vec!['A', 'B'], op: ComparisonOperator::EQ, bounds: Bounds::of(5, 5) },
+                JointConstraint { vars: vec!['B', 'C'], op: ComparisonOperator::EQ, bounds: Bounds::of(6, 6) },
+                JointConstraint { vars: vec!['A', 'C'], op: ComparisonOperator::EQ, bounds: Bounds::of(7, 7) },
             ]);
 
             let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);
@@ -880,7 +880,7 @@ mod tests {
 
             let jc = JointConstraint {
                 vars: vec!['A', 'B'],
-                rel: ComparisonOperator::GT,
+                op: ComparisonOperator::GT,
                 bounds: Bounds::of_unbounded(6),
             };
             let jcs = JointConstraints::of(vec![jc]);
@@ -897,7 +897,7 @@ mod tests {
 
             let jc = JointConstraint {
                 vars: vec!['A', 'B'],
-                rel: ComparisonOperator::LT,
+                op: ComparisonOperator::LT,
                 bounds: Bounds::of(1, 9),
             };
             let jcs = JointConstraints::of(vec![jc]);
@@ -914,7 +914,7 @@ mod tests {
 
             let jc = JointConstraint {
                 vars: vars.clone(),
-                rel: ComparisonOperator::EQ,
+                op: ComparisonOperator::EQ,
                 bounds: Bounds::of(20, 20),
             };
             let jcs = JointConstraints::of(vec![jc]);
@@ -929,7 +929,7 @@ mod tests {
 
             let jc = JointConstraint {
                 vars: vec!['A'],
-                rel: ComparisonOperator::EQ,
+                op: ComparisonOperator::EQ,
                 bounds: Bounds::of(5, 5),
             };
             let jcs = JointConstraints::of(vec![jc]);
@@ -949,8 +949,8 @@ mod tests {
         //     vcs.ensure_entry_mut('B').bounds = Bounds::of(1, 10);
         //
         //     let jcs = JointConstraints::of(vec![
-        //         JointConstraint { vars: vec!['A', 'B'], rel: RelMask::EQ, target: 5 },
-        //         JointConstraint { vars: vec!['A', 'B'], rel: RelMask::EQ, target: 7 },
+        //         JointConstraint { vars: vec!['A', 'B'], op: ComparisonOperator::EQ, target: 5 },
+        //         JointConstraint { vars: vec!['A', 'B'], op: ComparisonOperator::EQ, target: 7 },
         //     ]);
         //
         //     let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);
@@ -962,8 +962,8 @@ mod tests {
             let mut vcs = VarConstraints::default();
 
             let jcs = JointConstraints::of(vec![
-                JointConstraint { vars: vec!['A', 'B'], rel: ComparisonOperator::EQ, bounds: Bounds::of(5, 5) },
-                JointConstraint { vars: vec!['A', 'B'], rel: ComparisonOperator::EQ, bounds: Bounds::of(5, 5) },
+                JointConstraint { vars: vec!['A', 'B'], op: ComparisonOperator::EQ, bounds: Bounds::of(5, 5) },
+                JointConstraint { vars: vec!['A', 'B'], op: ComparisonOperator::EQ, bounds: Bounds::of(5, 5) },
             ]);
 
             let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);
@@ -977,7 +977,7 @@ mod tests {
 
             let jc = JointConstraint {
                 vars: vec!['A', 'B'],
-                rel: ComparisonOperator::EQ,
+                op: ComparisonOperator::EQ,
                 bounds: Bounds::of(0, 0),
             };
             let jcs = JointConstraints::of(vec![jc]);
@@ -992,7 +992,7 @@ mod tests {
 
             let jc = JointConstraint {
                 vars: vec!['A', 'B'],
-                rel: ComparisonOperator::NE,
+                op: ComparisonOperator::NE,
                 bounds: Bounds::of(5, 5),
             };
             let jcs = JointConstraints::of(vec![jc]);
@@ -1011,8 +1011,8 @@ mod tests {
         //     vcs.ensure_entry_mut('B').bounds = Bounds::of(1, 10);
         //
         //     let jcs = JointConstraints::of(vec![
-        //         JointConstraint { vars: vec!['A', 'B'], rel: ComparisonOperator::EQ, bounds: Bounds::of(5, 5) },
-        //         JointConstraint { vars: vec!['A', 'B'], rel: ComparisonOperator::EQ, bounds: Bounds::of(7, 7) },
+        //         JointConstraint { vars: vec!['A', 'B'], op: ComparisonOperator::EQ, bounds: Bounds::of(5, 5) },
+        //         JointConstraint { vars: vec!['A', 'B'], op: ComparisonOperator::EQ, bounds: Bounds::of(7, 7) },
         //     ]);
         //
         //     let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);
