@@ -21,9 +21,9 @@ path = "src/bin/bench_local.rs"
 
 [dependencies]
 nom = "8.0.0"
-clap = { version = "4.6.0", features = ["derive"] }
+clap = { version = "4.6.1", features = ["derive"] }
 thiserror = "2.0.18"
-fancy-regex = "0.17.0"
+fancy-regex = "0.18.0"
 web-time = "1.1.0"
 once_cell = "1.21.4"
 log = "0.4.29"
