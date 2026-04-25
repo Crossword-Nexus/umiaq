@@ -18,13 +18,13 @@ use std::collections::HashMap;
 ///
 /// - `vars`  : the participating variable names (A–Z). Duplicates **do** count toward the sum.
 /// - `bounds`: allowed length range for the sum.
-/// - `rel`   : original operator, stored as a comparison operator.
+/// - `rel`   : comparison operator.
 ///             Mainly kept for `NE` (!=) support and display.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct JointConstraint {
     pub vars: Vec<char>,   // e.g., ['A','B','C']
     pub bounds: Bounds,    // e.g., [5, 8]
-    pub rel: ComparisonOperator,      // operator as data
+    pub rel: ComparisonOperator,
 }
 
 impl FromStr for JointConstraint {
