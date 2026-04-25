@@ -27,7 +27,6 @@
 use crate::constraints::{Bounds, VarConstraint, VarConstraints};
 use crate::joint_constraints::{JointConstraint, JointConstraints, RelMask};
 use crate::parser::{FormPart, ParsedForm};
-use std::cmp::max;
 use std::collections::{HashMap, HashSet};
 
 /// A joint constraint over variables *restricted to this form* considered
@@ -215,27 +214,15 @@ impl PatternLenHints {
 /// Convert a crate-level `JointConstraint` to a `GroupLenConstraint` interval.
 /// Returns `None` for incompatible/non-interval relations (e.g., NE) or empty.
 fn group_from_joint(jc: &JointConstraint) -> Option<GroupLenConstraint> {
-    // Map RelMask to [min,max] on the target.
-    // Note: For LT/GT we avoid underflow/overflow.
-    let (tmin, tmax_opt) = match jc.rel {
-        RelMask::EQ => (jc.target, Some(jc.target)),
-        RelMask::LE => (0, Some(jc.target)),
-        RelMask::LT => (0, Some(max(0, jc.target - 1))),
-        RelMask::GE => (jc.target, None),
-        RelMask::GT => (jc.target.saturating_add(1), None),
-        _ => return None // NE (or unusual mask combos) don't give a single interval — skip tightening.
-    };
-
-    // Basic sanity: empty interval ⇒ None
-    if let Some(tmax) = tmax_opt && tmin > tmax {
-        None
-    } else {
-        Some(GroupLenConstraint {
-            vars: jc.vars.clone(),
-            total_min: tmin,
-            total_max: tmax_opt,
-        })
+    if jc.rel == RelMask::NE {
+        return None;
     }
+
+    Some(GroupLenConstraint {
+        vars: jc.vars.clone(),
+        total_min: jc.bounds.min_len,
+        total_max: jc.bounds.max_len_opt,
+    })
 }
 
 /// Compute the weighted extremal sum at fixed total `t` over the rows,
@@ -501,7 +488,7 @@ mod tests {
         // Build a JointConstraints equivalent to |AB|=6
         let jc = JointConstraint {
             vars: vec!['A', 'B'],
-            target: 6,
+            bounds: Bounds::of(6, 6),
             rel: RelMask::EQ,
         };
         let jcs = JointConstraints::of(vec![jc]);
@@ -536,7 +523,7 @@ mod tests {
 
         let jc = JointConstraint {
             vars: vec!['A', 'B'],
-            target: 6,
+            bounds: Bounds::of(6, 6),
             rel: RelMask::EQ,
         };
         let jcs = JointConstraints::of(vec![jc]);
@@ -563,12 +550,12 @@ mod tests {
 
         let g1 = JointConstraint {
             vars: vec!['A', 'B'],
-            target: 4,
+            bounds: Bounds::of_unbounded(4),
             rel: RelMask::GE,
         };
         let g2 = JointConstraint {
             vars: vec!['A', 'B'],
-            target: 6,
+            bounds: Bounds::of(1, 6),
             rel: RelMask::LE,
         };
         let jcs = JointConstraints::of(vec![g1, g2]);
@@ -587,7 +574,7 @@ mod tests {
         let form = pf(vec![FormPart::Var('A'), FormPart::Star, FormPart::Var('B')]);
         let jc = JointConstraint {
             vars: vec!['A', 'B'],
-            target: 6,
+            bounds: Bounds::of(6, 6),
             rel: RelMask::EQ,
         };
         let jcs = JointConstraints::of(vec![jc]);
@@ -607,7 +594,7 @@ mod tests {
         let form = pf(vec![FormPart::Var('A')]);
         let jc = JointConstraint {
             vars: vec!['A', 'B'],
-            target: 6,
+            bounds: Bounds::of(6, 6),
             rel: RelMask::EQ,
         };
         let jcs = JointConstraints::of(vec![jc]);
@@ -640,8 +627,8 @@ mod tests {
         let b = vcs.ensure('B');
         b.bounds = Bounds::of(2, 10);
 
-        let g1 = JointConstraint { vars: vec!['A','B'], target: 4, rel: RelMask::GE };
-        let g2 = JointConstraint { vars: vec!['A','B'], target: 6, rel: RelMask::LE };
+        let g1 = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of_unbounded(4), rel: RelMask::GE };
+        let g2 = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of(1, 6), rel: RelMask::LE };
         let jcs = JointConstraints::of(vec![g1, g2]);
 
         let hints = form_len_hints_pf(&form, &vcs, &jcs);
@@ -670,8 +657,8 @@ mod tests {
         let c = vcs.ensure('C');
         c.bounds = Bounds::of(3, 4);
 
-        let ge = JointConstraint { vars: vec!['A','B','C'], target: 10, rel: RelMask::GE };
-        let le = JointConstraint { vars: vec!['A','B','C'], target: 12, rel: RelMask::LE };
+        let ge = JointConstraint { vars: vec!['A','B','C'], bounds: Bounds::of_unbounded(10), rel: RelMask::GE };
+        let le = JointConstraint { vars: vec!['A','B','C'], bounds: Bounds::of(1, 12), rel: RelMask::LE };
         let jcs = JointConstraints::of(vec![ge, le]);
 
         let hints = form_len_hints_pf(&form, &vcs, &jcs);
@@ -712,7 +699,7 @@ mod tests {
         let form = pf(vec![FormPart::Var('A')]);
         let vcs = VarConstraints::default();
 
-        let jc = JointConstraint { vars: vec!['A','B'], target: 5, rel: RelMask::EQ };
+        let jc = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of(5, 5), rel: RelMask::EQ };
         let jcs = JointConstraints::of(vec![jc]);
 
         let hints = form_len_hints_pf(&form, &vcs, &jcs);

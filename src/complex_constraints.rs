@@ -150,6 +150,9 @@ pub(crate) fn parse_length_range(input: &str) -> Result<Bounds, Box<ParseError>>
                 let max = rhs.parse::<usize>().map_err(|_| {
                     Box::new(ParseError::InvalidLengthRange { input: input.to_string() })
                 })?;
+                if min > max {
+                    return Err(Box::new(ParseError::InvalidLengthRange { input: input.to_string() }));
+                }
                 Ok(Bounds::of(min, max))
             }
         }
@@ -249,6 +252,12 @@ mod tests {
         assert!(matches!(
             *parse_length_range("4-5a").unwrap_err(),
             ParseError::InvalidLengthRange { input } if input == "4-5a"
+        ));
+
+        // Contradictory range (min > max)
+        assert!(matches!(
+            *parse_length_range("5-2").unwrap_err(),
+            ParseError::InvalidLengthRange { input } if input == "5-2"
         ));
     }
 
