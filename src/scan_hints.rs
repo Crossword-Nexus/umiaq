@@ -216,7 +216,7 @@ impl PatternLenHints {
 /// Convert a crate-level `JointConstraint` to a `GroupLenConstraint` interval.
 /// Returns `None` for incompatible/non-interval relations (e.g., NE) or empty.
 fn group_from_joint(jc: &JointConstraint) -> Option<GroupLenConstraint> {
-    if jc.rel == ComparisonOperator::NE {
+    if jc.op == ComparisonOperator::NE {
         return None;
     }
 
@@ -491,7 +491,7 @@ mod tests {
         let jc = JointConstraint {
             vars: vec!['A', 'B'],
             bounds: Bounds::of(6, 6),
-            rel: ComparisonOperator::EQ,
+            op: ComparisonOperator::EQ,
         };
         let jcs = JointConstraints::of(vec![jc]);
 
@@ -526,7 +526,7 @@ mod tests {
         let jc = JointConstraint {
             vars: vec!['A', 'B'],
             bounds: Bounds::of(6, 6),
-            rel: ComparisonOperator::EQ,
+            op: ComparisonOperator::EQ,
         };
         let jcs = JointConstraints::of(vec![jc]);
         let hints = form_len_hints_pf(&form, &vcs, &jcs);
@@ -553,12 +553,12 @@ mod tests {
         let g1 = JointConstraint {
             vars: vec!['A', 'B'],
             bounds: Bounds::of_unbounded(4),
-            rel: ComparisonOperator::GE,
+            op: ComparisonOperator::GE,
         };
         let g2 = JointConstraint {
             vars: vec!['A', 'B'],
             bounds: Bounds::of(1, 6),
-            rel: ComparisonOperator::LE,
+            op: ComparisonOperator::LE,
         };
         let jcs = JointConstraints::of(vec![g1, g2]);
         let hints = form_len_hints_pf(&form, &vcs, &jcs);
@@ -577,7 +577,7 @@ mod tests {
         let jc = JointConstraint {
             vars: vec!['A', 'B'],
             bounds: Bounds::of(6, 6),
-            rel: ComparisonOperator::EQ,
+            op: ComparisonOperator::EQ,
         };
         let jcs = JointConstraints::of(vec![jc]);
         let vcs = VarConstraints::default();
@@ -597,7 +597,7 @@ mod tests {
         let jc = JointConstraint {
             vars: vec!['A', 'B'],
             bounds: Bounds::of(6, 6),
-            rel: ComparisonOperator::EQ,
+            op: ComparisonOperator::EQ,
         };
         let jcs = JointConstraints::of(vec![jc]);
         let vcs = VarConstraints::default();
@@ -629,8 +629,8 @@ mod tests {
         let b = vcs.ensure('B');
         b.bounds = Bounds::of(2, 10);
 
-        let g1 = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of_unbounded(4), rel: ComparisonOperator::GE };
-        let g2 = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of(1, 6), rel: ComparisonOperator::LE };
+        let g1 = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of_unbounded(4), op: ComparisonOperator::GE };
+        let g2 = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of(1, 6), op: ComparisonOperator::LE };
         let jcs = JointConstraints::of(vec![g1, g2]);
 
         let hints = form_len_hints_pf(&form, &vcs, &jcs);
@@ -659,8 +659,8 @@ mod tests {
         let c = vcs.ensure('C');
         c.bounds = Bounds::of(3, 4);
 
-        let ge = JointConstraint { vars: vec!['A','B','C'], bounds: Bounds::of_unbounded(10), rel: ComparisonOperator::GE };
-        let le = JointConstraint { vars: vec!['A','B','C'], bounds: Bounds::of(1, 12), rel: ComparisonOperator::LE };
+        let ge = JointConstraint { vars: vec!['A','B','C'], bounds: Bounds::of_unbounded(10), op: ComparisonOperator::GE };
+        let le = JointConstraint { vars: vec!['A','B','C'], bounds: Bounds::of(1, 12), op: ComparisonOperator::LE };
         let jcs = JointConstraints::of(vec![ge, le]);
 
         let hints = form_len_hints_pf(&form, &vcs, &jcs);
@@ -701,7 +701,7 @@ mod tests {
         let form = pf(vec![FormPart::Var('A')]);
         let vcs = VarConstraints::default();
 
-        let jc = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of(5, 5), rel: ComparisonOperator::EQ };
+        let jc = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of(5, 5), op: ComparisonOperator::EQ };
         let jcs = JointConstraints::of(vec![jc]);
 
         let hints = form_len_hints_pf(&form, &vcs, &jcs);
