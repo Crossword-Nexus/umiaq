@@ -153,7 +153,7 @@ impl Bounds {
 
     /// Returns true if the given length is within these bounds (inclusive).
     pub(crate) fn contains(&self, len: usize) -> bool {
-        len >= self.min_len && self.max_len_opt.map_or(true, |max| len <= max)
+        len >= self.min_len && self.max_len_opt.is_none_or(|max| len <= max)
     }
 
     // only set what the constraint explicitly provides
