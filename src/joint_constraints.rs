@@ -73,17 +73,10 @@ impl JointConstraint {
                 })
                 .sum();
 
-            if self.op == ComparisonOperator::NE {
-                !self.bounds.contains(total)
-            } else if self.op == ComparisonOperator::EQ
-                || self.op == ComparisonOperator::LE
-                || self.op == ComparisonOperator::GE
-                || self.op == ComparisonOperator::LT
-                || self.op == ComparisonOperator::GT
-            {
-                self.bounds.contains(total)
-            } else {
-                unreachable!("Unknown ComparisonOperator in JointConstraint: {:?}", self.op)
+            match self.op {
+                ComparisonOperator::NE => !self.bounds.contains(total),
+                ComparisonOperator::EQ | ComparisonOperator::LE | ComparisonOperator::GE
+                | ComparisonOperator::LT | ComparisonOperator::GT => self.bounds.contains(total),
             }
         } else {
             true
@@ -99,10 +92,10 @@ impl JointConstraint {
             let Some(len) = var_len else { return false };
             total += len;
         }
-        if self.op == ComparisonOperator::NE {
-            !self.bounds.contains(total)
-        } else {
-            self.bounds.contains(total)
+        match self.op {
+            ComparisonOperator::NE => !self.bounds.contains(total),
+            ComparisonOperator::EQ | ComparisonOperator::LE | ComparisonOperator::GE
+            | ComparisonOperator::LT | ComparisonOperator::GT => self.bounds.contains(total),
         }
     }
 
@@ -114,17 +107,10 @@ impl JointConstraint {
             true
         } else {
             let total: usize = self.vars.iter().map(|var_char| map.get(var_char).unwrap().len()).sum();
-            if self.op == ComparisonOperator::NE {
-                !self.bounds.contains(total)
-            } else if self.op == ComparisonOperator::EQ
-                || self.op == ComparisonOperator::LE
-                || self.op == ComparisonOperator::GE
-                || self.op == ComparisonOperator::LT
-                || self.op == ComparisonOperator::GT
-            {
-                self.bounds.contains(total)
-            } else {
-                unreachable!("Unknown ComparisonOperator in JointConstraint: {:?}", self.op)
+            match self.op {
+                ComparisonOperator::NE => !self.bounds.contains(total),
+                ComparisonOperator::EQ | ComparisonOperator::LE | ComparisonOperator::GE
+                | ComparisonOperator::LT | ComparisonOperator::GT => self.bounds.contains(total),
             }
         }
     }
@@ -133,10 +119,10 @@ impl JointConstraint {
 impl fmt::Display for JointConstraint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let vars: String = self.vars.iter().collect();
-        if self.op == ComparisonOperator::EQ {
-            write!(f, "|{}|={}", vars, self.bounds)
-        } else {
-            write!(f, "|{}| {} {}", vars, self.op, self.bounds)
+        match self.op {
+            ComparisonOperator::EQ => write!(f, "|{}|={}", vars, self.bounds),
+            ComparisonOperator::NE | ComparisonOperator::LE | ComparisonOperator::GE
+            | ComparisonOperator::LT | ComparisonOperator::GT => write!(f, "|{}| {} {}", vars, self.op, self.bounds),
         }
     }
 }
