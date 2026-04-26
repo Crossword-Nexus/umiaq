@@ -25,7 +25,9 @@
 // -----------------------------------------------------------------------------
 
 use crate::constraints::{Bounds, VarConstraint, VarConstraints};
-use crate::joint_constraints::{JointConstraint, JointConstraints};
+use crate::joint_constraints::{JointConstraints, RangeConstraint};
+#[cfg(test)]
+use crate::joint_constraints::JointConstraint;
 
 use crate::parser::{FormPart, ParsedForm};
 use std::collections::{HashMap, HashSet};
@@ -212,15 +214,13 @@ impl PatternLenHints {
     }
 }
 
-/// Convert a crate-level `JointConstraint` to a `GroupLenConstraint` interval.
-/// Returns `None` for incompatible/non-interval relations (e.g., NE) or empty.
-fn group_from_joint(jc: &JointConstraint) -> Option<GroupLenConstraint> {
-    let JointConstraint::Range(rc) = jc else { return None; };
-    Some(GroupLenConstraint {
+/// Convert a `RangeConstraint` to a `GroupLenConstraint` interval.
+fn group_from_joint(rc: &RangeConstraint) -> GroupLenConstraint {
+    GroupLenConstraint {
         vars: rc.vars.clone(),
         total_min: rc.bounds.min_len,
         total_max: rc.bounds.max_len_opt,
-    })
+    }
 }
 
 /// Compute the weighted extremal sum at fixed total `t` over the rows,
@@ -394,10 +394,10 @@ fn group_constraints_for_form(form: &ParsedForm, jcs: &JointConstraints) -> Vec<
             _ => None,
         }).collect();
 
-        jcs.iter()
+        jcs.iter_ranges()
             // ← revert to ANY overlap so constraints like |AB|=6 still inform A-only forms
-            .filter(|jc| jc.vars().iter().any(|var_char| present.contains(var_char)))
-            .filter_map(group_from_joint)
+            .filter(|rc| rc.vars.iter().any(|var_char| present.contains(var_char)))
+            .map(group_from_joint)
             .collect()
     }
 }

@@ -1219,8 +1219,7 @@ mod tests {
             assert_eq!(b.not_equal, HashSet::from_iter(['A']));
 
             assert_eq!(ctx.joint_constraints.len(), 1);
-            let jc = ctx.joint_constraints.iter().next().unwrap();
-            let JointConstraint::Range(rc) = jc else { panic!("expected Range") };
+            let rc = ctx.joint_constraints.iter_ranges().next().unwrap();
             assert_eq!(rc.vars, vec!['A', 'B']);
             assert_eq!(rc.bounds, Bounds::of(8, 8));
         }
@@ -1266,11 +1265,11 @@ mod tests {
             let ctx = result.unwrap();
             assert_eq!(ctx.joint_constraints.len(), 4);
 
-            let constraints: Vec<_> = ctx.joint_constraints.iter().collect();
-            assert!(constraints.iter().any(|jc| matches!(jc, JointConstraint::Range(rc) if rc.vars == vec!['A', 'B'] && rc.bounds == Bounds::of(5, 5))));
-            assert!(constraints.iter().any(|jc| matches!(jc, JointConstraint::Range(rc) if rc.vars == vec!['C', 'D'] && rc.bounds == Bounds::of(7, 7))));
-            assert!(constraints.iter().any(|jc| matches!(jc, JointConstraint::Range(rc) if rc.vars == vec!['A', 'C'] && rc.bounds == Bounds::of_unbounded(3))));
-            assert!(constraints.iter().any(|jc| matches!(jc, JointConstraint::Range(rc) if rc.vars == vec!['B', 'D'] && rc.bounds == Bounds::of(1, 10))));
+            let ranges: Vec<_> = ctx.joint_constraints.iter_ranges().collect();
+            assert!(ranges.iter().any(|rc| rc.vars == vec!['A', 'B'] && rc.bounds == Bounds::of(5, 5)));
+            assert!(ranges.iter().any(|rc| rc.vars == vec!['C', 'D'] && rc.bounds == Bounds::of(7, 7)));
+            assert!(ranges.iter().any(|rc| rc.vars == vec!['A', 'C'] && rc.bounds == Bounds::of_unbounded(3)));
+            assert!(ranges.iter().any(|rc| rc.vars == vec!['B', 'D'] && rc.bounds == Bounds::of(1, 10)));
         }
 
         #[test]

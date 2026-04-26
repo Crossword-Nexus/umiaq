@@ -23,9 +23,43 @@ pub struct RangeConstraint {
     op: ComparisonOperator,  // private: always non-NE; enforced by JointConstraint::range()
 }
 
+/// Mid-search satisfaction check: sums var lengths in `bindings`; if any var is unbound,
+/// returns `true` (no opinion); otherwise applies `check` to the total.
+fn satisfied_if_all_bound(vars: &[char], bindings: &Bindings, check: impl Fn(usize) -> bool) -> bool {
+    vars.iter()
+        .try_fold(0usize, |acc, &c| bindings.get(c).map(|s| acc + s.len()))
+        .is_none_or(check)
+}
+
+/// Strict satisfaction check: sums var lengths across `parts`; if any var is unbound,
+/// returns `false`; otherwise applies `check` to the total.
+fn strictly_satisfied_from_parts(vars: &[char], parts: &[Bindings], check: impl Fn(usize) -> bool) -> bool {
+    vars.iter()
+        .try_fold(0usize, |acc, &c| resolve_var_len(parts, c).map(|l| acc + l))
+        .is_some_and(check)
+}
+
+#[cfg(test)]
+fn satisfied_from_map(vars: &[char], map: &HashMap<char, String>, check: impl Fn(usize) -> bool) -> bool {
+    vars.iter()
+        .try_fold(0usize, |acc, v| map.get(v).map(|s| acc + s.len()))
+        .is_none_or(check)
+}
+
 impl RangeConstraint {
     pub fn op(&self) -> ComparisonOperator {
         self.op
+    }
+    fn check(&self, value: usize) -> bool { self.bounds.contains(value) }
+}
+
+impl fmt::Display for RangeConstraint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let vars: String = self.vars.iter().collect();
+        match self.op() {
+            ComparisonOperator::EQ => write!(f, "|{}|={}", vars, self.bounds),
+            _ => write!(f, "|{}| {} {}", vars, self.op(), self.bounds),
+        }
     }
 }
 
@@ -34,6 +68,17 @@ impl RangeConstraint {
 pub struct NeConstraint {
     pub vars: Vec<char>,
     pub forbidden: usize,
+}
+
+impl NeConstraint {
+    fn check(&self, value: usize) -> bool { value != self.forbidden }
+}
+
+impl fmt::Display for NeConstraint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let vars: String = self.vars.iter().collect();
+        write!(f, "|{}| != {}", vars, self.forbidden)
+    }
 }
 
 /// A joint length constraint — either a range check or a not-equal check.
@@ -88,11 +133,10 @@ impl JointConstraint {
         }
     }
 
-    #[inline]
-    fn is_satisfied_by_value(&self, value: usize) -> bool {
+    fn check(&self, value: usize) -> bool {
         match self {
-            JointConstraint::Range(rc) => rc.bounds.contains(value),
-            JointConstraint::Ne(nc) => value != nc.forbidden,
+            JointConstraint::Range(rc) => rc.check(value),
+            JointConstraint::Ne(nc) => nc.check(value),
         }
     }
 
@@ -105,55 +149,29 @@ impl JointConstraint {
     /// or add a separate strict method that returns `false` when some vars are unbound.
     #[inline]
     pub(crate) fn is_satisfied_by(&self, bindings: &Bindings) -> bool {
-        if bindings.contains_all_vars(self.vars()) {
-            // safe: unwrap is guaranteed to succeed because contains_all_vars returned true
-            let total: usize = self.vars().iter()
-                .map(|var_char| {
-                    let binding = bindings.get(*var_char);
-                    debug_assert!(binding.is_some(), "var '{var_char}' must be bound after contains_all_vars check");
-                    binding.expect("var must be bound after contains_all_vars check").len()
-                })
-                .sum();
-            self.is_satisfied_by_value(total)
-        } else {
-            true
-        }
+        satisfied_if_all_bound(self.vars(), bindings, |v| self.check(v))
     }
 
     /// Check this constraint against a *solution row* represented as a slice of Bindings
     /// (one Bindings per form/pattern). Duplicates in `vars` count toward the sum.
     /// Returns `false` if *any* referenced var is unbound across `parts`.
     pub fn is_strictly_satisfied_by_parts(&self, parts: &[Bindings]) -> bool {
-        let mut total = 0;
-        for var_len in self.vars().iter().map(|&var_char| resolve_var_len(parts, var_char)) {
-            let Some(len) = var_len else { return false };
-            total += len;
-        }
-        self.is_satisfied_by_value(total)
+        strictly_satisfied_from_parts(self.vars(), parts, |v| self.check(v))
     }
 
     // --- Test-only convenience for asserting behavior without needing real `Bindings`.
     //     This keeps tests independent of crate::bindings internals.
     #[cfg(test)]
     fn is_satisfied_by_map(&self, map: &HashMap<char, String>) -> bool {
-        if !self.vars().iter().all(|v| map.contains_key(v)) {
-            true
-        } else {
-            let total = self.vars().iter().map(|v| map[v].len()).sum();
-            self.is_satisfied_by_value(total)
-        }
+        satisfied_from_map(self.vars(), map, |v| self.check(v))
     }
 }
 
 impl fmt::Display for JointConstraint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let vars: String = self.vars().iter().collect();
         match self {
-            JointConstraint::Range(rc) => match rc.op() {
-                ComparisonOperator::EQ => write!(f, "|{}|={}", vars, rc.bounds),
-                _ => write!(f, "|{}| {} {}", vars, rc.op(), rc.bounds),
-            },
-            JointConstraint::Ne(nc) => write!(f, "|{}| != {}", vars, nc.forbidden),
+            JointConstraint::Range(rc) => rc.fmt(f),
+            JointConstraint::Ne(nc) => nc.fmt(f),
         }
     }
 }
@@ -246,35 +264,42 @@ fn parse_joint_len(expr: &str) -> Option<JointConstraint> {
 
 
 /// Container for many joint constraints (useful as a field on your puzzle/parse).
+/// Ranges and NE constraints are stored separately so hot-path iteration over ranges
+/// requires no variant dispatch.
 #[derive(Debug, Default, Clone)]
 pub struct JointConstraints {
-    as_vec: Vec<JointConstraint>
+    ranges: Vec<RangeConstraint>,
+    nes: Vec<NeConstraint>,
 }
 
 impl IntoIterator for JointConstraints {
     type Item = JointConstraint;
-    type IntoIter = std::vec::IntoIter<Self::Item>;
+    type IntoIter = std::vec::IntoIter<JointConstraint>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.as_vec.into_iter()
+        let mut v: Vec<JointConstraint> = self.ranges.into_iter().map(JointConstraint::Range).collect();
+        v.extend(self.nes.into_iter().map(JointConstraint::Ne));
+        v.into_iter()
     }
 }
 
 impl JointConstraints {
-    /// Return an iterator over the joint constraints
-    pub(crate) fn iter(&self) -> impl Iterator<Item = &JointConstraint> {
-        self.as_vec.iter()
+    /// Iterate over range constraints only (the common case for propagation and hints).
+    pub(crate) fn iter_ranges(&self) -> impl Iterator<Item = &RangeConstraint> {
+        self.ranges.iter()
     }
 
     /// Parse all joint constraints from an equation string by splitting on your
-    /// `FORM_SEPARATOR` (i.e., ';'), feeding each part through `parse_joint_len`.
+    /// `FORM_SEPARATOR` (i.e., ‘;’), feeding each part through `parse_joint_len`.
     #[cfg(test)]
     pub(crate) fn parse_equation(equation: &str) -> JointConstraints {
-        let jc_vec = equation.split(FORM_SEPARATOR).filter_map(|part| {
-            parse_joint_len(part.trim())
-        }).collect();
-
-        JointConstraints { as_vec: jc_vec }
+        let mut jcs = JointConstraints::default();
+        for part in equation.split(FORM_SEPARATOR) {
+            if let Some(jc) = parse_joint_len(part.trim()) {
+                jcs.add(jc);
+            }
+        }
+        jcs
     }
 
     /// Insert a new `JointConstraint` into this collection.
@@ -283,19 +308,24 @@ impl JointConstraints {
     /// storage. Keeping the push logic behind a method preserves
     /// encapsulation: callers don’t need to know or rely on the fact
     /// that `JointConstraints` is backed by a `Vec`
+    ///
+    /// Keeping the push logic behind a method preserves encapsulation:
+    /// callers don’t need to know or rely on the internal split-storage
+    /// representation (`ranges` / `nes`).
     pub(crate) fn add(&mut self, jc: JointConstraint) {
-        // Delegate to the underlying Vec implementation.
-        self.as_vec.push(jc);
+        match jc {
+            JointConstraint::Range(rc) => self.ranges.push(rc),
+            JointConstraint::Ne(nc) => self.nes.push(nc),
+        }
     }
 
-
     pub(crate) fn is_empty(&self) -> bool {
-        self.as_vec.is_empty()
+        self.ranges.is_empty() && self.nes.is_empty()
     }
 
     /// Number of joint constraints.
     pub(crate) fn len(&self) -> usize {
-        self.as_vec.len()
+        self.ranges.len() + self.nes.len()
     }
 
     /// Return true iff **every** joint constraint is satisfied w.r.t. `bindings`.
@@ -304,27 +334,29 @@ impl JointConstraints {
     /// (see `JointConstraint::is_satisfied_by`), so this is safe to call
     /// during search as a "non-pruning check".
     pub(crate) fn all_satisfied(&self, bindings: &Bindings) -> bool {
-        self.as_vec.iter().all(|jc| jc.is_satisfied_by(bindings))
+        self.ranges.iter().all(|rc| satisfied_if_all_bound(&rc.vars, bindings, |v| rc.check(v)))
+            && self.nes.iter().all(|nc| satisfied_if_all_bound(&nc.vars, bindings, |v| nc.check(v)))
     }
 
     /// True iff **every** joint constraint is satisfied w.r.t. a slice of `Bindings`.
     /// Requires all referenced variables to be bound.
     pub fn all_strictly_satisfied_for_parts(&self, parts: &[Bindings]) -> bool {
-        self.as_vec.iter().all(|jc| jc.is_strictly_satisfied_by_parts(parts))
+        self.ranges.iter().all(|rc| strictly_satisfied_from_parts(&rc.vars, parts, |v| rc.check(v)))
+            && self.nes.iter().all(|nc| strictly_satisfied_from_parts(&nc.vars, parts, |v| nc.check(v)))
     }
 
     // Test-only helper mirroring `all_satisfied` over a plain map.
     #[cfg(test)]
-    fn all_satisfied_map(
-        &self,
-        map: &HashMap<char, String>
-    ) -> bool {
-        self.as_vec.iter().all(|jc| jc.is_satisfied_by_map(map))
+    fn all_satisfied_map(&self, map: &HashMap<char, String>) -> bool {
+        self.ranges.iter().all(|rc| satisfied_from_map(&rc.vars, map, |v| rc.check(v)))
+            && self.nes.iter().all(|nc| satisfied_from_map(&nc.vars, map, |v| nc.check(v)))
     }
 
     #[cfg(test)]
-    pub(crate) fn of(as_vec: Vec<JointConstraint>) -> JointConstraints {
-        JointConstraints { as_vec }
+    pub(crate) fn of(jcs: Vec<JointConstraint>) -> JointConstraints {
+        let mut result = JointConstraints::default();
+        for jc in jcs { result.add(jc); }
+        result
     }
 }
 
@@ -340,14 +372,19 @@ many cases—e.g., input |AB|=3- would (I think?) be displayed (thanks to conver
 
 impl fmt::Display for JointConstraints {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.as_vec.is_empty() {
+        if self.ranges.is_empty() && self.nes.is_empty() {
             write!(f, "(none)")
         } else {
-            for (i, jc) in self.as_vec.iter().enumerate() {
-                if i > 0 {
-                    writeln!(f)?;
-                }
-                write!(f, "{jc}")?;
+            let mut i = 0;
+            for rc in &self.ranges {
+                if i > 0 { writeln!(f)?; }
+                write!(f, "{rc}")?;
+                i += 1;
+            }
+            for nc in &self.nes {
+                if i > 0 { writeln!(f)?; }
+                write!(f, "{nc}")?;
+                i += 1;
             }
             Ok(())
         }
@@ -430,8 +467,7 @@ impl fmt::Display for JointConstraints {
 ///
 /// Returns `Err(ContradictoryBounds)` if the constraints are provably unsatisfiable.
 pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstraints) -> Result<(), Box<ParseError>> {
-    for jc in jcs.iter() {
-        let JointConstraint::Range(rc) = jc else { continue; };
+    for rc in jcs.iter_ranges() {
         if rc.op() != ComparisonOperator::EQ { continue; }
 
         let target_min = rc.bounds.min_len;
@@ -464,7 +500,7 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
                 .map(|(v, min)| format!("|{v}|>={min}"))
                 .collect();
             return Err(Box::new(ParseError::JointConstraintContradiction {
-                constraint: format!("{jc}"),
+                constraint: format!("{rc}"),
                 reason: format!(
                     "sum of minimum lengths ({}) exceeds target maximum ({}). Individual constraints: {}",
                     sum_min, target_max, bounds_str.join(", ")
@@ -477,7 +513,7 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
                 .map(|(v, max)| format!("|{v}|<={max}"))
                 .collect();
             return Err(Box::new(ParseError::JointConstraintContradiction {
-                constraint: format!("{jc}"),
+                constraint: format!("{rc}"),
                 reason: format!(
                     "sum of maximum lengths ({}) is less than target minimum ({}). Individual constraints: {}",
                     sum_max, target_min, bounds_str.join(", ")
@@ -542,7 +578,7 @@ pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstr
                 // fail fast: check for contradictory bounds
                 if new_min > new_max {
                     return Err(Box::new(ParseError::JointConstraintContradiction {
-                        constraint: format!("{jc}"),
+                        constraint: format!("{rc}"),
                         reason: format!(
                             "variable '{var_char}' would need |{var_char}|>={new_min} and |{var_char}|<={new_max}, which is impossible. \
                              This occurs when the joint constraint forces contradictory bounds on a variable."
