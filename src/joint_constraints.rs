@@ -140,18 +140,6 @@ impl JointConstraint {
         }
     }
 
-    /// Check satisfaction against current `bindings`.
-    ///
-    /// **Mid-search semantics** (by design): if **any** referenced var is unbound,
-    /// we return `true` (no opinion yet). This keeps partial assignments alive.
-    ///
-    /// If you need a *final* strict check, run this only after all vars are bound,
-    /// or add a separate strict method that returns `false` when some vars are unbound.
-    #[inline]
-    pub(crate) fn is_satisfied_by(&self, bindings: &Bindings) -> bool {
-        satisfied_if_all_bound(self.vars(), bindings, |v| self.check(v))
-    }
-
     /// Check this constraint against a *solution row* represented as a slice of Bindings
     /// (one Bindings per form/pattern). Duplicates in `vars` count toward the sum.
     /// Returns `false` if *any* referenced var is unbound across `parts`.
