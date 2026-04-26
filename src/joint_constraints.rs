@@ -58,11 +58,7 @@ impl RangeConstraint {
 
 impl fmt::Display for RangeConstraint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let vars: String = self.vars.iter().collect();
-        match self.op() {
-            ComparisonOperator::EQ => write!(f, "|{}|={}", vars, self.bounds),
-            _ => write!(f, "|{}| {} {}", vars, self.op(), self.bounds),
-        }
+        write!(f, "|{}|∈{}", self.vars.iter().collect::<String>(), self.bounds) // TODO? special case for singleton bounds (e.g., instead of "|AB|∈[5,5]", display "|AB|=5")
     }
 }
 
@@ -82,8 +78,7 @@ impl NeConstraint {
 
 impl fmt::Display for NeConstraint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let vars: String = self.vars.iter().collect();
-        write!(f, "|{}| != {}", vars, self.forbidden)
+        write!(f, "|{}|≠{}", self.vars.iter().collect::<String>(), self.forbidden)
     }
 }
 
@@ -353,16 +348,6 @@ impl JointConstraints {
         result
     }
 }
-
-/*
-do we want to display this as |AB|=[5,5] (instead of, e.g., |AB|=5)?
-
-also, do we want = (instead of, say, ∈)? so |AB|=[2,7] -> |AB|∈[2,7] (e.g.)
-
-separate notions of how users input it and how we display it (note that they're already distinct in
-many cases—e.g., input |AB|=3- would (I think?) be displayed (thanks to conversion to a Bound) as
-|AB|=[3,∞)(?))
-*/
 
 impl fmt::Display for JointConstraints {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -868,7 +853,7 @@ mod tests {
 
         match result.unwrap_err().as_ref() {
             ParseError::JointConstraintContradiction { constraint, reason } => {
-                assert_eq!(constraint, "|AB|=[5,5]");
+                assert_eq!(constraint, "|AB|∈[5,5]");
                 assert_eq!(reason, "sum of minimum lengths (6) exceeds target maximum (5). Individual constraints: |A|>=3, |B|>=3");
             }
             other => panic!("Expected JointConstraintContradiction, got: {:?}", other),
@@ -892,7 +877,7 @@ mod tests {
 
         match result.unwrap_err().as_ref() {
             ParseError::JointConstraintContradiction { constraint, reason } => {
-                assert_eq!(constraint, "|AB|=[6,6]");
+                assert_eq!(constraint, "|AB|∈[6,6]");
                 assert_eq!(reason, "sum of maximum lengths (4) is less than target minimum (6). Individual constraints: |A|<=2, |B|<=2");
             }
             other => panic!("Expected JointConstraintContradiction, got: {:?}", other),
