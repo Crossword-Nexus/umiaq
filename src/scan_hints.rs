@@ -92,7 +92,7 @@ impl FormContext<'_> {
     ) -> Bounds {
         // Skip if group has no vars at all
         if g.vars.is_empty() {
-            return weighted_max.map_or(Bounds::of_unbounded(weighted_min), |max| Bounds::of(weighted_min, max))
+            return weighted_max.map_or(Bounds::of_unbounded_above(weighted_min), |max| Bounds::of(weighted_min, max))
         }
 
         // Intersect with the form's variables (only consider vars that appear in this form)
@@ -104,7 +104,7 @@ impl FormContext<'_> {
             .collect();
         gvars.sort_unstable();
         if gvars.is_empty() {
-            return weighted_max.map_or(Bounds::of_unbounded(weighted_min), |max| Bounds::of(weighted_min, max))
+            return weighted_max.map_or(Bounds::of_unbounded_above(weighted_min), |max| Bounds::of(weighted_min, max))
         }
 
         // Build rows, Σ min_len, and Σ max_len (finite only)
@@ -199,7 +199,7 @@ impl FormContext<'_> {
             new_max = Some(new_max.map_or(cand, |cur| cur.min(cand)));
         }
 
-        new_max.map_or(Bounds::of_unbounded(new_min), |max| Bounds::of(new_min, max))
+        new_max.map_or(Bounds::of_unbounded_above(new_min), |max| Bounds::of(new_min, max))
     }
 }
 
@@ -539,7 +539,7 @@ mod tests {
         let b = vcs.ensure('B');
         b.bounds = Bounds::of(1, 10);
 
-        let g1 = JointConstraint::range(vec!['A', 'B'], Bounds::of_unbounded(4), ComparisonOperator::GE);
+        let g1 = JointConstraint::range(vec!['A', 'B'], Bounds::of_unbounded_above(4), ComparisonOperator::GE);
         let g2 = JointConstraint::range(vec!['A', 'B'], Bounds::of(1, 6), ComparisonOperator::LE);
         let jcs = JointConstraints::of(vec![g1, g2]);
         let hints = form_len_hints_pf(&form, &vcs, &jcs);
@@ -602,7 +602,7 @@ mod tests {
         let b = vcs.ensure('B');
         b.bounds = Bounds::of(2, 10);
 
-        let g1 = JointConstraint::range(vec!['A','B'], Bounds::of_unbounded(4), ComparisonOperator::GE);
+        let g1 = JointConstraint::range(vec!['A','B'], Bounds::of_unbounded_above(4), ComparisonOperator::GE);
         let g2 = JointConstraint::range(vec!['A','B'], Bounds::of(1, 6), ComparisonOperator::LE);
         let jcs = JointConstraints::of(vec![g1, g2]);
 
@@ -632,7 +632,7 @@ mod tests {
         let c = vcs.ensure('C');
         c.bounds = Bounds::of(3, 4);
 
-        let ge = JointConstraint::range(vec!['A','B','C'], Bounds::of_unbounded(10), ComparisonOperator::GE);
+        let ge = JointConstraint::range(vec!['A','B','C'], Bounds::of_unbounded_above(10), ComparisonOperator::GE);
         let le = JointConstraint::range(vec!['A','B','C'], Bounds::of(1, 12), ComparisonOperator::LE);
         let jcs = JointConstraints::of(vec![ge, le]);
 

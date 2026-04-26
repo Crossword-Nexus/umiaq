@@ -232,7 +232,7 @@ fn parse_joint_len(expr: &str) -> Option<JointConstraint> {
             }
             ComparisonOperator::GE => {
                 let val: usize = bound_str.parse().ok()?;
-                JointConstraint::range(vars, Bounds::of_unbounded(val), op)
+                JointConstraint::range(vars, Bounds::of_unbounded_above(val), op)
             }
             ComparisonOperator::LT => {
                 let val: usize = bound_str.parse().ok()?;
@@ -240,7 +240,7 @@ fn parse_joint_len(expr: &str) -> Option<JointConstraint> {
             }
             ComparisonOperator::GT => {
                 let val: usize = bound_str.parse().ok()?;
-                JointConstraint::range(vars, Bounds::of_unbounded(val.checked_add(1)?), op)
+                JointConstraint::range(vars, Bounds::of_unbounded_above(val.checked_add(1)?), op)
             }
         };
 
@@ -593,8 +593,8 @@ mod tests {
     fn propagate_exact_by_mins_all_explicit() {
         // |AB| = 5, with A.min=2, B.min=3
         let mut vcs = VarConstraints::default();
-        vcs.ensure_entry_mut('A').bounds = Bounds::of_unbounded(2);
-        vcs.ensure_entry_mut('B').bounds = Bounds::of_unbounded(3);
+        vcs.ensure_entry_mut('A').bounds = Bounds::of_unbounded_above(2);
+        vcs.ensure_entry_mut('B').bounds = Bounds::of_unbounded_above(3);
 
         let jc = JointConstraint::range(vec!['A','B'], Bounds::of(5, 5), ComparisonOperator::EQ);
         let jcs = JointConstraints::of(vec![jc]);
@@ -609,9 +609,9 @@ mod tests {
     fn propagate_exact_by_mins_with_implicit_default() {
         // |ABC| = 7, with A.min=3, B.min=None (implicit default=1), C.min=3
         let mut vcs = VarConstraints::default();
-        vcs.ensure_entry_mut('A').bounds = Bounds::of_unbounded(3);
+        vcs.ensure_entry_mut('A').bounds = Bounds::of_unbounded_above(3);
         // B left unconstrained -> min_length=None
-        vcs.ensure_entry_mut('C').bounds = Bounds::of_unbounded(3);
+        vcs.ensure_entry_mut('C').bounds = Bounds::of_unbounded_above(3);
 
         let jc = JointConstraint::range(vec!['A','B','C'], Bounds::of(7, 7), ComparisonOperator::EQ);
         let jcs = JointConstraints::of(vec![jc]);
@@ -628,8 +628,8 @@ mod tests {
     fn propagate_no_exact_when_sum_min_lt_target() {
         // |ABC| = 8, A.min=3, B.min=1 (from lack of explicit min), C.min=3 → sum_min=7 < 8
         let mut vcs = VarConstraints::default();
-        vcs.ensure_entry_mut('A').bounds = Bounds::of_unbounded(3);
-        vcs.ensure_entry_mut('C').bounds = Bounds::of_unbounded(3);
+        vcs.ensure_entry_mut('A').bounds = Bounds::of_unbounded_above(3);
+        vcs.ensure_entry_mut('C').bounds = Bounds::of_unbounded_above(3);
 
         let jc = JointConstraint::range(vec!['A','B','C'], Bounds::of(8, 8), ComparisonOperator::EQ);
         let jcs = JointConstraints::of(vec![jc]);
@@ -646,8 +646,8 @@ mod tests {
     fn propagate_range_joint_constraint() {
         // |AB| = 5-8, with A.min=2, B.min=2
         let mut vcs = VarConstraints::default();
-        vcs.ensure_entry_mut('A').bounds = Bounds::of_unbounded(2);
-        vcs.ensure_entry_mut('B').bounds = Bounds::of_unbounded(2);
+        vcs.ensure_entry_mut('A').bounds = Bounds::of_unbounded_above(2);
+        vcs.ensure_entry_mut('B').bounds = Bounds::of_unbounded_above(2);
 
         let jc = JointConstraint::range(vec!['A','B'], Bounds::of(5, 8), ComparisonOperator::EQ);
         let jcs = JointConstraints::of(vec![jc]);
@@ -698,7 +698,7 @@ mod tests {
         let jc2 = parse_joint_len("|ABC|=10-").expect("should parse");
         let JointConstraint::Range(rc2) = jc2 else { panic!("expected Range") };
         assert_eq!(rc2.vars, vec!['A','B','C']);
-        assert_eq!(rc2.bounds, Bounds::of_unbounded(10));
+        assert_eq!(rc2.bounds, Bounds::of_unbounded_above(10));
     }
 
     #[test]
@@ -776,7 +776,7 @@ mod tests {
     fn joint_constraints_all_satisfied_map_variant() {
         let jcs = JointConstraints::of(vec![
             JointConstraint::range(vec!['A', 'B'], Bounds::of(1, 6), ComparisonOperator::LE), // len(A)+len(B) <= 6
-            JointConstraint::range(vec!['B', 'C'], Bounds::of_unbounded(3), ComparisonOperator::GE), // len(B)+len(C) >= 3
+            JointConstraint::range(vec!['B', 'C'], Bounds::of_unbounded_above(3), ComparisonOperator::GE), // len(B)+len(C) >= 3
         ]);
 
         let mut map = HashMap::from([
@@ -881,8 +881,8 @@ mod tests {
         #[test]
         fn test_very_large_target_value() {
             let mut vcs = VarConstraints::default();
-            vcs.ensure_entry_mut('A').bounds = Bounds::of_unbounded(1);
-            vcs.ensure_entry_mut('B').bounds = Bounds::of_unbounded(1);
+            vcs.ensure_entry_mut('A').bounds = Bounds::of_unbounded_above(1);
+            vcs.ensure_entry_mut('B').bounds = Bounds::of_unbounded_above(1);
 
             let jc = JointConstraint::range(vec!['A', 'B'], Bounds::of(1000, 1000), ComparisonOperator::EQ);
             let jcs = JointConstraints::of(vec![jc]);
@@ -913,7 +913,7 @@ mod tests {
             vcs.ensure_entry_mut('A').bounds = Bounds::of(1, 10);
             vcs.ensure_entry_mut('B').bounds = Bounds::of(1, 10);
 
-            let jc = JointConstraint::range(vec!['A', 'B'], Bounds::of_unbounded(6), ComparisonOperator::GT);
+            let jc = JointConstraint::range(vec!['A', 'B'], Bounds::of_unbounded_above(6), ComparisonOperator::GT);
             let jcs = JointConstraints::of(vec![jc]);
 
             let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);

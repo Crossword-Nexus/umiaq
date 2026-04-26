@@ -138,14 +138,14 @@ impl Bounds {
         Bounds { min_len, max_len_opt: Some(max_len) }
     }
 
-    pub(crate) fn of_unbounded(min_len: usize) -> Self {
+    pub(crate) fn of_unbounded_above(min_len: usize) -> Self {
         Bounds { min_len, max_len_opt: None }
     }
 
     /// Create bounds where a maximum of `usize::MAX` is treated as unbounded.
     pub(crate) fn from_min_max_usize(min: usize, max: usize) -> Self {
         if max == usize::MAX {
-            Bounds::of_unbounded(min)
+            Bounds::of_unbounded_above(min)
         } else {
             Bounds::of(min, max)
         }
@@ -406,7 +406,7 @@ mod tests {
         {
             let a = vcs.ensure('A');
             // default created; tweak it
-            a.bounds = Bounds::of_unbounded(3);
+            a.bounds = Bounds::of_unbounded_above(3);
         }
         assert_eq!(3, vcs.get('A').unwrap().bounds.min_len);
         assert_eq!(1, vcs.len());
@@ -440,7 +440,7 @@ mod tests {
     #[test]
     fn display_var_constraints_multiline_sorted() {
         let mut vcs = VarConstraints::default();
-        let a = VarConstraint { bounds: Bounds::of_unbounded(1), ..Default::default() };
+        let a = VarConstraint { bounds: Bounds::of_unbounded_above(1), ..Default::default() };
         let b = VarConstraint { form: Some("*x*".into()), ..Default::default() };
         let c = VarConstraint { bounds: Bounds::of(1, 2), ..Default::default() };
         // Insert out of order to verify deterministic sort in Display
@@ -481,14 +481,14 @@ mod tests {
     #[test]
     fn left_finite_right_unbounded() {
         let mut a = Bounds::of(2, 6);
-        let b = Bounds::of_unbounded(4);
+        let b = Bounds::of_unbounded_above(4);
         a.constrain_by(b).unwrap();
         assert_eq!(a, Bounds::of(4, 6));
     }
 
     #[test]
     fn left_unbounded_right_finite() {
-        let mut a = Bounds::of_unbounded(5);
+        let mut a = Bounds::of_unbounded_above(5);
         let b = Bounds::of(3, 8);
         a.constrain_by(b).unwrap();
         assert_eq!(a, Bounds::of(5, 8));
@@ -496,10 +496,10 @@ mod tests {
 
     #[test]
     fn both_unbounded() {
-        let mut a = Bounds::of_unbounded(1);
-        let b = Bounds::of_unbounded(4);
+        let mut a = Bounds::of_unbounded_above(1);
+        let b = Bounds::of_unbounded_above(4);
         a.constrain_by(b).unwrap();
-        assert_eq!(a, Bounds::of_unbounded(4));
+        assert_eq!(a, Bounds::of_unbounded_above(4));
     }
 
     #[test]

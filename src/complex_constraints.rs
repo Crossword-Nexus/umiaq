@@ -145,7 +145,7 @@ pub(crate) fn parse_length_range(input: &str) -> Result<Bounds, Box<ParseError>>
             // RHS: either a number or empty (open-ended).
             if rhs.is_empty() {
                 // "N-" → open ended upper bound
-                Ok(Bounds::of_unbounded(min))
+                Ok(Bounds::of_unbounded_above(min))
             } else {
                 let max = rhs.parse::<usize>().map_err(|_| {
                     Box::new(ParseError::InvalidLengthRange { input: input.to_string() })
@@ -171,7 +171,7 @@ mod tests {
         assert_eq!(Bounds::of(2, 3), parse_length_range("2-3").unwrap());
         assert_eq!(Bounds::of(5, 5), parse_length_range("5").unwrap());
         assert_eq!(Bounds::of(VarConstraint::DEFAULT_MIN, 3), parse_length_range("-3").unwrap());
-        assert_eq!(Bounds::of_unbounded(1), parse_length_range("1-").unwrap());
+        assert_eq!(Bounds::of_unbounded_above(1), parse_length_range("1-").unwrap());
         assert_eq!(Bounds::of(7, 7), parse_length_range("7").unwrap());
         assert!(matches!(*parse_length_range("").unwrap_err(), ParseError::InvalidLengthRange { input } if input.is_empty() ));
         assert!(matches!(*parse_length_range("1-2-3").unwrap_err(), ParseError::InvalidLengthRange { input } if input == "1-2-3" ));
@@ -214,7 +214,7 @@ mod tests {
             parse_length_range("-3").unwrap()
         );
         // Open end: "1-" → [1, ∞)
-        assert_eq!(Bounds::of_unbounded(1), parse_length_range("1-").unwrap());
+        assert_eq!(Bounds::of_unbounded_above(1), parse_length_range("1-").unwrap());
         // Single number: "7" → exactly 7
         assert_eq!(Bounds::of(7, 7), parse_length_range("7").unwrap());
     }
@@ -275,7 +275,7 @@ mod tests {
         // A=(r*) → variable A has unbounded length (default min), form "r*"
         let eq = "A;A=(r*)".parse::<EquationContext>().unwrap();
         let a = eq.var_constraints.get('A').unwrap();
-        assert_eq!(a.bounds, Bounds::of_unbounded(VarConstraint::DEFAULT_MIN));
+        assert_eq!(a.bounds, Bounds::of_unbounded_above(VarConstraint::DEFAULT_MIN));
         assert_eq!(a.form.as_deref(), Some("r*"));
     }
 
@@ -302,7 +302,7 @@ mod tests {
         // A=(2-:z*) → variable A has bounds [2,∞), form "z*"
         let eq = "A;A=(2-:z*)".parse::<EquationContext>().unwrap();
         let a = eq.var_constraints.get('A').unwrap();
-        assert_eq!(a.bounds, Bounds::of_unbounded(2));
+        assert_eq!(a.bounds, Bounds::of_unbounded_above(2));
         assert_eq!(a.form.as_deref(), Some("z*"));
     }
 

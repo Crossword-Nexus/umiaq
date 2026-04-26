@@ -125,7 +125,7 @@ impl FromStr for FormKind {
                 }
                 ComparisonOperator::GE => {
                     let bound = bound_str.parse::<usize>()?;
-                    Bounds::of_unbounded(bound)
+                    Bounds::of_unbounded_above(bound)
                 }
                 ComparisonOperator::LT => {
                     let bound = bound_str.parse::<usize>()?;
@@ -140,7 +140,7 @@ impl FromStr for FormKind {
                 ComparisonOperator::GT => {
                     let bound = bound_str.parse::<usize>()?;
                     if let Some(min) = bound.checked_add(1) {
-                        Bounds::of_unbounded(min)
+                        Bounds::of_unbounded_above(min)
                     } else {
                         return Err(Box::new(ParseError::LengthConstraintExceedsMax {
                             constraint: s.to_string(),
@@ -864,7 +864,7 @@ mod tests {
         let equation_context = "A;A=(g*)".parse::<EquationContext>().unwrap();
 
         let expected = VarConstraint {
-            bounds: Bounds::of_unbounded(VarConstraint::DEFAULT_MIN),
+            bounds: Bounds::of_unbounded_above(VarConstraint::DEFAULT_MIN),
             form: Some("g*".to_string()),
             ..Default::default()
         };
@@ -887,7 +887,7 @@ mod tests {
         let equation_context = "A;A=(3-:x*)".parse::<EquationContext>().unwrap();
 
         let expected = VarConstraint {
-            bounds: Bounds::of_unbounded(3),
+            bounds: Bounds::of_unbounded_above(3),
             form: Some("x*".to_string()),
             ..Default::default()
         };
@@ -1268,7 +1268,7 @@ mod tests {
             let ranges: Vec<_> = ctx.joint_constraints.iter_ranges().collect();
             assert!(ranges.iter().any(|rc| rc.vars == vec!['A', 'B'] && rc.bounds == Bounds::of(5, 5)));
             assert!(ranges.iter().any(|rc| rc.vars == vec!['C', 'D'] && rc.bounds == Bounds::of(7, 7)));
-            assert!(ranges.iter().any(|rc| rc.vars == vec!['A', 'C'] && rc.bounds == Bounds::of_unbounded(3)));
+            assert!(ranges.iter().any(|rc| rc.vars == vec!['A', 'C'] && rc.bounds == Bounds::of_unbounded_above(3)));
             assert!(ranges.iter().any(|rc| rc.vars == vec!['B', 'D'] && rc.bounds == Bounds::of(1, 10)));
         }
 
