@@ -20,7 +20,13 @@ use std::collections::HashMap;
 pub struct RangeConstraint {
     pub vars: Vec<char>,
     pub bounds: Bounds,
-    pub op: ComparisonOperator,
+    op: ComparisonOperator,  // private: always non-NE; enforced by JointConstraint::range()
+}
+
+impl RangeConstraint {
+    pub fn op(&self) -> ComparisonOperator {
+        self.op
+    }
 }
 
 /// Joint "not-equal" constraint: the total var-length sum must not equal `forbidden`.
@@ -39,6 +45,9 @@ pub enum JointConstraint {
 
 impl JointConstraint {
     pub fn range(vars: Vec<char>, bounds: Bounds, op: ComparisonOperator) -> Self {
+        if op == ComparisonOperator::NE {
+            panic!("BUG: RangeConstraint op must not be NE; use JointConstraint::ne() instead"); // TODO? handle this less aggressively?
+        }
         JointConstraint::Range(RangeConstraint { vars, bounds, op })
     }
 
@@ -140,9 +149,9 @@ impl fmt::Display for JointConstraint {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let vars: String = self.vars().iter().collect();
         match self {
-            JointConstraint::Range(rc) => match rc.op {
+            JointConstraint::Range(rc) => match rc.op() {
                 ComparisonOperator::EQ => write!(f, "|{}|={}", vars, rc.bounds),
-                _ => write!(f, "|{}| {} {}", vars, rc.op, rc.bounds),
+                _ => write!(f, "|{}| {} {}", vars, rc.op(), rc.bounds),
             },
             JointConstraint::Ne(nc) => write!(f, "|{}| != {}", vars, nc.forbidden),
         }
@@ -423,7 +432,7 @@ impl fmt::Display for JointConstraints {
 pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstraints) -> Result<(), Box<ParseError>> {
     for jc in jcs.iter() {
         let JointConstraint::Range(rc) = jc else { continue; };
-        if rc.op != ComparisonOperator::EQ { continue; }
+        if rc.op() != ComparisonOperator::EQ { continue; }
 
         let target_min = rc.bounds.min_len;
         let target_max_opt = rc.bounds.max_len_opt;
@@ -650,7 +659,7 @@ mod tests {
         let JointConstraint::Range(rc) = jc else { panic!("expected Range") };
         assert_eq!(rc.vars, vec!['A','B']);
         assert_eq!(rc.bounds, Bounds::of(7, 7));
-        assert_eq!(rc.op, ComparisonOperator::EQ);
+        assert_eq!(rc.op(), ComparisonOperator::EQ);
     }
 
     #[test]
@@ -660,7 +669,7 @@ mod tests {
         let JointConstraint::Range(rc) = jc else { panic!("expected Range") };
         assert_eq!(rc.vars, vec!['A','B']);
         assert_eq!(rc.bounds, Bounds::of(5, 8));
-        assert_eq!(rc.op, ComparisonOperator::EQ);
+        assert_eq!(rc.op(), ComparisonOperator::EQ);
 
         let jc2 = parse_joint_len("|ABC|=10-").expect("should parse");
         let JointConstraint::Range(rc2) = jc2 else { panic!("expected Range") };
@@ -675,7 +684,7 @@ mod tests {
         let JointConstraint::Range(rc) = jc else { panic!("expected Range") };
         assert_eq!(rc.vars, vec!['A','B','C']);
         assert_eq!(rc.bounds, Bounds::of(1, 10));
-        assert_eq!(rc.op, ComparisonOperator::LE);
+        assert_eq!(rc.op(), ComparisonOperator::LE);
     }
 
     #[test]
