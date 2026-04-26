@@ -383,10 +383,11 @@ impl fmt::Display for JointConstraints {
 ///
 /// # Overview
 ///
-/// This propagation step converts joint constraints (equalities over groups of variables)
-/// into tighter individual variable bounds, potentially dramatically reducing the search space.
+/// This propagation step converts joint range constraints (=, <=, >=, <, >) over groups of
+/// variables into tighter individual variable bounds, potentially dramatically reducing the
+/// search space. NE constraints are skipped (they don't produce a contiguous interval).
 ///
-/// # Example: Exact Propagation
+/// # Example: Exact Propagation (EQ)
 ///
 /// ```text
 /// Joint constraint: |ABCDEFGHIJKLMN| = 14
@@ -397,7 +398,7 @@ impl fmt::Display for JointConstraints {
 ///
 /// This allows the solver to avoid exploring assignments where any variable is length > 1.
 ///
-/// # Example: Interval Tightening
+/// # Example: Interval Tightening (EQ)
 ///
 /// ```text
 /// joint constraint: |ABC| = 10
@@ -412,13 +413,27 @@ impl fmt::Display for JointConstraints {
 ///
 /// This reduces the search space from "∞"³ to 8³ = 512 possibilities.
 ///
+/// # Example: One-sided Tightening (GE/LE)
+///
+/// ```text
+/// joint constraint: |AB| >= 5, A ∈ [1,3], B ∈ [1,3]
+/// for A: new min = max(1, 5 - max(B)) = max(1, 5 - 3) = 2
+/// for B: new min = max(1, 5 - max(A)) = max(1, 5 - 3) = 2
+/// result: A ∈ [2,3], B ∈ [2,3]
+///
+/// joint constraint: |AB| <= 8, A ∈ [1,∞), B ∈ [2,∞)
+/// for A: new max = min(∞, 8 - min(B)) = 8 - 2 = 6
+/// for B: new max = min(∞, 8 - min(A)) = 8 - 1 = 7
+/// result: A ∈ [1,6], B ∈ [2,7]
+/// ```
+///
 /// # Circuit-Breaker Pattern
 ///
 /// Before attempting potentially expensive search, this function fails fast when constraints are
 /// provably unsatisfiable:
 ///
-/// - if `sum(mins) > target` (minimum required exceeds target)
-/// - if `sum(maxes) < target` (maximum possible falls short of target)
+/// - if `sum(mins) > T_max` (minimum required exceeds upper bound)
+/// - if `sum(maxes) < T_min` (maximum possible falls short of lower bound)
 ///
 /// Example contradiction:
 /// ```text
@@ -428,13 +443,17 @@ impl fmt::Display for JointConstraints {
 ///
 /// # Algorithm
 ///
-/// 1. **Early fail**: if `sum(mins) > T` or `sum(maxes) < T`, return `ContradictoryBounds`
-/// 2. **Exact by mins**: if `sum(mins) == T`, set all vars to their min (exact)
-/// 3. **Exact by maxes**: if `sum(maxes) == T` (finite), set all vars to their max (exact)
+/// For each range constraint with interval `[T_min, T_max]`:
+/// 1. **Early fail**: if `sum(mins) > T_max` or `sum(maxes) < T_min`, return `ContradictoryBounds`
+/// 2. **Exact by mins**: if `sum(mins) == T_max`, set all vars to their min (exact)
+/// 3. **Exact by maxes**: if `sum(maxes) == T_min` (finite), set all vars to their max (exact)
 /// 4. **Generic tightening**: otherwise, for each variable Vi:
-///    - new min for Vi = max(current min, T - Σ other maxes)
-///    - new max for Vi = min(current max, T - Σ other mins)
+///    - new min for Vi = max(current min, `T_min` - Σ other maxes)
+///    - new max for Vi = min(current max, `T_max` - Σ other mins)
 ///    - if new min > new max, fail with `ContradictoryBounds`
+///
+/// GE/GT constraints have `T_max = ∞`, so step 4 only tightens lower bounds.
+/// LE/LT constraints have `T_min = 1`, so step 4 only tightens upper bounds.
 ///
 /// # Soundness
 ///
@@ -456,7 +475,6 @@ impl fmt::Display for JointConstraints {
 /// Returns `Err(ContradictoryBounds)` if the constraints are provably unsatisfiable.
 pub fn propagate_joint_to_var_bounds(vcs: &mut VarConstraints, jcs: &JointConstraints) -> Result<(), Box<ParseError>> {
     for rc in jcs.iter_ranges() {
-        if rc.op() != ComparisonOperator::EQ { continue; }
 
         let target_min = rc.bounds.min_len;
         let target_max_opt = rc.bounds.max_len_opt;
@@ -909,28 +927,41 @@ mod tests {
 
         #[test]
         fn test_inequality_greater_than() {
+            // |AB| > 6 (i.e., >= 7), A ∈ [1,10], B ∈ [1,10]
+            // for A: new min = max(1, 7 - max(B)) = max(1, 7 - 10) = 1 (no change, 7-10 underflows)
+            // for B: same
+            // But if B ∈ [1,4]: new min for A = max(1, 7 - 4) = 3
             let mut vcs = VarConstraints::default();
             vcs.ensure_entry_mut('A').bounds = Bounds::of(1, 10);
-            vcs.ensure_entry_mut('B').bounds = Bounds::of(1, 10);
+            vcs.ensure_entry_mut('B').bounds = Bounds::of(1, 4);
 
-            let jc = JointConstraint::range(vec!['A', 'B'], Bounds::of_unbounded_above(6), ComparisonOperator::GT);
+            let jc = JointConstraint::range(vec!['A', 'B'], Bounds::of_unbounded_above(7), ComparisonOperator::GT);
             let jcs = JointConstraints::of(vec![jc]);
 
-            let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);
-            assert!(result.is_ok());
+            propagate_joint_to_var_bounds(&mut vcs, &jcs).unwrap();
+
+            // A tightened: min = max(1, 7-4) = 3; max unchanged
+            assert_eq!(vcs.bounds('A'), Bounds::of(3, 10));
+            // B: min = max(1, 7-10) = 1 (saturating_sub → 0, clamped to 1); max unchanged
+            assert_eq!(vcs.bounds('B'), Bounds::of(1, 4));
         }
 
         #[test]
         fn test_inequality_less_than() {
+            // |AB| < 9 (i.e., <= 8), A ∈ [1,10], B ∈ [2,10]
+            // for A: new max = min(10, 8 - min(B)) = min(10, 8-2) = 6
+            // for B: new max = min(10, 8 - min(A)) = min(10, 8-1) = 7
             let mut vcs = VarConstraints::default();
             vcs.ensure_entry_mut('A').bounds = Bounds::of(1, 10);
-            vcs.ensure_entry_mut('B').bounds = Bounds::of(1, 10);
+            vcs.ensure_entry_mut('B').bounds = Bounds::of(2, 10);
 
-            let jc = JointConstraint::range(vec!['A', 'B'], Bounds::of(1, 9), ComparisonOperator::LT);
+            let jc = JointConstraint::range(vec!['A', 'B'], Bounds::of(1, 8), ComparisonOperator::LT);
             let jcs = JointConstraints::of(vec![jc]);
 
-            let result = propagate_joint_to_var_bounds(&mut vcs, &jcs);
-            assert!(result.is_ok());
+            propagate_joint_to_var_bounds(&mut vcs, &jcs).unwrap();
+
+            assert_eq!(vcs.bounds('A'), Bounds::of(1, 6));
+            assert_eq!(vcs.bounds('B'), Bounds::of(2, 7));
         }
 
         #[test]
