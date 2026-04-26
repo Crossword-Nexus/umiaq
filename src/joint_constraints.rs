@@ -15,11 +15,14 @@ use crate::patterns::FORM_SEPARATOR;
 use std::collections::HashMap;
 
 /// Joint constraint where `bounds.contains(total)` determines satisfaction.
-/// `op` is kept only for display; it is always EQ, LE, GE, LT, or GT--never NE.
+///
+/// - `vars`  : the participating variable names (A–Z). Duplicates **do** count toward the sum.
+/// - `bounds`: allowed length range for the sum.
+/// - `op`   : comparison operator (kept for Display; is always EQ, LE, GE, LT, or GT--never NE).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RangeConstraint {
-    pub vars: Vec<char>,
-    pub bounds: Bounds,
+    pub vars: Vec<char>,     // e.g., ['A','B','C']
+    pub bounds: Bounds,      // e.g., [5, 8]
     op: ComparisonOperator,  // private: always non-NE; enforced by JointConstraint::range()
 }
 
@@ -63,10 +66,13 @@ impl fmt::Display for RangeConstraint {
     }
 }
 
-/// Joint "not-equal" constraint: the total var-length sum must not equal `forbidden`.
+/// Joint "not-equal" constraint.
+///
+/// - `vars`     : the participating variable names (A–Z). Duplicates **do** count toward the sum.
+/// - `forbidden`: the value that the total var-length sum must not equal.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NeConstraint {
-    pub vars: Vec<char>,
+    pub vars: Vec<char>, // e.g., ['A','B','C']
     pub forbidden: usize,
 }
 
@@ -88,6 +94,7 @@ pub enum JointConstraint {
     Ne(NeConstraint),
 }
 
+/// Joint length constraint like `|ABC| <= 7`.
 impl JointConstraint {
     pub fn range(vars: Vec<char>, bounds: Bounds, op: ComparisonOperator) -> Self {
         // TODO? handle this less aggressively?
