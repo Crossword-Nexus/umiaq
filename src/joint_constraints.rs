@@ -90,9 +90,8 @@ pub enum JointConstraint {
 
 impl JointConstraint {
     pub fn range(vars: Vec<char>, bounds: Bounds, op: ComparisonOperator) -> Self {
-        if op == ComparisonOperator::NE {
-            panic!("BUG: RangeConstraint op must not be NE; use JointConstraint::ne() instead"); // TODO? handle this less aggressively?
-        }
+        // TODO? handle this less aggressively?
+        assert_ne!(op, ComparisonOperator::NE, "BUG: RangeConstraint op must not be NE; use JointConstraint::ne() instead");
         JointConstraint::Range(RangeConstraint { vars, bounds, op })
     }
 
