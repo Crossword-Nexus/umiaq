@@ -1220,8 +1220,9 @@ mod tests {
 
             assert_eq!(ctx.joint_constraints.len(), 1);
             let jc = ctx.joint_constraints.iter().next().unwrap();
-            assert_eq!(jc.vars, vec!['A', 'B']);
-            assert_eq!(jc.bounds, Bounds::of(8, 8));
+            let JointConstraint::Range(rc) = jc else { panic!("expected Range") };
+            assert_eq!(rc.vars, vec!['A', 'B']);
+            assert_eq!(rc.bounds, Bounds::of(8, 8));
         }
 
         #[test]
@@ -1266,10 +1267,10 @@ mod tests {
             assert_eq!(ctx.joint_constraints.len(), 4);
 
             let constraints: Vec<_> = ctx.joint_constraints.iter().collect();
-            assert!(constraints.iter().any(|jc| jc.vars == vec!['A', 'B'] && jc.bounds == Bounds::of(5, 5)));
-            assert!(constraints.iter().any(|jc| jc.vars == vec!['C', 'D'] && jc.bounds == Bounds::of(7, 7)));
-            assert!(constraints.iter().any(|jc| jc.vars == vec!['A', 'C'] && jc.bounds == Bounds::of_unbounded(3)));
-            assert!(constraints.iter().any(|jc| jc.vars == vec!['B', 'D'] && jc.bounds == Bounds::of(1, 10)));
+            assert!(constraints.iter().any(|jc| matches!(jc, JointConstraint::Range(rc) if rc.vars == vec!['A', 'B'] && rc.bounds == Bounds::of(5, 5))));
+            assert!(constraints.iter().any(|jc| matches!(jc, JointConstraint::Range(rc) if rc.vars == vec!['C', 'D'] && rc.bounds == Bounds::of(7, 7))));
+            assert!(constraints.iter().any(|jc| matches!(jc, JointConstraint::Range(rc) if rc.vars == vec!['A', 'C'] && rc.bounds == Bounds::of_unbounded(3))));
+            assert!(constraints.iter().any(|jc| matches!(jc, JointConstraint::Range(rc) if rc.vars == vec!['B', 'D'] && rc.bounds == Bounds::of(1, 10))));
         }
 
         #[test]

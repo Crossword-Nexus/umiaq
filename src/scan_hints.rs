@@ -24,7 +24,6 @@
 //   an arbitrary number of extra characters.
 // -----------------------------------------------------------------------------
 
-use crate::comparison_operator::ComparisonOperator;
 use crate::constraints::{Bounds, VarConstraint, VarConstraints};
 use crate::joint_constraints::{JointConstraint, JointConstraints};
 
@@ -216,14 +215,11 @@ impl PatternLenHints {
 /// Convert a crate-level `JointConstraint` to a `GroupLenConstraint` interval.
 /// Returns `None` for incompatible/non-interval relations (e.g., NE) or empty.
 fn group_from_joint(jc: &JointConstraint) -> Option<GroupLenConstraint> {
-    if jc.op == ComparisonOperator::NE {
-        return None;
-    }
-
+    let JointConstraint::Range(rc) = jc else { return None; };
     Some(GroupLenConstraint {
-        vars: jc.vars.clone(),
-        total_min: jc.bounds.min_len,
-        total_max: jc.bounds.max_len_opt,
+        vars: rc.vars.clone(),
+        total_min: rc.bounds.min_len,
+        total_max: rc.bounds.max_len_opt,
     })
 }
 
@@ -400,7 +396,7 @@ fn group_constraints_for_form(form: &ParsedForm, jcs: &JointConstraints) -> Vec<
 
         jcs.iter()
             // ← revert to ANY overlap so constraints like |AB|=6 still inform A-only forms
-            .filter(|jc| jc.vars.iter().any(|var_char| present.contains(var_char)))
+            .filter(|jc| jc.vars().iter().any(|var_char| present.contains(var_char)))
             .filter_map(group_from_joint)
             .collect()
     }
@@ -413,6 +409,7 @@ fn group_constraints_for_form(form: &ParsedForm, jcs: &JointConstraints) -> Vec<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::comparison_operator::ComparisonOperator;
     use crate::parser::FormPart;
 
     // Minimal helper ParsedForm for tests without pulling regex machinery.
@@ -488,11 +485,7 @@ mod tests {
         let vcs = VarConstraints::default();
 
         // Build a JointConstraints equivalent to |AB|=6
-        let jc = JointConstraint {
-            vars: vec!['A', 'B'],
-            bounds: Bounds::of(6, 6),
-            op: ComparisonOperator::EQ,
-        };
+        let jc = JointConstraint::range(vec!['A', 'B'], Bounds::of(6, 6), ComparisonOperator::EQ);
         let jcs = JointConstraints::of(vec![jc]);
 
         let hints = form_len_hints_pf(&form, &vcs, &jcs);
@@ -523,11 +516,7 @@ mod tests {
         let a = vcs.ensure('A');
         a.bounds = Bounds::of(2, 2);
 
-        let jc = JointConstraint {
-            vars: vec!['A', 'B'],
-            bounds: Bounds::of(6, 6),
-            op: ComparisonOperator::EQ,
-        };
+        let jc = JointConstraint::range(vec!['A', 'B'], Bounds::of(6, 6), ComparisonOperator::EQ);
         let jcs = JointConstraints::of(vec![jc]);
         let hints = form_len_hints_pf(&form, &vcs, &jcs);
 
@@ -550,16 +539,8 @@ mod tests {
         let b = vcs.ensure('B');
         b.bounds = Bounds::of(1, 10);
 
-        let g1 = JointConstraint {
-            vars: vec!['A', 'B'],
-            bounds: Bounds::of_unbounded(4),
-            op: ComparisonOperator::GE,
-        };
-        let g2 = JointConstraint {
-            vars: vec!['A', 'B'],
-            bounds: Bounds::of(1, 6),
-            op: ComparisonOperator::LE,
-        };
+        let g1 = JointConstraint::range(vec!['A', 'B'], Bounds::of_unbounded(4), ComparisonOperator::GE);
+        let g2 = JointConstraint::range(vec!['A', 'B'], Bounds::of(1, 6), ComparisonOperator::LE);
         let jcs = JointConstraints::of(vec![g1, g2]);
         let hints = form_len_hints_pf(&form, &vcs, &jcs);
 
@@ -574,11 +555,7 @@ mod tests {
     fn star_blocks_exact_even_with_exact_groups() {
         // A*B ; |AB|=6
         let form = pf(vec![FormPart::Var('A'), FormPart::Star, FormPart::Var('B')]);
-        let jc = JointConstraint {
-            vars: vec!['A', 'B'],
-            bounds: Bounds::of(6, 6),
-            op: ComparisonOperator::EQ,
-        };
+        let jc = JointConstraint::range(vec!['A', 'B'], Bounds::of(6, 6), ComparisonOperator::EQ);
         let jcs = JointConstraints::of(vec![jc]);
         let vcs = VarConstraints::default();
         let hints = form_len_hints_pf(&form, &vcs, &jcs);
@@ -594,11 +571,7 @@ mod tests {
     #[test]
     fn group_hints_apply_to_single_var() {
         let form = pf(vec![FormPart::Var('A')]);
-        let jc = JointConstraint {
-            vars: vec!['A', 'B'],
-            bounds: Bounds::of(6, 6),
-            op: ComparisonOperator::EQ,
-        };
+        let jc = JointConstraint::range(vec!['A', 'B'], Bounds::of(6, 6), ComparisonOperator::EQ);
         let jcs = JointConstraints::of(vec![jc]);
         let vcs = VarConstraints::default();
         let hints = form_len_hints_pf(&form, &vcs, &jcs);
@@ -629,8 +602,8 @@ mod tests {
         let b = vcs.ensure('B');
         b.bounds = Bounds::of(2, 10);
 
-        let g1 = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of_unbounded(4), op: ComparisonOperator::GE };
-        let g2 = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of(1, 6), op: ComparisonOperator::LE };
+        let g1 = JointConstraint::range(vec!['A','B'], Bounds::of_unbounded(4), ComparisonOperator::GE);
+        let g2 = JointConstraint::range(vec!['A','B'], Bounds::of(1, 6), ComparisonOperator::LE);
         let jcs = JointConstraints::of(vec![g1, g2]);
 
         let hints = form_len_hints_pf(&form, &vcs, &jcs);
@@ -659,8 +632,8 @@ mod tests {
         let c = vcs.ensure('C');
         c.bounds = Bounds::of(3, 4);
 
-        let ge = JointConstraint { vars: vec!['A','B','C'], bounds: Bounds::of_unbounded(10), op: ComparisonOperator::GE };
-        let le = JointConstraint { vars: vec!['A','B','C'], bounds: Bounds::of(1, 12), op: ComparisonOperator::LE };
+        let ge = JointConstraint::range(vec!['A','B','C'], Bounds::of_unbounded(10), ComparisonOperator::GE);
+        let le = JointConstraint::range(vec!['A','B','C'], Bounds::of(1, 12), ComparisonOperator::LE);
         let jcs = JointConstraints::of(vec![ge, le]);
 
         let hints = form_len_hints_pf(&form, &vcs, &jcs);
@@ -701,7 +674,7 @@ mod tests {
         let form = pf(vec![FormPart::Var('A')]);
         let vcs = VarConstraints::default();
 
-        let jc = JointConstraint { vars: vec!['A','B'], bounds: Bounds::of(5, 5), op: ComparisonOperator::EQ };
+        let jc = JointConstraint::range(vec!['A','B'], Bounds::of(5, 5), ComparisonOperator::EQ);
         let jcs = JointConstraints::of(vec![jc]);
 
         let hints = form_len_hints_pf(&form, &vcs, &jcs);
