@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-05-05
+
+### Added
+- Joint inequality (not just equality) constraints (e.g., `|AB|>=5`, `|AB|<8`) now tighten per-variable length bounds during propagation.
+
+### Changed
+- Internal: refactored `JointConstraint` from a single struct into a `Range`/`Ne` enum with concrete inner types `RangeConstraint` and `NeConstraint`, and split `JointConstraints`.
+- Joint constraint display now uses `∈` and `≠` symbols (e.g., `|AB|∈[5,8]`, `|AB|≠5`) instead of `=` and `!=`.
+
 ## [0.4.2] - 2026-04-07
 
 ### Changed
@@ -54,7 +63,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ### Added
 - Initial public release
 
-[Unreleased]: https://github.com/Crossword-Nexus/umiaq/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/Crossword-Nexus/umiaq/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/Crossword-Nexus/umiaq/compare/v0.4.2...v0.5.0
 [0.4.2]: https://github.com/Crossword-Nexus/umiaq/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/Crossword-Nexus/umiaq/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/Crossword-Nexus/umiaq/compare/v0.3.0...v0.4.0
