@@ -90,6 +90,8 @@ jobs:
 
       # Build and stage Rust docs
       - name: Build Rust docs
+        env:
+          RUSTDOCFLAGS: --document-private-items
         run: cargo doc --no-deps
 
       - name: Copy docs into web/docs

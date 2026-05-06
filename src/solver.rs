@@ -143,7 +143,7 @@
 //! 2. **Deterministic fast path**: materializes fully determined patterns directly
 //! 3. **Early termination**: stops when quota met or budget expires
 //! 4. **Deduplication**: hash-based set prevents duplicate solutions
-//! 5. **String interning**: reduces allocation overhead via Rust's Rc<str>
+//! 5. **String interning**: reduces allocation overhead via Rust's `Rc<str>`
 //!
 //! ## Memory Usage
 //!
@@ -921,7 +921,7 @@ fn recursive_join_inner(
 ///   (use `None` to search exhaustively).
 ///
 /// # Returns
-/// A vector of fully materialized [`Solution`]s, up to the requested limit.
+/// A [`SolveResult`] whose `solutions` contains up to `num_results_requested` entries.
 ///
 /// # Errors
 /// Returns a [`SolverError`] if:
@@ -932,6 +932,7 @@ fn recursive_join_inner(
 /// On timeout, any partial solutions discovered before expiration are discarded
 /// and the error is bubbled up to the caller, so the end user sees an explicit
 /// failure rather than a silently truncated result set.
+#[allow(rustdoc::private_intra_doc_links)]
 pub fn solve_equation(
     input: &str,
     entry_list: &[&str],
