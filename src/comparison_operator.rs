@@ -37,9 +37,9 @@ impl ComparisonOperator {
     const fn as_str(self) -> &'static str {
         match self {
             EQ => "=",
-            NE => "!=",
-            LE => "<=",
-            GE => ">=",
+            NE => "!=", // TODO? add separate notions of display string ("≠") and string for parsing
+            LE => "<=", // TODO? add separate notions of display string ("≤") and string for parsing
+            GE => ">=", // TODO? add separate notions of display string ("≥") and string for parsing
             LT => "<",
             GT => ">"
         }

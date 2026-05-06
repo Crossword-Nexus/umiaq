@@ -100,12 +100,6 @@ impl Bindings {
         })
     }
 
-    pub(crate) fn contains_all_vars(&self, vars: &[char]) -> bool {
-        vars.iter().all(|&var_char| {
-            let i = char_to_index(var_char);
-            self.slots[i].is_some()
-        })
-    }
 }
 
 #[cfg(test)]
@@ -165,30 +159,6 @@ mod tests {
         let b = Bindings::default();
         let items: Vec<_> = b.iter().collect();
         assert!(items.is_empty());
-    }
-
-    #[test]
-    fn test_contains_all_vars_true() {
-        let mut b = Bindings::default();
-        b.set_rc('A', Rc::from("a"));
-        b.set_rc('B', Rc::from("b"));
-        b.set_rc('C', Rc::from("c"));
-
-        assert!(b.contains_all_vars(&['A', 'B']));
-        assert!(b.contains_all_vars(&['A', 'B', 'C']));
-        assert!(b.contains_all_vars(&['A']));
-        assert!(b.contains_all_vars(&[]));
-    }
-
-    #[test]
-    fn test_contains_all_vars_false() {
-        let mut b = Bindings::default();
-        b.set_rc('A', Rc::from("a"));
-        b.set_rc('B', Rc::from("b"));
-
-        assert!(!b.contains_all_vars(&['A', 'B', 'C']));
-        assert!(!b.contains_all_vars(&['D']));
-        assert!(!b.contains_all_vars(&['A', 'Z']));
     }
 
     #[test]
