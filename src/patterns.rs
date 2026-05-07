@@ -697,6 +697,7 @@ impl FromStr for EquationContext {
     ///
     /// This is the entry point used when calling
     /// `let equation_context = input.parse::<EquationContext>()?;`.
+    #[allow(rustdoc::private_intra_doc_links)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         // Start with an empty context.
         let mut equation_context = EquationContext::default();

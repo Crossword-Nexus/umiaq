@@ -455,7 +455,7 @@ impl fmt::Display for JointConstraints {
 ///
 /// This is a critical optimization that often eliminates large amounts of search space:
 /// - **Best case**: reduces "∞ⁿ" search space to finite bounds
-/// - **Common case**: tightens [1,∞) to [1,k] for small k
+/// - **Common case**: tightens \[1,∞) to \[1,k\] for small k
 /// - **Worst case**: no tightening (sum(mins) < T < sum(maxes))
 ///
 /// Especially effective for long chains like `|ABCDEFGH| = 15` where default bounds
