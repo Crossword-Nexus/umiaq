@@ -9,11 +9,12 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 ## [0.5.0] - 2026-05-05
 
 ### Added
-- Joint inequality (not just equality) constraints (e.g., `|AB|>=5`, `|AB|<8`) now tighten per-variable length bounds during propagation.
+- Length range support for constraints (e.g., `|AB|=8-`, `|AB|=-8`, `|AB|=8-9`)
+- Joint inequality (not just equality) constraints (e.g., `|AB|>=5`, `|AB|<8`) now tighten per-variable length bounds during propagation
 
 ### Changed
-- Internal: refactored `JointConstraint` from a single struct into a `Range`/`Ne` enum with concrete inner types `RangeConstraint` and `NeConstraint`, and split `JointConstraints`.
-- Joint constraint display now uses `∈` and `≠` symbols (e.g., `|AB|∈[5,8]`, `|AB|≠5`) instead of `=` and `!=`.
+- Internal: refactored `JointConstraint` from a single struct into a `Range`/`Ne` enum with concrete inner types `RangeConstraint` and `NeConstraint`, and split `JointConstraints`
+- Joint constraint display now uses `∈` and `≠` symbols (e.g., `|AB|∈[5,8]`, `|AB|≠5`) instead of `=` and `!=`
 
 ## [0.4.2] - 2026-04-07
 
