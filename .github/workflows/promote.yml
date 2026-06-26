@@ -22,7 +22,7 @@ jobs:
       url: https://crossword-nexus.github.io/umiaq/
     steps:
       - name: Checkout tag
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7.0.0
         with:
           ref: v${{ github.event.inputs.version }}
 
@@ -76,7 +76,7 @@ jobs:
         run: rm -f web/pkg/.gitignore
 
       - name: Promote to production root
-        uses: peaceiris/actions-gh-pages@v4
+        uses: peaceiris/actions-gh-pages@v4.1.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./web
