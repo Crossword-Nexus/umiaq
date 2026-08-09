@@ -49,6 +49,10 @@ impl VarConstraints {
     // Iterate over `(variable, constraint)` pairs.
     //fn iter(&self) -> impl Iterator<Item = (&char, &VarConstraint)> { self.inner.iter() }
 
+    pub(crate) fn keys(&self) -> impl Iterator<Item = &char> {
+        self.inner.keys()
+    }
+
     /// Number of variables with constraints.
     pub(crate) fn len(&self) -> usize {
         self.inner.len()
