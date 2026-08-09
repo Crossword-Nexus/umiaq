@@ -21,6 +21,7 @@ Umiaq is an open-source solver and entry-pattern matching tool designed for cros
 - **`src/patterns.rs` & `src/constraints.rs`**: `get_ordered_patterns` uses a greedy heuristic (`constraint_score`) to minimize search space (Literals=3, Classes=1).
 - **`src/scan_hints.rs`**: Analyzes pattern structure to compute length bounds used in `scan_batch`.
 - **`src/umiaq_char.rs`**: Character definitions. Note: 'y' is considered a vowel.
+- **`group_and_count_solutions` in `src/solver.rs`**: Groups solutions by all variables in the equation and returns sorted counts (e.g. `(A='A', B='CE', C='LA') (24 options)`). Supported via `-c`/`--count` in CLI and "Count possibilities" setting in the Web UI.
 
 ## Search Primitives & Optimizations
 - **Variable Bucketing**: Candidates for pattern `i` are grouped by variables shared with patterns `0..i-1`.
