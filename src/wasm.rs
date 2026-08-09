@@ -110,14 +110,17 @@ struct WasmSolveResult {
     readable_equation_context: String,
 }
 
-/// JS entry: (input: string, entry_list: string[], num_results_requested: number)
-/// returns Array<Array<string>> — only the bound entries
+/// JS entry: (input: string, entry_list: string[], num_results_requested: number, count_mode: boolean | undefined)
+/// returns Array<Array<string>> — only the bound entries or formatted count options
 #[wasm_bindgen]
 pub fn solve_equation_wasm(
     input: &str,
     entry_list: JsValue,
     num_results_requested: usize,
+    count_mode: Option<bool>,
 ) -> Result<JsValue, JsValue> {
+    let count_mode = count_mode.unwrap_or(false);
+
     // entry_list: string[] -> Vec<String>
     let entries: Vec<String> = serde_wasm_bindgen::from_value(entry_list)
         .map_err(|e| {
@@ -142,12 +145,26 @@ pub fn solve_equation_wasm(
         crate::solver::SolveStatus::TimedOut { .. } => "timed_out".to_string(),
     };
 
-    let wasm_result = WasmSolveResult {
-        solutions: result
+    let solutions = if count_mode {
+        let grouped = crate::solver::group_and_count_solutions(&result.solutions, input)
+            .map_err(|e| WasmError::from(e))?;
+        grouped
+            .into_iter()
+            .map(|(key, count)| {
+                let suffix = if count == 1 { "option" } else { "options" };
+                vec![format!("{} ({} {})", key, count, suffix)]
+            })
+            .collect()
+    } else {
+        result
             .solutions
             .iter()
             .map(|row| row.iter().filter_map(binding_to_entry).collect())
-            .collect(),
+            .collect()
+    };
+
+    let wasm_result = WasmSolveResult {
+        solutions,
         status,
         readable_equation_context: result.readable_equation_context,
     };

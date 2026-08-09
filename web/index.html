@@ -85,6 +85,14 @@
             <option value="lower">lowercase</option>
           </select>
         </div>
+
+        <div class="setting-group">
+          <label for="countMode">Count possibilities</label>
+          <select id="countMode">
+            <option value="false" selected>No</option>
+            <option value="true">Yes</option>
+          </select>
+        </div>
       </div>
     </details>
 
@@ -133,7 +141,8 @@
     function loadSettings() {
       const defaults = {
         logLevel: 'info',
-        outputCase: 'upper'
+        outputCase: 'upper',
+        countMode: 'false'
       };
       try {
         const saved = localStorage.getItem(SETTINGS_KEY);
@@ -235,6 +244,7 @@
         // Apply saved settings to dropdowns
         document.getElementById('logLevel').value = settings.logLevel;
         document.getElementById('outputCase').value = settings.outputCase;
+        document.getElementById('countMode').value = settings.countMode;
 
         // Add event listeners for settings changes
         document.getElementById('logLevel').addEventListener('change', (e) => {
@@ -250,6 +260,11 @@
 
         document.getElementById('outputCase').addEventListener('change', (e) => {
           settings.outputCase = e.target.value;
+          saveSettings(settings);
+        });
+
+        document.getElementById('countMode').addEventListener('change', (e) => {
+          settings.countMode = e.target.value;
           saveSettings(settings);
         });
       } else if (e.data.type === 'ok') {
@@ -351,6 +366,7 @@
         input: inputEl.value.trim(),
         entryList: window.entry_list,
         numResults: parseInt(numResultsEl.value),
+        countMode: settings.countMode === 'true',
       });
     }
 
