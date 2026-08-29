@@ -43,6 +43,9 @@ Umiaq is designed for crossword constructors, wordplay enthusiasts, and puzzle m
 - **Reversed variables**  
   `~A` matches the reverse of variable `A`.
 
+- **Possibility grouping & counting**  
+  Group solutions by variable assignments to see how many matching options exist for each combination (e.g. `(A='A', B='CE', C='LA') (24 options)`). Supported via the `--count` / `-c` CLI flags and the "Count possibilities" setting in the Web UI.
+
 ---
 
 ## Examples
