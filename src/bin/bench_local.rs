@@ -99,7 +99,7 @@ fn median(mut xs: Vec<f64>) -> f64 {
     if n % 2 == 1 {
         xs[n / 2]
     } else {
-        0.5 * (xs[n / 2 - 1] + xs[n / 2])
+        f64::midpoint(xs[n / 2 - 1], xs[n / 2])
     }
 }
 
