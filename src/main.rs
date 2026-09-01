@@ -90,7 +90,7 @@ fn try_main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 3. Print results on stdout
     if cli.count {
-        let grouped = solver::group_and_count_solutions(&solve_result.solutions, &cli.equation)?;
+        let grouped = solver::group_and_count_solutions(&solve_result.solutions, &solve_result.variables)?;
         for (key, count) in grouped {
             let suffix = if count == 1 { "option" } else { "options" };
             println!("{} ({} {})", key, count, suffix);

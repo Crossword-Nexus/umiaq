@@ -146,7 +146,7 @@ pub fn solve_equation_wasm(
     };
 
     let solutions = if count_mode {
-        let grouped = crate::solver::group_and_count_solutions(&result.solutions, input)
+        let grouped = crate::solver::group_and_count_solutions(&result.solutions, &result.variables)
             .map_err(|e| WasmError::from(e))?;
         grouped
             .into_iter()

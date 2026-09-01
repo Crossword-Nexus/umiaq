@@ -215,6 +215,8 @@ pub struct SolveResult {
     pub status: SolveStatus,
     /// Readable equation context
     pub readable_equation_context: String,
+    /// Variables present in the equation, in alphabetical order.
+    pub variables: Vec<char>,
 }
 
 impl SolveResult {
@@ -390,39 +392,17 @@ pub fn solution_to_string(solution: &[Bindings]) -> Result<String, SolverError> 
 /// Returns a list of (formatted_string, count) sorted by count descending.
 ///
 /// # Errors
-/// Returns an error if parsing the equation fails or if solution materialization fails.
+/// Returns an error if solution materialization fails.
 pub fn group_and_count_solutions(
     solutions: &[Vec<Bindings>],
-    equation_raw: &str,
+    variables: &[char],
 ) -> Result<Vec<(String, usize)>, SolverError> {
-    use crate::umiaq_char::UmiaqChar;
-    use std::str::FromStr;
-
-    // Parse the equation context to find all variables
-    let equation_context = EquationContext::from_str(equation_raw)?;
-
-    // Collect all unique variables from patterns and var_constraints
-    let mut vars_set = HashSet::new();
-    for pattern in &equation_context.patterns {
-        for c in pattern.raw_string.chars() {
-            if c.is_variable() {
-                vars_set.insert(c);
-            }
-        }
-    }
-    for &var in equation_context.var_constraints.keys() {
-        vars_set.insert(var);
-    }
-
-    let mut vars: Vec<char> = vars_set.into_iter().collect();
-    vars.sort();
-
     let mut counts = HashMap::new();
     for solution in solutions {
-        let key = if vars.is_empty() {
+        let key = if variables.is_empty() {
             solution_to_string(solution)?
         } else {
-            let parts: Vec<String> = vars.iter().map(|&var| {
+            let parts: Vec<String> = variables.iter().map(|&var| {
                 let mut val_opt = None;
                 for bindings in solution {
                     if let Some(val) = bindings.get(var) {
@@ -1235,7 +1215,12 @@ fn solve_equation_with_budget(
         "All bindings in solutions must have an entry set"
     );
 
-    Ok(SolveResult { solutions: reordered, status, readable_equation_context: equation_context.readable_context() })
+    Ok(SolveResult {
+        solutions: reordered,
+        status,
+        readable_equation_context: equation_context.readable_context(),
+        variables: equation_context.variables(),
+    })
 }
 
 #[cfg(test)]
@@ -1256,7 +1241,7 @@ mod tests {
         let entry_list = vec!["apop", "apolo", "apony", "celia", "celie", "lace", "laced", "laces", "lacey", "acela"];
         let input = "ABC;|A|=1;|B|=2;|C|=2;Apo*;Bli*;Cce*";
         let solve_res = solve_equation(input, &entry_list, 100).unwrap();
-        let grouped = group_and_count_solutions(&solve_res.solutions, input).unwrap();
+        let grouped = group_and_count_solutions(&solve_res.solutions, &solve_res.variables).unwrap();
         assert_eq!(grouped.len(), 1);
         assert_eq!(grouped[0].0, "(A='A', B='CE', C='LA')");
         assert_eq!(grouped[0].1, 24);
