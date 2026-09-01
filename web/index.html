@@ -291,9 +291,17 @@
           const count = rows.length;
           let meta = `${count} result${count !== 1 ? 's' : ''} loaded in ${elapsed} seconds.`;
           if (status === 'timed_out') {
-            meta += "\n⚠️ Solver timed out. Results may be incomplete. ⚠️";
+            if (settings.countMode === 'true') {
+              meta += "\n⚠️ Solver timed out. Results and counts may be incomplete. ⚠️";
+            } else {
+              meta += "\n⚠️ Solver timed out. Results may be incomplete. ⚠️";
+            }
           } else if (status === 'found_enough') {
-            meta += `\nSearch terminated after finding the requested number of results.`;
+            if (settings.countMode === 'true') {
+              meta += `\nSearch terminated after finding the requested number of results (counts may be incomplete — increase "Results" to see more).`;
+            } else {
+              meta += `\nSearch terminated after finding the requested number of results.`;
+            }
           }
           document.getElementById("results-meta").textContent = meta;
         }

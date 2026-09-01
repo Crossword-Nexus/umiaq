@@ -103,10 +103,22 @@ fn try_main() -> Result<(), Box<dyn std::error::Error>> {
 
     match solve_result.status {
         SolveStatus::TimedOut { elapsed } => {
-            eprintln!("⚠️  Timed out after {:.1}s; some solutions may not have been returned", elapsed.as_secs_f64());
+            if cli.count {
+                eprintln!("⚠️  Timed out after {:.1}s; some solutions may not have been returned (counts may be incomplete)", elapsed.as_secs_f64());
+            } else {
+                eprintln!("⚠️  Timed out after {:.1}s; some solutions may not have been returned", elapsed.as_secs_f64());
+            }
         }
         SolveStatus::FoundEnough => {
-            eprintln!("✓ Stopped after finding {}/{} requested solutions", solve_result.solutions.len(), cli.num_results_requested);
+            if cli.count {
+                eprintln!(
+                    "✓ Stopped after finding {}/{} requested solutions (counts may be incomplete — increase -n/--num-results-requested to see more)",
+                    solve_result.solutions.len(),
+                    cli.num_results_requested
+                );
+            } else {
+                eprintln!("✓ Stopped after finding {}/{} requested solutions", solve_result.solutions.len(), cli.num_results_requested);
+            }
         }
         SolveStatus::EntryListExhausted => {
             eprintln!("✓ Entry list exhausted (no more solutions)");
