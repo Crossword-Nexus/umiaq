@@ -411,6 +411,22 @@ impl EquationContext {
         self.to_string()
     }
 
+    /// Return all unique variables across all patterns and variable constraints in sorted order.
+    pub fn variables(&self) -> Vec<char> {
+        let mut vars_set = HashSet::new();
+        for pattern in &self.patterns {
+            for &v in &pattern.variables {
+                vars_set.insert(v);
+            }
+        }
+        for &var in self.var_constraints.keys() {
+            vars_set.insert(var);
+        }
+        let mut vars: Vec<char> = vars_set.into_iter().collect();
+        vars.sort();
+        vars
+    }
+
     fn build_order_maps(&mut self) {
         let n = self.patterns.len();
         self.ordered_to_original = self

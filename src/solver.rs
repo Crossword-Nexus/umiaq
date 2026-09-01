@@ -215,6 +215,8 @@ pub struct SolveResult {
     pub status: SolveStatus,
     /// Readable equation context
     pub readable_equation_context: String,
+    /// Variables present in the equation, in alphabetical order.
+    pub variables: Vec<char>,
 }
 
 impl SolveResult {
@@ -384,6 +386,44 @@ pub fn solution_to_string(solution: &[Bindings]) -> Result<String, SolverError> 
         .join(" • ");
 
     Ok(str)
+}
+
+/// Group solutions by the values of all variables in the equation and count them.
+/// Returns a list of (formatted_string, count) sorted by count descending.
+///
+/// # Errors
+/// Returns an error if solution materialization fails.
+pub fn group_and_count_solutions(
+    solutions: &[Vec<Bindings>],
+    variables: &[char],
+) -> Result<Vec<(String, usize)>, SolverError> {
+    let mut counts = HashMap::new();
+    for solution in solutions {
+        let key = if variables.is_empty() {
+            solution_to_string(solution)?
+        } else {
+            let parts: Vec<String> = variables.iter().map(|&var| {
+                let mut val_opt = None;
+                for bindings in solution {
+                    if let Some(val) = bindings.get(var) {
+                        val_opt = Some(val.clone());
+                        break;
+                    }
+                }
+                let val = val_opt.unwrap_or_else(|| Rc::from(""));
+                format!("{}='{}'", var, val.to_ascii_uppercase())
+            }).collect();
+            format!("({})", parts.join(", "))
+        };
+        *counts.entry(key).or_insert(0) += 1;
+    }
+
+    let mut count_vec: Vec<_> = counts.into_iter().collect();
+    count_vec.sort_by(|a, b| {
+        b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0))
+    });
+
+    Ok(count_vec)
 }
 
 /// Build a stable key for a full solution (bindings in **pattern order**).
@@ -1175,7 +1215,12 @@ fn solve_equation_with_budget(
         "All bindings in solutions must have an entry set"
     );
 
-    Ok(SolveResult { solutions: reordered, status, readable_equation_context: equation_context.readable_context() })
+    Ok(SolveResult {
+        solutions: reordered,
+        status,
+        readable_equation_context: equation_context.readable_context(),
+        variables: equation_context.variables(),
+    })
 }
 
 #[cfg(test)]
@@ -1189,6 +1234,69 @@ mod tests {
         let results = solve_equation(&input, &entry_list, 5).unwrap();
         println!("{results:?}");
         assert_eq!(2, results.len());
+    }
+
+    #[test]
+    fn test_group_and_count_solutions() {
+        let entry_list = vec!["apop", "apolo", "apony", "celia", "celie", "lace", "laced", "laces", "lacey", "acela"];
+        let input = "ABC;|A|=1;|B|=2;|C|=2;Apo*;Bli*;Cce*";
+        let solve_res = solve_equation(input, &entry_list, 100).unwrap();
+        let grouped = group_and_count_solutions(&solve_res.solutions, &solve_res.variables).unwrap();
+        assert_eq!(grouped.len(), 1);
+        assert_eq!(grouped[0].0, "(A='A', B='CE', C='LA')");
+        assert_eq!(grouped[0].1, 24);
+    }
+
+    #[test]
+    fn test_group_and_count_solutions_no_variables() {
+        let entry_list = vec!["cat", "cot", "cut", "dog"];
+        let input = "c.t";
+        let solve_res = solve_equation(input, &entry_list, 10).unwrap();
+        assert!(solve_res.variables.is_empty());
+        let grouped = group_and_count_solutions(&solve_res.solutions, &solve_res.variables).unwrap();
+        assert_eq!(grouped.len(), 3);
+        // Formatted using full solution string when no variables exist
+        assert_eq!(grouped[0].1, 1);
+        assert_eq!(grouped[1].1, 1);
+        assert_eq!(grouped[2].1, 1);
+        let entries: HashSet<_> = grouped.into_iter().map(|(k, _)| k).collect();
+        assert!(entries.contains("CAT"));
+        assert!(entries.contains("COT"));
+        assert!(entries.contains("CUT"));
+    }
+
+    #[test]
+    fn test_group_and_count_solutions_unbound_constraint_variable() {
+        let entry_list = vec!["cat", "dog", "car"];
+        // B appears in constraints but is never bound in a pattern
+        let input = "A;|A|=3;|B|=4";
+        let solve_res = solve_equation(input, &entry_list, 10).unwrap();
+        assert_eq!(solve_res.variables, vec!['A', 'B']);
+        let grouped = group_and_count_solutions(&solve_res.solutions, &solve_res.variables).unwrap();
+        assert_eq!(grouped.len(), 3);
+        // B should default to empty string
+        for (key, count) in &grouped {
+            assert_eq!(*count, 1);
+            assert!(key.ends_with("B='')"), "Expected key to end with B='', got: {}", key);
+        }
+    }
+
+    #[test]
+    fn test_group_and_count_solutions_result_cap_hit() {
+        let entry_list = vec!["apop", "apolo", "apony", "celia", "celie", "lace", "laced", "laces", "lacey", "acela"];
+        let input = "ABC;|A|=1;|B|=2;|C|=2;Apo*;Bli*;Cce*";
+        // Request only 5 solutions even though 24 exist
+        let solve_res = solve_equation(input, &entry_list, 5).unwrap();
+        assert_eq!(solve_res.status, SolveStatus::FoundEnough);
+        assert_eq!(solve_res.solutions.len(), 5);
+
+        let grouped = group_and_count_solutions(&solve_res.solutions, &solve_res.variables).unwrap();
+        assert_eq!(grouped.len(), 1);
+        assert_eq!(grouped[0].0, "(A='A', B='CE', C='LA')");
+        // Count reflects the capped solutions (5, not the full 24)
+        assert_eq!(grouped[0].1, 5);
+        let total_count: usize = grouped.iter().map(|(_, c)| *c).sum();
+        assert_eq!(total_count, 5);
     }
 
     #[test]

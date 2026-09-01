@@ -28,6 +28,10 @@ struct Cli {
     /// Maximum number of results to return
     #[arg(short = 'n', long, default_value_t = 100)]
     num_results_requested: usize,
+
+    /// Group solutions by variables and print the count of options for each
+    #[arg(short = 'c', long)]
+    count: bool,
 }
 
 /// Entry point of the Umiaq CLI solver.
@@ -84,17 +88,37 @@ fn try_main() -> Result<(), Box<dyn std::error::Error>> {
     let solve_result = solver::solve_equation(&cli.equation, &entries_ref, cli.num_results_requested)?;
     let solve_secs = t_solve.elapsed().as_secs_f64();
 
-    // 3. Print each solution on stdout
-    for solution in &solve_result.solutions {
-        println!("{}", solver::solution_to_string(solution)?);
+    // 3. Print results on stdout
+    if cli.count {
+        let grouped = solver::group_and_count_solutions(&solve_result.solutions, &solve_result.variables)?;
+        for (key, count) in grouped {
+            let suffix = if count == 1 { "option" } else { "options" };
+            println!("{} ({} {})", key, count, suffix);
+        }
+    } else {
+        for solution in &solve_result.solutions {
+            println!("{}", solver::solution_to_string(solution)?);
+        }
     }
 
     match solve_result.status {
         SolveStatus::TimedOut { elapsed } => {
-            eprintln!("⚠️  Timed out after {:.1}s; some solutions may not have been returned", elapsed.as_secs_f64());
+            if cli.count {
+                eprintln!("⚠️  Timed out after {:.1}s; some solutions may not have been returned (counts may be incomplete)", elapsed.as_secs_f64());
+            } else {
+                eprintln!("⚠️  Timed out after {:.1}s; some solutions may not have been returned", elapsed.as_secs_f64());
+            }
         }
         SolveStatus::FoundEnough => {
-            eprintln!("✓ Stopped after finding {}/{} requested solutions", solve_result.solutions.len(), cli.num_results_requested);
+            if cli.count {
+                eprintln!(
+                    "✓ Stopped after finding {}/{} requested solutions (counts may be incomplete — increase -n/--num-results-requested to see more)",
+                    solve_result.solutions.len(),
+                    cli.num_results_requested
+                );
+            } else {
+                eprintln!("✓ Stopped after finding {}/{} requested solutions", solve_result.solutions.len(), cli.num_results_requested);
+            }
         }
         SolveStatus::EntryListExhausted => {
             eprintln!("✓ Entry list exhausted (no more solutions)");

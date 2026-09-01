@@ -25,5 +25,5 @@ This list tracks potential features and optimizations inspired by comparative an
     - **Complexity: Low-Moderate**. Could be implemented by running `propagate_joint_to_var_bounds` until convergence or adding a post-propagation validation pass.
 
 ## UI/WASM
-- [ ] **Breakdown Display**: Show variable splits in the results (e.g., `C·A·T`).
-    - **Complexity: Low-Moderate**. The `Bindings` already contain the data; the WASM interface just needs to expose the segments or provide a "re-match" utility for the frontend.
+- [x] **Breakdown / Grouping Display**: Show variable splits/counts in the results (e.g., `(A='A', B='CE', C='LA') (24 options)`). Done!
+    - **Complexity: Low-Moderate**. The `Bindings` already contain the data; the WASM/CLI interface exposes a grouped count option.

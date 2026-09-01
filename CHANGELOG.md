@@ -6,6 +6,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ## [Unreleased]
 
+### Added
+- Count possibilities / group solutions mode: groups solutions by all variable assignments in the equation and returns sorted counts (e.g. `(A='A', B='CE', C='LA') (24 options)`). Supported via `-c`/`--count` flag in the CLI, and a "Count possibilities" setting in the Web UI.
+
 ## [0.5.0] - 2026-05-05
 
 ### Added

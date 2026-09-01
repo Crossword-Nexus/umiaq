@@ -66,7 +66,8 @@
           <select id="numResults">
             <option value="100">100</option>
             <option value="500">500</option>
-            <option value="1000">1000</option>
+            <option value="1000">1,000</option>
+            <option value="10000">10,000</option>
           </select>
         </div>
 
@@ -83,6 +84,14 @@
           <select id="outputCase">
             <option value="upper" selected>UPPERCASE</option>
             <option value="lower">lowercase</option>
+          </select>
+        </div>
+
+        <div class="setting-group">
+          <label for="countMode">Count possibilities</label>
+          <select id="countMode">
+            <option value="false" selected>No</option>
+            <option value="true">Yes</option>
           </select>
         </div>
       </div>
@@ -133,7 +142,8 @@
     function loadSettings() {
       const defaults = {
         logLevel: 'info',
-        outputCase: 'upper'
+        outputCase: 'upper',
+        countMode: 'false'
       };
       try {
         const saved = localStorage.getItem(SETTINGS_KEY);
@@ -235,6 +245,7 @@
         // Apply saved settings to dropdowns
         document.getElementById('logLevel').value = settings.logLevel;
         document.getElementById('outputCase').value = settings.outputCase;
+        document.getElementById('countMode').value = settings.countMode;
 
         // Add event listeners for settings changes
         document.getElementById('logLevel').addEventListener('change', (e) => {
@@ -250,6 +261,11 @@
 
         document.getElementById('outputCase').addEventListener('change', (e) => {
           settings.outputCase = e.target.value;
+          saveSettings(settings);
+        });
+
+        document.getElementById('countMode').addEventListener('change', (e) => {
+          settings.countMode = e.target.value;
           saveSettings(settings);
         });
       } else if (e.data.type === 'ok') {
@@ -275,9 +291,17 @@
           const count = rows.length;
           let meta = `${count} result${count !== 1 ? 's' : ''} loaded in ${elapsed} seconds.`;
           if (status === 'timed_out') {
-            meta += "\n⚠️ Solver timed out. Results may be incomplete. ⚠️";
+            if (settings.countMode === 'true') {
+              meta += "\n⚠️ Solver timed out. Results and counts may be incomplete. ⚠️";
+            } else {
+              meta += "\n⚠️ Solver timed out. Results may be incomplete. ⚠️";
+            }
           } else if (status === 'found_enough') {
-            meta += `\nSearch terminated after finding the requested number of results.`;
+            if (settings.countMode === 'true') {
+              meta += `\nSearch terminated after finding the requested number of results (counts may be incomplete — increase "Results" to see more).`;
+            } else {
+              meta += `\nSearch terminated after finding the requested number of results.`;
+            }
           }
           document.getElementById("results-meta").textContent = meta;
         }
@@ -351,6 +375,7 @@
         input: inputEl.value.trim(),
         entryList: window.entry_list,
         numResults: parseInt(numResultsEl.value),
+        countMode: settings.countMode === 'true',
       });
     }
 
