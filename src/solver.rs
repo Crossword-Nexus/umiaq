@@ -1248,6 +1248,58 @@ mod tests {
     }
 
     #[test]
+    fn test_group_and_count_solutions_no_variables() {
+        let entry_list = vec!["cat", "cot", "cut", "dog"];
+        let input = "c.t";
+        let solve_res = solve_equation(input, &entry_list, 10).unwrap();
+        assert!(solve_res.variables.is_empty());
+        let grouped = group_and_count_solutions(&solve_res.solutions, &solve_res.variables).unwrap();
+        assert_eq!(grouped.len(), 3);
+        // Formatted using full solution string when no variables exist
+        assert_eq!(grouped[0].1, 1);
+        assert_eq!(grouped[1].1, 1);
+        assert_eq!(grouped[2].1, 1);
+        let entries: HashSet<_> = grouped.into_iter().map(|(k, _)| k).collect();
+        assert!(entries.contains("CAT"));
+        assert!(entries.contains("COT"));
+        assert!(entries.contains("CUT"));
+    }
+
+    #[test]
+    fn test_group_and_count_solutions_unbound_constraint_variable() {
+        let entry_list = vec!["cat", "dog", "car"];
+        // B appears in constraints but is never bound in a pattern
+        let input = "A;|A|=3;|B|=4";
+        let solve_res = solve_equation(input, &entry_list, 10).unwrap();
+        assert_eq!(solve_res.variables, vec!['A', 'B']);
+        let grouped = group_and_count_solutions(&solve_res.solutions, &solve_res.variables).unwrap();
+        assert_eq!(grouped.len(), 3);
+        // B should default to empty string
+        for (key, count) in &grouped {
+            assert_eq!(*count, 1);
+            assert!(key.ends_with("B='')"), "Expected key to end with B='', got: {}", key);
+        }
+    }
+
+    #[test]
+    fn test_group_and_count_solutions_result_cap_hit() {
+        let entry_list = vec!["apop", "apolo", "apony", "celia", "celie", "lace", "laced", "laces", "lacey", "acela"];
+        let input = "ABC;|A|=1;|B|=2;|C|=2;Apo*;Bli*;Cce*";
+        // Request only 5 solutions even though 24 exist
+        let solve_res = solve_equation(input, &entry_list, 5).unwrap();
+        assert_eq!(solve_res.status, SolveStatus::FoundEnough);
+        assert_eq!(solve_res.solutions.len(), 5);
+
+        let grouped = group_and_count_solutions(&solve_res.solutions, &solve_res.variables).unwrap();
+        assert_eq!(grouped.len(), 1);
+        assert_eq!(grouped[0].0, "(A='A', B='CE', C='LA')");
+        // Count reflects the capped solutions (5, not the full 24)
+        assert_eq!(grouped[0].1, 5);
+        let total_count: usize = grouped.iter().map(|(_, c)| *c).sum();
+        assert_eq!(total_count, 5);
+    }
+
+    #[test]
     fn test_solve_anagrams() {
         let entry_list: Vec<&str> = vec!["integral", "altering", "gallant", "alter"];
         let input = "/triangle".to_string();
