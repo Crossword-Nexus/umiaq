@@ -423,7 +423,7 @@ impl EquationContext {
             vars_set.insert(var);
         }
         let mut vars: Vec<char> = vars_set.into_iter().collect();
-        vars.sort();
+        vars.sort_unstable();
         vars
     }
 

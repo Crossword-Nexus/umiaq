@@ -93,7 +93,7 @@ fn try_main() -> Result<(), Box<dyn std::error::Error>> {
         let grouped = solver::group_and_count_solutions(&solve_result.solutions, &solve_result.variables)?;
         for (key, count) in grouped {
             let suffix = if count == 1 { "option" } else { "options" };
-            println!("{} ({} {})", key, count, suffix);
+            println!("{key} ({count} {suffix})");
         }
     } else {
         for solution in &solve_result.solutions {
